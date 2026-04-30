@@ -267,3 +267,39 @@ def test_search_hit_includes_turn_index(archive: SessionArchive) -> None:
     hits = archive.search("match")
     assert hits and "turn_index" in hits[0]
     assert hits[0]["turn_index"] == 1
+
+
+def test_search_with_apostrophe_query(archive: SessionArchive) -> None:
+    """Possessive queries must not trip FTS5 syntax errors."""
+    sid = archive.start_session("text")
+    archive.append_turn(sid, "user", "Mason's location is Phoenix")
+    hits = archive.search("Mason's location")
+    assert len(hits) == 1
+    assert "Mason" in hits[0]["content"]
+
+
+def test_search_with_double_quote_query(archive: SessionArchive) -> None:
+    """Double quotes in a query must not raise, even though FTS5 uses them as phrase delimiters."""
+    sid = archive.start_session("text")
+    archive.append_turn(sid, "assistant", "she said hello")
+    hits = archive.search('she said "hello"')
+    assert len(hits) == 1
+
+
+def test_search_with_fts_punctuation_does_not_raise(archive: SessionArchive) -> None:
+    """Parens, asterisks, and colons are FTS5 operators — must be neutralized."""
+    sid = archive.start_session("text")
+    archive.append_turn(sid, "user", "the meeting soon is scheduled")
+    # Each of these would crash an unsanitized MATCH expression.
+    assert archive.search("(meeting)") != []
+    assert archive.search("meeting:soon") != []
+    # meet*ing splits into two tokens; assert no raise rather than a hit.
+    assert isinstance(archive.search("meet*ing"), list)
+
+
+def test_search_punctuation_only_query_returns_empty(archive: SessionArchive) -> None:
+    """A query of pure punctuation has no searchable tokens — return []."""
+    sid = archive.start_session("text")
+    archive.append_turn(sid, "user", "hello")
+    assert archive.search("???") == []
+    assert archive.search("'") == []

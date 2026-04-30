@@ -7,11 +7,23 @@ can recall prior sessions by content via the `recall_session` skill.
 
 import logging
 import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger(__name__)
+
+
+_FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _sanitize_fts_query(query: str) -> str:
+    """Quote each alphanumeric token so FTS5 syntax characters
+    (apostrophes, parens, colons, asterisks, etc.) are treated as
+    literal text rather than query operators."""
+    tokens = _FTS_TOKEN_RE.findall(query)
+    return " ".join(f'"{t}"' for t in tokens)
 
 
 _SCHEMA = """
@@ -173,8 +185,10 @@ class SessionArchive:
         oversample is accepted for forward-compat with a future chromadb
         rerank layer but is inert in v1 (no reranker → return `limit` hits).
         """
-        query = (query or "").strip()
-        if not query or not self._available:
+        if not self._available:
+            return []
+        match_expr = _sanitize_fts_query(query or "")
+        if not match_expr:
             return []
         try:
             conn = sqlite3.connect(self.db_path)
@@ -190,7 +204,7 @@ class SessionArchive:
                         ORDER BY turns_fts.rank
                         LIMIT ?
                         """,
-                        (query, since, limit),
+                        (match_expr, since, limit),
                     ).fetchall()
                 else:
                     rows = conn.execute(
@@ -203,7 +217,7 @@ class SessionArchive:
                         ORDER BY turns_fts.rank
                         LIMIT ?
                         """,
-                        (query, limit),
+                        (match_expr, limit),
                     ).fetchall()
 
                 hits = []

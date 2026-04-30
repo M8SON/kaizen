@@ -18,6 +18,8 @@ from typing import Literal
 
 import yaml
 
+from core import profiling
+
 logger = logging.getLogger(__name__)
 
 Tier = Literal["direct", "ollama", "claude"]
@@ -81,38 +83,39 @@ class TierRouter:
 
     def route(self, transcript: str) -> RouteResult:
         """Classify a transcript into direct | ollama | claude."""
-        text = transcript.strip()
+        with profiling.stage("tier_route"):
+            text = transcript.strip()
 
-        # 1. Dispatch patterns
-        for entry in self._dispatch:
-            if entry["_re"].search(text):
-                if "action" in entry:
-                    return RouteResult(tier="direct", action=entry["action"])
-                return RouteResult(
-                    tier="direct",
-                    skill=entry.get("skill"),
-                    args=dict(entry.get("args", {})),
-                )
+            # 1. Dispatch patterns
+            for entry in self._dispatch:
+                if entry["_re"].search(text):
+                    if "action" in entry:
+                        return RouteResult(tier="direct", action=entry["action"])
+                    return RouteResult(
+                        tier="direct",
+                        skill=entry.get("skill"),
+                        args=dict(entry.get("args", {})),
+                    )
 
-        # 2. Escalate patterns — route to Claude immediately, skip Ollama latency
-        for pattern in self._escalate:
-            if pattern.search(text):
-                logger.debug("TierRouter: escalate pattern matched → claude")
-                return RouteResult(tier="claude")
+            # 2. Escalate patterns — route to Claude immediately, skip Ollama latency
+            for pattern in self._escalate:
+                if pattern.search(text):
+                    logger.debug("TierRouter: escalate pattern matched → claude")
+                    return RouteResult(tier="claude")
 
-        # 3. Skill prediction — if SkillSelector predicts a Claude-only skill, escalate
-        if self._skill_selector and self._skill_selector.available:
-            try:
-                predicted = self._skill_selector.select(text)
-            except Exception:
-                logger.warning("TierRouter: skill_selector.select() raised — skipping prediction")
-                predicted = None
-            if predicted and predicted & self._claude_only:
-                logger.debug(
-                    "TierRouter: predicted claude-only skill(s) %s → claude", predicted
-                )
-                return RouteResult(tier="claude")
+            # 3. Skill prediction — if SkillSelector predicts a Claude-only skill, escalate
+            if self._skill_selector and self._skill_selector.available:
+                try:
+                    predicted = self._skill_selector.select(text)
+                except Exception:
+                    logger.warning("TierRouter: skill_selector.select() raised — skipping prediction")
+                    predicted = None
+                if predicted and predicted & self._claude_only:
+                    logger.debug(
+                        "TierRouter: predicted claude-only skill(s) %s → claude", predicted
+                    )
+                    return RouteResult(tier="claude")
 
-        # 4. Default — Ollama handles it
-        logger.debug("TierRouter: no match → ollama")
-        return RouteResult(tier="ollama")
+            # 4. Default — Ollama handles it
+            logger.debug("TierRouter: no match → ollama")
+            return RouteResult(tier="ollama")

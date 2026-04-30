@@ -24,6 +24,7 @@ import urllib.parse
 from datetime import date
 from pathlib import Path
 
+from core import profiling
 from core.dashboard_defaults import default_hazard_config
 from core.location_preference import resolve_location
 from core.mempalace_bridge import MemPalaceBridge
@@ -107,6 +108,11 @@ class ContainerManager:
         Input is passed as JSON via the SKILL_INPUT environment variable.
         Output is read from stdout as plain text or JSON.
         """
+        skill_name = getattr(skill, "name", "unknown")
+        with profiling.stage(f"tool_{skill_name}"):
+            return self._execute_skill_inner(skill, tool_input)
+
+    def _execute_skill_inner(self, skill, tool_input: dict) -> str:
         config = skill.execution_config
 
         # Native skills bypass Docker entirely

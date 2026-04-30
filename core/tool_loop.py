@@ -11,6 +11,8 @@ import re
 
 import anthropic
 
+from core import profiling
+
 _REMEMBER_RE = re.compile(
     r"\n?##\s*remember:\n+topic:\s*(.+?)\n+content:\s*(.+?)(?=\n##|\Z)",
     re.IGNORECASE | re.DOTALL,
@@ -97,13 +99,14 @@ class ToolLoop:
             else:
                 round_system = effective_system_prompt
 
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=round_system,
-                messages=self.conversation_state.select_messages_for_prompt(),
-                tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
-            )
+            with profiling.stage("llm_claude"):
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=round_system,
+                    messages=self.conversation_state.select_messages_for_prompt(),
+                    tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
+                )
 
             if response.stop_reason == "tool_use":
                 tool_results = self._handle_tool_calls(response, tool_activity)

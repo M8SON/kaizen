@@ -10,6 +10,7 @@ This replaces the monolithic voice_assistant.py with a modular system
 where capabilities are defined by skill files and executed in containers.
 """
 
+import contextlib
 import logging
 import os
 import queue as _queue
@@ -17,6 +18,7 @@ from pathlib import Path
 
 import anthropic
 
+from core import profiling
 from core.skill_loader import SkillLoader
 from core.container_manager import ContainerManager
 from core.conversation_state import ConversationState
@@ -277,6 +279,15 @@ class Orchestrator:
 
     def process_message(self, user_message: str) -> str:
         """Process a user message through the tiered intelligence stack."""
+        # Reuse the outer profiling.turn() if the voice loop already opened
+        # one; otherwise own the scope so text-mode turns still produce a
+        # [TIMING-SUMMARY] line.
+        outer = profiling._current_turn.get()
+        ctx = contextlib.nullcontext() if outer is not None else profiling.turn()
+        with ctx:
+            return self._process_message(user_message)
+
+    def _process_message(self, user_message: str) -> str:
         if self._tier_router is None:
             system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
@@ -368,12 +379,13 @@ class Orchestrator:
         self.conversation_state.append_tool_results(tool_result_blocks)
 
         # Ask Claude to produce a final spoken response — no tools offered
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=self.conversation_state.select_messages_for_prompt(),
-        )
+        with profiling.stage("llm_claude"):
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=self.conversation_state.select_messages_for_prompt(),
+            )
 
         response_text = " ".join(
             block.text for block in response.content if block.type == "text"

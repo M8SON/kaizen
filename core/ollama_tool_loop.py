@@ -14,10 +14,13 @@ the loop succeeds.
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 
 import requests
+
+from core import profiling
 
 logger = logging.getLogger(__name__)
 
@@ -101,21 +104,30 @@ class OllamaToolLoop:
         rounds = 0
         _executed_tools: list[dict] = []
 
+        keep_alive = os.environ.get("OLLAMA_KEEP_ALIVE")
+
         while rounds < self.max_rounds:
             rounds += 1
 
+            payload = {
+                "model": self.model,
+                "messages": local_messages,
+                "tools": tool_definitions or None,
+                "stream": False,
+            }
+            if keep_alive:
+                # Ollama extension to the OpenAI-compat endpoint: "-1" pins the
+                # model in RAM so it never cold-loads between turns.
+                payload["keep_alive"] = keep_alive
+
             try:
-                response = requests.post(
-                    f"{self.host}/v1/chat/completions",
-                    json={
-                        "model": self.model,
-                        "messages": local_messages,
-                        "tools": tool_definitions or None,
-                        "stream": False,
-                    },
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
+                with profiling.stage("llm_ollama"):
+                    response = requests.post(
+                        f"{self.host}/v1/chat/completions",
+                        json=payload,
+                        timeout=self.timeout,
+                    )
+                    response.raise_for_status()
             except requests.Timeout:
                 logger.warning("OllamaToolLoop: timeout after %.1fs → escalate", self.timeout)
                 return EscalateWithContext(_executed_tools) if _executed_tools else EscalateSignal

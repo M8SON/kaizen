@@ -25,6 +25,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "skill":
     from core.skill_cli import main as skill_main
     sys.exit(skill_main(sys.argv[2:]))
 
+from core import profiling
 from core.scheduler import SchedulesStore, SchedulerThread
 from core.location_preference import resolve_location
 from core.session_archive import SessionArchive
@@ -170,30 +171,35 @@ def run_voice_mode(orchestrator, voice=None):
 
             # Conversation session — keep listening until idle
             while True:
-                transcription = voice.listen(max_wait_seconds=conversation_idle_timeout)
+                with profiling.turn():
+                    with profiling.stage("listen_record"):
+                        transcription = voice.listen(
+                            max_wait_seconds=conversation_idle_timeout
+                        )
 
-                if not transcription:
-                    # No speech within idle timeout — end session
-                    print("Session ended.")
-                    active_flag[0] = False
-                    orchestrator.end_session()
-                    break
+                    if not transcription:
+                        # No speech within idle timeout — end session
+                        print("Session ended.")
+                        active_flag[0] = False
+                        orchestrator.end_session()
+                        break
 
-                print(f"You: {transcription}")
+                    print(f"You: {transcription}")
 
-                # Check for exit
-                exit_words = ["goodbye", "exit", "quit", "stop"]
-                if any(word in transcription.lower() for word in exit_words):
-                    response = orchestrator.close_session()
-                    print(f"\nAssistant: {response}")
-                    voice.speak(response)
-                    active_flag[0] = False
-                    return
+                    # Check for exit
+                    exit_words = ["goodbye", "exit", "quit", "stop"]
+                    if any(word in transcription.lower() for word in exit_words):
+                        response = orchestrator.close_session()
+                        print(f"\nAssistant: {response}")
+                        voice.speak(response)
+                        active_flag[0] = False
+                        return
 
-                voice.play_thinking_sound()
-                response = orchestrator.process_message(transcription)
-                print(f"Assistant: {response}\n")
-                voice.speak(response)
+                    voice.play_thinking_sound()
+                    response = orchestrator.process_message(transcription)
+                    print(f"Assistant: {response}\n")
+                    with profiling.stage("tts"):
+                        voice.speak(response)
 
                 print("Listening...")
 

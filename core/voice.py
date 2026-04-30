@@ -17,6 +17,7 @@ import numpy as np
 import pyaudio
 import sounddevice as sd
 
+from core import profiling
 from core.audio_devices import (
     output_samplerate,
     resample,
@@ -369,6 +370,7 @@ class VoiceInterface:
     def _transcribe(self, audio_file: str) -> str:
         """Transcribe a WAV file using the full Whisper model."""
         logger.info("Transcribing...")
-        text = self.stt_backend.transcribe_file(audio_file)
+        with profiling.stage("stt"):
+            text = self.stt_backend.transcribe_file(audio_file)
         logger.info("Transcribed: %s", text)
         return text

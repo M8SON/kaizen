@@ -62,6 +62,8 @@ class FakeVoice:
         self.spoken = []
         self.startup_sounds = 0
         self.thinking_sounds = 0
+        self.music_starts = 0
+        self.music_stops = 0
 
     def wait_for_wake_word(self):
         if not self.wake_results:
@@ -81,6 +83,12 @@ class FakeVoice:
 
     def play_thinking_sound(self):
         self.thinking_sounds += 1
+
+    def start_thinking_music(self):
+        self.music_starts += 1
+
+    def stop_thinking_music(self):
+        self.music_stops += 1
 
 
 class VoiceModeTests(unittest.TestCase):
@@ -103,7 +111,8 @@ class VoiceModeTests(unittest.TestCase):
         self.assertEqual(orchestrator.processed, ["tell me something"])
         self.assertEqual(voice.spoken, ["Good morning.", "Hello from MiniClaw", "Goodbye!"])
         self.assertEqual(voice.startup_sounds, 1)
-        self.assertEqual(voice.thinking_sounds, 1)
+        self.assertEqual(voice.music_starts, 1)
+        self.assertEqual(voice.music_stops, 1)
         self.assertIsNotNone(orchestrator.container_manager._meta_skill_executor)
 
     def test_voice_mode_ends_idle_session_and_returns_to_wake_loop(self):

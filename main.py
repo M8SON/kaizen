@@ -195,8 +195,11 @@ def run_voice_mode(orchestrator, voice=None):
                         active_flag[0] = False
                         return
 
-                    voice.play_thinking_sound()
-                    response = orchestrator.process_message(transcription)
+                    voice.start_thinking_music()
+                    try:
+                        response = orchestrator.process_message(transcription)
+                    finally:
+                        voice.stop_thinking_music()
                     print(f"Assistant: {response}\n")
                     with profiling.stage("tts"):
                         voice.speak(response)

@@ -155,11 +155,47 @@ class VoiceInterface:
         return data.astype(np.float32, copy=False)
 
     def start_thinking_music(self) -> None:
-        """Start looping elevator music in a background thread (no-op
-        when disabled, when TTS is off, or when the asset is missing)."""
+        """Start looping elevator music in a background daemon thread.
+
+        No-op when TTS is disabled, the asset failed to load, or a
+        music thread is already alive.
+        """
         if not self.enable_tts or self._music_buffer is None:
             return
-        # Real implementation lands in Task 3.
+        if self._music_thread is not None and self._music_thread.is_alive():
+            return
+        self._music_playing = True
+        self._music_thread = threading.Thread(
+            target=self._music_loop, daemon=True, name="elevator-music"
+        )
+        self._music_thread.start()
+
+    def _music_loop(self) -> None:
+        while self._music_playing:
+            try:
+                sd.play(
+                    self._music_buffer,
+                    samplerate=self._output_samplerate,
+                    device=self._output_device_index,
+                )
+                sd.wait()
+            except Exception as exc:
+                logger.warning("Elevator music error: %s", exc, exc_info=True)
+                self._music_playing = False
+                return
+
+    def stop_thinking_music(self) -> None:
+        """Hard-stop the music loop. Idempotent."""
+        if not self._music_playing:
+            return
+        self._music_playing = False
+        try:
+            sd.stop()
+        except Exception as exc:
+            logger.warning("Elevator music stop error: %s", exc)
+        if self._music_thread is not None:
+            self._music_thread.join(timeout=0.5)
+            self._music_thread = None
 
     def wait_for_wake_word(self) -> bool:
         """

@@ -57,6 +57,12 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-04-26: voice latency tuning Phase 1 + 3 (Phase 2 pending)
+  user reported 7-10s gap from end-of-speech to first audio in voice mode
+  root cause: `orchestrator.process_message()` blocks for full LLM response before TTS starts in `main.py:194-196` — Kokoro's chunk streaming can't help because it never starts mid-LLM
+  Phase 1 (shipped): `.env` `SILENCE_DURATION` 1.5→0.8 saves ~0.7s per turn; `OLLAMA_KEEP_ALIVE=-1` added; `core/ollama_tool_loop.py` reads that env var and passes `keep_alive` in the OpenAI-compat request body so phi4-mini stays pinned in RAM (no 7s cold reload)
+  Phase 3 (shipped): per-turn `[timing] listen=Xs llm=Ys tts=Zs total=Ws` line in `main.py` voice loop using `time.monotonic()` around `voice.listen` / `process_message` / `voice.speak`
+  Phase 2 (pending): stream LLM tokens to Kokoro per sentence — see Likely Next Direction
 - 2026-04-25: shipped Hailo-backed full transcription (hybrid STT)
   wake detection stays on CPU Whisper; full transcription can offload to Hailo
   MiniClaw-owned runtime in `core/hailo_whisper_runtime.py`
@@ -111,6 +117,12 @@ Update this file when durable project context changes. Do not create overlapping
 
 - Validate the current tiered architecture and hybrid Hailo transcription path on real Pi hardware before adding more routing complexity.
 - Focus next on behavioral polish: real-world memory quality, voice flow smoothness, and routine-command reliability.
+- **Voice latency Phase 2 — stream LLM → TTS at sentence boundaries.** Test Phase 1+3 first on Pi to confirm the new `[timing]` line shows LLM as the dominant bucket; then implement:
+  1. `core/tool_loop.py` — replace `client.messages.create(...)` (line ~100) with `client.messages.stream(...)`. Add `speak_callback: Callable[[str], None] | None = None` to `run()`. As text deltas arrive, accumulate buffer; flush completed sentences (split on `[.!?]\s+` and `\n\n`) via `speak_callback`. Flush remainder when stream closes.
+  2. `core/orchestrator.py` — thread `speak_callback=self.speak_callback` into the three `tool_loop.run()` call sites in `process_message` (lines ~282/297/310). Convert `_claude_finalize_ollama_turn` (line ~371) to streaming the same way.
+  3. `main.py` — drop the trailing `voice.speak(response)` at line ~196 since `speak_callback` is already wired at line ~119; otherwise audio plays twice.
+  Tradeoffs: tool-use rounds may emit preamble that gets spoken before the tool runs (UX win, not a bug). Each `KokoroTTSBackend.speak()` opens a fresh `sd.OutputStream` (~50ms gap between sentences) — acceptable; promote to a persistent stream only if it sounds choppy.
+- **Hygiene:** real API keys (`ANTHROPIC_API_KEY`, `BRAVE_API_KEY`, `OPENWEATHER_API_KEY`) in `.env` were exposed in a Claude Code conversation transcript on 2026-04-26 when the file was read. Rotate `ANTHROPIC_API_KEY` (billing exposure); other two optional. Going forward, grep `.env` for specific keys instead of full reads.
 
 ## Hermes-Inspired Enhancement Roadmap
 

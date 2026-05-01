@@ -83,3 +83,55 @@ def test_missing_asset_logs_and_disables(monkeypatch, voice_factory, caplog, tmp
     # start is a safe no-op
     v.start_thinking_music()
     assert v._music_thread is None
+
+
+def test_start_then_stop_no_raise(monkeypatch, voice_factory):
+    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    play_event = threading.Event()
+    stop_called = threading.Event()
+
+    def fake_play(*args, **kwargs):
+        play_event.set()
+
+    def fake_wait():
+        # Block until sd.stop() is called or the test times out.
+        stop_called.wait(timeout=1.0)
+
+    def fake_stop():
+        stop_called.set()
+
+    monkeypatch.setattr(sd, "play", fake_play)
+    monkeypatch.setattr(sd, "wait", fake_wait)
+    monkeypatch.setattr(sd, "stop", fake_stop)
+
+    v = voice_factory()
+    v.start_thinking_music()
+    assert play_event.wait(timeout=1.0), "sd.play was never called"
+    v.stop_thinking_music()
+    # Thread must have exited.
+    assert v._music_thread is None or not v._music_thread.is_alive()
+
+
+def test_stop_without_start_is_noop(monkeypatch, voice_factory):
+    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    sd_stop = MagicMock()
+    monkeypatch.setattr(sd, "stop", sd_stop)
+    v = voice_factory()
+    v.stop_thinking_music()  # never started
+    assert sd_stop.call_count == 0
+
+
+def test_double_start_only_spawns_one_thread(monkeypatch, voice_factory):
+    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    stop_called = threading.Event()
+
+    monkeypatch.setattr(sd, "play", lambda *a, **kw: None)
+    monkeypatch.setattr(sd, "wait", lambda: stop_called.wait(timeout=1.0))
+    monkeypatch.setattr(sd, "stop", lambda: stop_called.set())
+
+    v = voice_factory()
+    v.start_thinking_music()
+    first = v._music_thread
+    v.start_thinking_music()
+    assert v._music_thread is first
+    v.stop_thinking_music()

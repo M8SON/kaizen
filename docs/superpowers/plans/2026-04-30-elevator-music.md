@@ -162,7 +162,7 @@ def voice_factory(monkeypatch, fake_wav):
     def _make(**overrides):
         kwargs = dict(enable_tts=True)
         kwargs.update(overrides)
-        return voice_module.Voice(**kwargs)
+        return voice_module.VoiceInterface(**kwargs)
 
     return _make
 
@@ -232,7 +232,7 @@ _MUSIC_ASSET_PATH = Path(__file__).resolve().parent.parent / "assets" / "elevato
 
 - [ ] **Step 4: Add the `_load_music_buffer` helper and init wiring**
 
-Find `Voice.__init__` (look for `class Voice` around the top of the file). At the end of `__init__` — after the existing setup — add:
+Find `VoiceInterface.__init__` (the class is named `VoiceInterface` in `core/voice.py`). At the end of `__init__` — after the existing setup — add:
 
 ```python
         # Elevator-music feature state

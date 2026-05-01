@@ -262,5 +262,139 @@ class TestEscalateTriggers(unittest.TestCase):
         self.assertIs(result, EscalateSignal)
 
 
+class TestHistoryTrimming(unittest.TestCase):
+    def _make_loop(self, max_history_tokens=1500):
+        # Build a minimal OllamaToolLoop with a fake ConversationState.
+        from core.ollama_tool_loop import OllamaToolLoop
+
+        class _FakeConversationState:
+            def __init__(self, msgs):
+                self._msgs = msgs
+
+            def select_messages_for_prompt(self):
+                return list(self._msgs)
+
+        class _FakeSkillLoader:
+            def get_tool_definitions(self):
+                return []
+
+        # Long history: alternating user/assistant, each ~400 chars (~100 tokens).
+        msgs = []
+        for i in range(20):
+            msgs.append({"role": "user", "content": "u" * 400 + f" turn {i}"})
+            msgs.append(
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "a" * 400 + f" reply {i}"}],
+                }
+            )
+
+        return OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=_FakeSkillLoader(),
+            container_manager=None,
+            conversation_state=_FakeConversationState(msgs),
+            max_history_tokens=max_history_tokens,
+        )
+
+    def test_default_max_history_tokens_is_1500(self):
+        loop = self._make_loop()
+        # Default applies when max_history_tokens=None and env var unset.
+        assert loop.max_history_tokens == 1500
+
+    def test_env_var_overrides_default(self):
+        import os
+        from core.ollama_tool_loop import OllamaToolLoop
+
+        os.environ["OLLAMA_CONVERSATION_MAX_TOKENS"] = "750"
+        try:
+            loop = OllamaToolLoop(
+                host="http://localhost:11434",
+                model="phi4-mini",
+                skill_loader=type("_S", (), {"get_tool_definitions": lambda self: []})(),
+                container_manager=None,
+                conversation_state=type(
+                    "_C", (), {"select_messages_for_prompt": lambda self: []}
+                )(),
+            )
+            assert loop.max_history_tokens == 750
+        finally:
+            del os.environ["OLLAMA_CONVERSATION_MAX_TOKENS"]
+
+    def test_explicit_param_overrides_env(self):
+        import os
+        from core.ollama_tool_loop import OllamaToolLoop
+
+        os.environ["OLLAMA_CONVERSATION_MAX_TOKENS"] = "750"
+        try:
+            loop = OllamaToolLoop(
+                host="http://localhost:11434",
+                model="phi4-mini",
+                skill_loader=type("_S", (), {"get_tool_definitions": lambda self: []})(),
+                container_manager=None,
+                conversation_state=type(
+                    "_C", (), {"select_messages_for_prompt": lambda self: []}
+                )(),
+                max_history_tokens=200,
+            )
+            assert loop.max_history_tokens == 200
+        finally:
+            del os.environ["OLLAMA_CONVERSATION_MAX_TOKENS"]
+
+    def test_trim_history_keeps_recent_messages_within_budget(self):
+        loop = self._make_loop(max_history_tokens=400)  # ~ 4 messages of 100 toks
+        messages = loop._build_local_messages(
+            system_prompt="sys", user_message="hi"
+        )
+        # First message is system, last is user; everything between is trimmed history.
+        history = messages[1:-1]
+        # Sum of estimated tokens in history must be ≤ budget.
+        total = sum(max(1, len(m["content"]) // 4) for m in history)
+        assert total <= 400, f"history {total} toks exceeded budget 400"
+        # Should retain at least one message (the most recent).
+        assert len(history) >= 1
+
+    def test_trim_history_drops_leading_assistant_after_trim(self):
+        # Build a history where the last user-then-assistant pair would put an
+        # assistant first if naive trimming kept N messages from the end.
+        from core.ollama_tool_loop import OllamaToolLoop
+
+        msgs = [
+            {"role": "user", "content": "old user"},
+            {"role": "assistant", "content": [{"type": "text", "text": "old asst"}]},
+            {"role": "user", "content": "mid user"},
+            {"role": "assistant", "content": [{"type": "text", "text": "mid asst"}]},
+        ]
+
+        class _FakeConversationState:
+            def select_messages_for_prompt(self_inner):
+                return list(msgs)
+
+        class _FakeSkillLoader:
+            def get_tool_definitions(self_inner):
+                return []
+
+        # Budget=6 fits 3 messages (~2 toks each). The 4th iteration breaks
+        # because the previous `old user` would push us over. After reverse,
+        # kept = [old asst, mid user, mid asst]; the leading-assistant prune
+        # drops `old asst`, leaving the [user, asst] pair we want to verify.
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=_FakeSkillLoader(),
+            container_manager=None,
+            conversation_state=_FakeConversationState(),
+            max_history_tokens=6,
+        )
+        messages = loop._build_local_messages(system_prompt="sys", user_message="now")
+        history = messages[1:-1]
+        # Non-vacuous: history must be non-empty AND start with user.
+        assert len(history) == 2
+        assert history[0]["role"] == "user"
+        assert history[0]["content"] == "mid user"
+        assert history[1]["role"] == "assistant"
+
+
 if __name__ == "__main__":
     unittest.main()

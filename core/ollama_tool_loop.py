@@ -80,6 +80,7 @@ class OllamaToolLoop:
         memory_provider=None,
         timeout_seconds: float = 8.0,
         max_rounds: int = 10,
+        max_history_tokens: int | None = None,
     ):
         self.host = host.rstrip("/")
         self.model = model
@@ -89,6 +90,18 @@ class OllamaToolLoop:
         self.memory_provider = memory_provider
         self.timeout = timeout_seconds
         self.max_rounds = max_rounds
+        if max_history_tokens is not None:
+            self.max_history_tokens = max_history_tokens
+        else:
+            try:
+                self.max_history_tokens = int(
+                    os.environ.get("OLLAMA_CONVERSATION_MAX_TOKENS", "1500")
+                )
+            except ValueError:
+                logger.warning(
+                    "OLLAMA_CONVERSATION_MAX_TOKENS not numeric, using 1500"
+                )
+                self.max_history_tokens = 1500
 
     def run(self, user_message: str, system_prompt: str) -> "str | _EscalateSignalType | EscalateWithContext":
         """
@@ -245,9 +258,35 @@ class OllamaToolLoop:
         # This can happen if pruning drops the user turn that preceded a tool exchange.
         while history and history[0]["role"] == "assistant":
             history.pop(0)
+        history = self._trim_history(history)
         local.extend(history)
         local.append({"role": "user", "content": user_message})
         return local
+
+    def _estimate_tokens(self, text: str) -> int:
+        # Mirrors PromptBuilder._estimate_tokens (~4 chars per token) so the
+        # token-budget math agrees across the codebase.
+        return max(1, len(text) // 4)
+
+    def _trim_history(self, history: list[dict]) -> list[dict]:
+        """Keep the most recent messages within the budget; never return empty
+        when history is non-empty. Re-applies the leading-assistant prune so
+        the OpenAI invariant (first non-system message must be `user`) holds
+        after trimming.
+        """
+        budget = self.max_history_tokens
+        kept_reversed: list[dict] = []
+        used = 0
+        for msg in reversed(history):
+            cost = self._estimate_tokens(msg.get("content", ""))
+            if used + cost > budget and kept_reversed:
+                break
+            kept_reversed.append(msg)
+            used += cost
+        kept = list(reversed(kept_reversed))
+        while kept and kept[0]["role"] == "assistant":
+            kept.pop(0)
+        return kept
 
     def _build_tool_definitions(self) -> list:
         """Convert Anthropic-format tool definitions to OpenAI format."""

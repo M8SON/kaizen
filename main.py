@@ -173,12 +173,16 @@ def run_voice_mode(orchestrator, voice=None):
             while True:
                 with profiling.turn():
                     with profiling.stage("listen_record"):
+                        # start_thinking_music fires the moment silence is
+                        # detected (before STT), so the user hears music
+                        # during STT instead of the silent gap.
                         transcription = voice.listen(
-                            max_wait_seconds=conversation_idle_timeout
+                            max_wait_seconds=conversation_idle_timeout,
+                            on_speech_done=voice.start_thinking_music,
                         )
 
                     if not transcription:
-                        # No speech within idle timeout — end session
+                        voice.stop_thinking_music()
                         print("Session ended.")
                         active_flag[0] = False
                         orchestrator.end_session()
@@ -189,13 +193,13 @@ def run_voice_mode(orchestrator, voice=None):
                     # Check for exit
                     exit_words = ["goodbye", "exit", "quit", "stop"]
                     if any(word in transcription.lower() for word in exit_words):
+                        voice.stop_thinking_music()
                         response = orchestrator.close_session()
                         print(f"\nAssistant: {response}")
                         voice.speak(response)
                         active_flag[0] = False
                         return
 
-                    voice.start_thinking_music()
                     try:
                         response = orchestrator.process_message(transcription)
                     finally:

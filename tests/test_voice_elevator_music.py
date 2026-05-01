@@ -2,6 +2,7 @@
 
 import logging
 import threading
+import time
 import wave
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -85,49 +86,51 @@ def test_missing_asset_logs_and_disables(monkeypatch, voice_factory, caplog, tmp
     assert v._music_thread is None
 
 
+class _FakeStream:
+    """Stand-in for sounddevice.OutputStream used by the music loop."""
+
+    def __init__(self, write_event=None, **kwargs):
+        self._write_event = write_event
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def write(self, data):
+        if self._write_event is not None:
+            self._write_event.set()
+        # Don't spin a hot loop in the music thread during tests.
+        time.sleep(0.005)
+
+
 def test_start_then_stop_no_raise(monkeypatch, voice_factory):
     monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
-    play_event = threading.Event()
-    stop_called = threading.Event()
-
-    def fake_play(*args, **kwargs):
-        play_event.set()
-
-    def fake_wait():
-        # Block until sd.stop() is called or the test times out.
-        stop_called.wait(timeout=1.0)
-
-    def fake_stop():
-        stop_called.set()
-
-    monkeypatch.setattr(sd, "play", fake_play)
-    monkeypatch.setattr(sd, "wait", fake_wait)
-    monkeypatch.setattr(sd, "stop", fake_stop)
+    write_called = threading.Event()
+    monkeypatch.setattr(
+        sd, "OutputStream", lambda **kw: _FakeStream(write_event=write_called, **kw)
+    )
 
     v = voice_factory()
     v.start_thinking_music()
-    assert play_event.wait(timeout=1.0), "sd.play was never called"
+    assert write_called.wait(timeout=1.0), "stream.write was never called"
     v.stop_thinking_music()
-    # Thread must have exited.
     assert v._music_thread is None or not v._music_thread.is_alive()
 
 
 def test_stop_without_start_is_noop(monkeypatch, voice_factory):
     monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
-    sd_stop = MagicMock()
-    monkeypatch.setattr(sd, "stop", sd_stop)
+    factory = MagicMock()
+    monkeypatch.setattr(sd, "OutputStream", factory)
     v = voice_factory()
     v.stop_thinking_music()  # never started
-    assert sd_stop.call_count == 0
+    assert factory.call_count == 0
 
 
 def test_double_start_only_spawns_one_thread(monkeypatch, voice_factory):
     monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
-    stop_called = threading.Event()
-
-    monkeypatch.setattr(sd, "play", lambda *a, **kw: None)
-    monkeypatch.setattr(sd, "wait", lambda: stop_called.wait(timeout=1.0))
-    monkeypatch.setattr(sd, "stop", lambda: stop_called.set())
+    monkeypatch.setattr(sd, "OutputStream", lambda **kw: _FakeStream(**kw))
 
     v = voice_factory()
     v.start_thinking_music()

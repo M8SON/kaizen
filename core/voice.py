@@ -171,30 +171,42 @@ class VoiceInterface:
         self._music_thread.start()
 
     def _music_loop(self) -> None:
-        while self._music_playing:
-            try:
-                sd.play(
-                    self._music_buffer,
-                    samplerate=self._output_samplerate,
-                    device=self._output_device_index,
-                )
-                sd.wait()
-            except Exception as exc:
-                logger.warning("Elevator music error: %s", exc, exc_info=True)
-                self._music_playing = False
-                return
+        # One persistent OutputStream for the whole music session — the
+        # earlier sd.play/sd.wait pattern reused PortAudio's default
+        # stream, and the rapid open/close churn against ALSA + USB audio
+        # triggered snd_async_del_handler asserts that aborted the process
+        # after a few turns.
+        chunk = 1024
+        buf = self._music_buffer
+        pos = 0
+        try:
+            with sd.OutputStream(
+                samplerate=self._output_samplerate,
+                device=self._output_device_index,
+                channels=1,
+                dtype="float32",
+            ) as stream:
+                while self._music_playing:
+                    end = pos + chunk
+                    if end <= len(buf):
+                        stream.write(buf[pos:end])
+                        pos = end
+                    else:
+                        head = buf[pos:]
+                        tail = buf[: chunk - len(head)]
+                        stream.write(np.concatenate([head, tail]))
+                        pos = len(tail)
+        except Exception as exc:
+            logger.warning("Elevator music error: %s", exc, exc_info=True)
+            self._music_playing = False
 
     def stop_thinking_music(self) -> None:
         """Hard-stop the music loop. Idempotent."""
         if not self._music_playing:
             return
         self._music_playing = False
-        try:
-            sd.stop()
-        except Exception as exc:
-            logger.warning("Elevator music stop error: %s", exc)
         if self._music_thread is not None:
-            self._music_thread.join(timeout=0.5)
+            self._music_thread.join(timeout=1.0)
             self._music_thread = None
 
     def wait_for_wake_word(self) -> bool:
@@ -267,7 +279,7 @@ class VoiceInterface:
             audio.terminate()
             raise
 
-    def listen(self, max_wait_seconds: float = 0) -> str | None:
+    def listen(self, max_wait_seconds: float = 0, on_speech_done=None) -> str | None:
         """
         Record audio until silence is detected, then transcribe with the full model.
 
@@ -276,8 +288,16 @@ class VoiceInterface:
 
         max_wait_seconds: give up and return None if no speech starts within this many
         seconds (0 = wait forever). Used for conversation idle timeout.
+
+        on_speech_done: optional zero-arg callable fired the moment speech-then-
+        silence is detected, before transcription. Used to start audio feedback
+        (e.g. elevator music) over the STT wait so the user doesn't hear silence.
+        Not called when max_wait_seconds elapses without any speech.
         """
-        audio_file = self._record_until_silence(max_wait_seconds=max_wait_seconds)
+        audio_file = self._record_until_silence(
+            max_wait_seconds=max_wait_seconds,
+            on_speech_done=on_speech_done,
+        )
         try:
             transcription = self._transcribe(audio_file)
         finally:
@@ -397,11 +417,13 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("TTS error: %s", e)
 
-    def _record_until_silence(self, max_wait_seconds: float = 0) -> str:
+    def _record_until_silence(self, max_wait_seconds: float = 0, on_speech_done=None) -> str:
         """Record audio with automatic silence detection, return temp WAV file path.
 
         Reuses self._shared_stream if set by wait_for_wake_word(), then clears it.
         max_wait_seconds: stop early if no speech starts within this window (0 = wait forever).
+        on_speech_done: fired once when speech-then-silence is detected, before the
+        WAV is finalized. Not fired when max_wait elapses with no speech.
         """
         # Reuse the open stream from wake detection if available
         if self._shared_stream is not None:
@@ -443,6 +465,11 @@ class VoiceInterface:
                     silence_frames += 1
 
                 if recording and silence_frames > silence_limit:
+                    if on_speech_done is not None:
+                        try:
+                            on_speech_done()
+                        except Exception:
+                            logger.warning("on_speech_done callback raised", exc_info=True)
                     break
 
                 # Idle timeout: give up if no speech started within max_wait_seconds

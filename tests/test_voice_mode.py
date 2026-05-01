@@ -70,10 +70,13 @@ class FakeVoice:
             return False
         return self.wake_results.pop(0)
 
-    def listen(self, max_wait_seconds=0):
+    def listen(self, max_wait_seconds=0, on_speech_done=None):
         if not self.listen_results:
             return None
-        return self.listen_results.pop(0)
+        result = self.listen_results.pop(0)
+        if result and on_speech_done is not None:
+            on_speech_done()
+        return result
 
     def speak(self, text):
         self.spoken.append(text)
@@ -111,8 +114,12 @@ class VoiceModeTests(unittest.TestCase):
         self.assertEqual(orchestrator.processed, ["tell me something"])
         self.assertEqual(voice.spoken, ["Good morning.", "Hello from MiniClaw", "Goodbye!"])
         self.assertEqual(voice.startup_sounds, 1)
-        self.assertEqual(voice.music_starts, 1)
-        self.assertEqual(voice.music_stops, 1)
+        # Music starts on each speech turn (the moment silence is detected,
+        # before STT). For the goodbye turn it's a brief flash that stops in
+        # the exit-words branch. So both starts and stops fire twice across
+        # the two turns.
+        self.assertEqual(voice.music_starts, 2)
+        self.assertEqual(voice.music_stops, 2)
         self.assertIsNotNone(orchestrator.container_manager._meta_skill_executor)
 
     def test_voice_mode_ends_idle_session_and_returns_to_wake_loop(self):

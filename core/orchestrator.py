@@ -302,22 +302,24 @@ class Orchestrator:
         if route.tier == "direct":
             return self._execute_direct(route, user_message)
 
-        system_prompt = self._build_system_prompt(user_message=user_message)
-
         if route.tier == "claude":
+            system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=system_prompt,
                 archive_callback=self._archive_callback,
             )
 
-        # Ollama tier
+        # Ollama tier — slim prompt, lazy Claude prompt build only on escalation.
         from core.ollama_tool_loop import EscalateSignal, EscalateWithContext
+
+        ollama_system_prompt = self.prompt_builder.build_for_ollama()
         result = self._ollama_tool_loop.run(
-            user_message=user_message, system_prompt=system_prompt
+            user_message=user_message, system_prompt=ollama_system_prompt
         )
         if result is EscalateSignal:
             logger.info("OllamaToolLoop escalated → Claude (no tools ran)")
+            system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message, system_prompt=system_prompt
             )
@@ -326,6 +328,7 @@ class Orchestrator:
                 "OllamaToolLoop escalated with %d tool(s) → Claude finalize",
                 len(result.tool_activity),
             )
+            system_prompt = self._build_system_prompt(user_message=user_message)
             return self._claude_finalize_ollama_turn(
                 user_message, result.tool_activity, system_prompt
             )

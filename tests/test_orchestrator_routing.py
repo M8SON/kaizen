@@ -127,6 +127,88 @@ class TestOrchestratorRoutingEnabled(unittest.TestCase):
         orch.tool_loop.run.assert_not_called()
         self.assertEqual(result, "Goodbye!")
 
+    def test_ollama_tier_does_not_build_claude_system_prompt(self):
+        """Ollama-tier success path must NOT build the heavy Claude prompt."""
+        orch = _make_orchestrator_with_mocks()
+        orch._tier_router = self._make_router("ollama")
+        orch._ollama_tool_loop = MagicMock()
+        orch._ollama_tool_loop.run.return_value = "Ollama response"
+        orch.prompt_builder.build_for_ollama.return_value = "slim ollama prompt"
+
+        with patch.object(orch, "_build_system_prompt") as mock_build:
+            result = orch.process_message("tell me a joke")
+        mock_build.assert_not_called()
+        orch.prompt_builder.build_for_ollama.assert_called_once()
+        # Slim prompt should be what OllamaToolLoop received.
+        call_args = orch._ollama_tool_loop.run.call_args
+        self.assertEqual(call_args.kwargs["system_prompt"], "slim ollama prompt")
+        self.assertEqual(result, "Ollama response")
+
+    def test_ollama_escalation_builds_claude_prompt_lazily(self):
+        """EscalateSignal must trigger exactly one Claude-prompt build."""
+        from core.ollama_tool_loop import EscalateSignal
+
+        orch = _make_orchestrator_with_mocks()
+        orch._tier_router = self._make_router("ollama")
+        orch._ollama_tool_loop = MagicMock()
+        orch._ollama_tool_loop.run.return_value = EscalateSignal
+        orch.prompt_builder.build_for_ollama.return_value = "slim ollama prompt"
+
+        with patch.object(
+            orch, "_build_system_prompt", return_value="full claude prompt"
+        ) as mock_build:
+            result = orch.process_message("complex question")
+        mock_build.assert_called_once()
+        orch.tool_loop.run.assert_called_once()
+        # The Claude tool loop should receive the full prompt.
+        self.assertEqual(
+            orch.tool_loop.run.call_args.kwargs["system_prompt"],
+            "full claude prompt",
+        )
+        self.assertEqual(result, "Claude response")
+
+    def test_ollama_escalate_with_context_builds_claude_prompt_lazily(self):
+        """EscalateWithContext (tools ran but Ollama couldn't finalize) must
+        also lazy-build the Claude prompt before _claude_finalize_ollama_turn."""
+        from core.ollama_tool_loop import EscalateWithContext
+
+        orch = _make_orchestrator_with_mocks()
+        orch._tier_router = self._make_router("ollama")
+        orch._ollama_tool_loop = MagicMock()
+        orch._ollama_tool_loop.run.return_value = EscalateWithContext(
+            tool_activity=[{"name": "weather", "args": {}, "result": "sunny"}],
+        )
+        orch.prompt_builder.build_for_ollama.return_value = "slim ollama prompt"
+
+        with patch.object(
+            orch, "_build_system_prompt", return_value="full claude prompt"
+        ) as mock_build, patch.object(
+            orch, "_claude_finalize_ollama_turn", return_value="finalized"
+        ) as mock_finalize:
+            result = orch.process_message("what's the weather")
+
+        mock_build.assert_called_once()
+        mock_finalize.assert_called_once()
+        # The full prompt must be forwarded to the finalizer.
+        finalize_args = mock_finalize.call_args
+        # _claude_finalize_ollama_turn(user_message, tool_activity, system_prompt)
+        self.assertEqual(finalize_args.args[2], "full claude prompt")
+        self.assertEqual(result, "finalized")
+
+    def test_claude_tier_still_builds_full_system_prompt(self):
+        """Claude-tier path is unchanged: build the full prompt before tool_loop.run."""
+        orch = _make_orchestrator_with_mocks()
+        orch._tier_router = self._make_router("claude")
+        orch._ollama_tool_loop = MagicMock()
+
+        with patch.object(
+            orch, "_build_system_prompt", return_value="full claude prompt"
+        ) as mock_build:
+            result = orch.process_message("install a new skill")
+        mock_build.assert_called_once()
+        orch.tool_loop.run.assert_called_once()
+        self.assertEqual(result, "Claude response")
+
 
 if __name__ == "__main__":
     unittest.main()

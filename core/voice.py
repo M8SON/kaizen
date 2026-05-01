@@ -12,6 +12,8 @@ import os
 import wave
 import tempfile
 import logging
+import threading
+from pathlib import Path
 
 import numpy as np
 import pyaudio
@@ -27,6 +29,8 @@ from core.audio_devices import (
 from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBackend
 
 logger = logging.getLogger(__name__)
+
+_MUSIC_ASSET_PATH = Path(__file__).resolve().parent.parent / "assets" / "elevator.wav"
 
 
 class VoiceInterface:
@@ -95,6 +99,67 @@ class VoiceInterface:
         )
 
         logger.info("Models loaded — wake phrase: '%s'", self.wake_phrase)
+
+        # Elevator-music feature state
+        self._music_playing = False
+        self._music_thread: threading.Thread | None = None
+        self._music_enabled = (
+            os.environ.get("MINICLAW_ELEVATOR_MUSIC", "true").strip().lower() != "false"
+        )
+        if self._music_enabled and self.enable_tts:
+            self._music_buffer = self._load_music_buffer()
+        else:
+            self._music_buffer = None
+
+    def _load_music_buffer(self) -> "np.ndarray | None":
+        """Load and prepare assets/elevator.wav for looped playback.
+
+        Returns a float32 mono numpy array at the output device's sample
+        rate, or None if the file is missing / unreadable / unsupported.
+        Failures are non-fatal: the elevator-music feature silently
+        disables itself for the session.
+        """
+        path = _MUSIC_ASSET_PATH
+        try:
+            with wave.open(str(path), "rb") as wf:
+                n_channels = wf.getnchannels()
+                sample_rate = wf.getframerate()
+                sample_width = wf.getsampwidth()
+                n_frames = wf.getnframes()
+                raw = wf.readframes(n_frames)
+        except (FileNotFoundError, wave.Error, OSError) as exc:
+            logger.warning("Elevator music disabled — could not load %s: %s", path, exc)
+            return None
+
+        if sample_width != 2:
+            logger.warning(
+                "Elevator music disabled — %s must be 16-bit PCM (got %d-bit)",
+                path,
+                sample_width * 8,
+            )
+            return None
+
+        data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        if n_channels == 2:
+            data = data.reshape(-1, 2).mean(axis=1)
+        elif n_channels != 1:
+            logger.warning(
+                "Elevator music disabled — %s has %d channels (need 1 or 2)",
+                path,
+                n_channels,
+            )
+            return None
+
+        if sample_rate != self._output_samplerate:
+            data = resample(data, sample_rate, self._output_samplerate)
+        return data.astype(np.float32, copy=False)
+
+    def start_thinking_music(self) -> None:
+        """Start looping elevator music in a background thread (no-op
+        when disabled, when TTS is off, or when the asset is missing)."""
+        if not self.enable_tts or self._music_buffer is None:
+            return
+        # Real implementation lands in Task 3.
 
     def wait_for_wake_word(self) -> bool:
         """

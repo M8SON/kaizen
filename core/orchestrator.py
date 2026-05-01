@@ -148,6 +148,7 @@ class Orchestrator:
                 memory_provider=self.memory_provider,
                 timeout_seconds=_parse_float(os.getenv("OLLAMA_TIMEOUT_SECONDS"), default=8.0),
             )
+            self._ollama_tool_loop.warmup_async()
             logger.info(
                 "Tiered routing enabled: ollama_model=%s, claude_only=%s",
                 os.getenv("OLLAMA_MODEL", "phi4-mini"),

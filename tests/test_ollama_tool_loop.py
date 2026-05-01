@@ -396,5 +396,40 @@ class TestHistoryTrimming(unittest.TestCase):
         assert history[1]["role"] == "assistant"
 
 
+class TestWarmup(unittest.TestCase):
+    def test_warmup_posts_to_generate_with_keep_alive(self):
+        from core.ollama_tool_loop import OllamaToolLoop
+
+        loop = _make_loop(host="http://example.invalid:11434", model="phi4-mini")
+        with patch("core.ollama_tool_loop.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
+            loop.warmup()
+        mock_post.assert_called_once()
+        call = mock_post.call_args
+        self.assertEqual(call.args[0], "http://example.invalid:11434/api/generate")
+        self.assertEqual(call.kwargs["json"]["model"], "phi4-mini")
+        self.assertEqual(call.kwargs["json"]["keep_alive"], "30m")
+
+    def test_warmup_swallows_request_exception(self):
+        from core.ollama_tool_loop import OllamaToolLoop
+        import requests as _requests
+
+        loop = _make_loop()
+        with patch("core.ollama_tool_loop.requests.post") as mock_post:
+            mock_post.side_effect = _requests.RequestException("boom")
+            # Must not raise — warmup is fire-and-forget.
+            loop.warmup()
+
+    def test_warmup_async_returns_started_thread(self):
+        loop = _make_loop()
+        with patch("core.ollama_tool_loop.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
+            thread = loop.warmup_async()
+            thread.join(timeout=2.0)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(thread.name, "ollama-warmup")
+        mock_post.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

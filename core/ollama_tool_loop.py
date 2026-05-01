@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 
 import requests
@@ -102,6 +103,25 @@ class OllamaToolLoop:
                     "OLLAMA_CONVERSATION_MAX_TOKENS not numeric, using 1500"
                 )
                 self.max_history_tokens = 1500
+
+    def warmup(self) -> None:
+        # Load the model into memory at startup so the first user turn isn't
+        # a cold-load (~7s on Pi 5) that blows the request timeout.
+        # keep_alive=30m extends Ollama's default 5-min idle unload.
+        try:
+            requests.post(
+                f"{self.host}/api/generate",
+                json={"model": self.model, "keep_alive": "30m"},
+                timeout=60,
+            )
+            logger.info("Ollama warmup: %s loaded", self.model)
+        except requests.RequestException as exc:
+            logger.warning("Ollama warmup failed: %s", exc)
+
+    def warmup_async(self) -> threading.Thread:
+        thread = threading.Thread(target=self.warmup, daemon=True, name="ollama-warmup")
+        thread.start()
+        return thread
 
     def run(self, user_message: str, system_prompt: str) -> "str | _EscalateSignalType | EscalateWithContext":
         """

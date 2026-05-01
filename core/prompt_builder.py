@@ -69,6 +69,13 @@ class PromptBuilder:
         "to recall in a future session.\n"
     )
 
+    OLLAMA_BASE_PROMPT = (
+        "You are a brief voice assistant. Plain spoken sentences. No markdown "
+        "or asterisks. When the user's request matches a provided tool, use it. "
+        "If a request is garbled or doesn't make sense as spoken language, "
+        "repeat back what you heard and ask for clarification before acting."
+    )
+
     def __init__(
         self,
         memory_provider: MemoryProvider | None = None,
@@ -78,6 +85,16 @@ class PromptBuilder:
         self.memory_provider = memory_provider or MemoryProvider()
         self.max_skill_tokens = max_skill_tokens
         self._skill_selector = skill_selector
+
+    def build_for_ollama(self) -> str:
+        """Return the slim system prompt used for Ollama-tier requests.
+
+        Deliberately excludes memory, skill markdown bodies, and persona
+        scaffolding. Ollama receives tool schemas via the OpenAI tools
+        parameter; duplicating skill bodies is pure prompt-eval overhead
+        on a Pi-class CPU.
+        """
+        return self.OLLAMA_BASE_PROMPT
 
     def build(
         self,

@@ -95,5 +95,39 @@ class TestPromptBuilderSelector(unittest.TestCase):
             self.assertIn(f"### {name}", prompt)
 
 
+def test_build_for_ollama_returns_slim_prompt():
+    from core.prompt_builder import PromptBuilder
+    pb = PromptBuilder()
+    prompt = pb.build_for_ollama()
+    assert prompt == PromptBuilder.OLLAMA_BASE_PROMPT
+    assert "voice assistant" in prompt.lower()
+    assert "repeat back" in prompt.lower()
+    # Sanity: identifying personal context is intentionally absent
+    assert "Mason" not in prompt
+    assert "Computer" not in prompt
+    assert "warm and direct" not in prompt
+
+
+def test_build_for_ollama_token_estimate_under_budget():
+    from core.prompt_builder import PromptBuilder
+    pb = PromptBuilder()
+    prompt = pb.build_for_ollama()
+    # Use the same heuristic as the rest of the codebase (~4 chars/token).
+    estimated = max(1, len(prompt) // 4)
+    assert estimated < 100, f"slim prompt was {estimated} estimated tokens"
+
+
+def test_build_for_ollama_does_not_include_skill_bodies():
+    """The Ollama-tier prompt must not contain skill markdown — Ollama
+    routes via OpenAI tool schemas, not skill bodies."""
+    from core.prompt_builder import PromptBuilder
+    pb = PromptBuilder()
+    prompt = pb.build_for_ollama()
+    # No skill section markers from the Claude prompt builder
+    assert "--- Skill Instructions ---" not in prompt
+    assert "--- Remembered from past conversations ---" not in prompt
+    assert "Unavailable Skills" not in prompt
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,7 @@ models/
 # Audio
 *.wav
 *.mp3
+!assets/elevator.wav
 
 # IDE
 .vscode/

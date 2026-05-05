@@ -261,14 +261,19 @@ class VoiceInterface:
 
                 if self.wake_backend is not None:
                     detected = self.wake_backend.detect(audio_float)
+                    detected_transcript = None
                 else:
                     transcript = self.stt_backend.transcribe_wake_audio(audio_float)
                     if transcript:
                         logger.info("Wake window heard: '%s'", transcript)
                     detected = self.wake_phrase in transcript
+                    detected_transcript = transcript if detected else None
 
                 if detected:
-                    logger.info("Wake detected")
+                    if detected_transcript is not None:
+                        logger.info("Wake phrase detected: '%s'", detected_transcript)
+                    else:
+                        logger.info("Wake detected")
                     # Keep stream open — listen() will use it immediately
                     self._shared_audio = audio
                     self._shared_stream = stream

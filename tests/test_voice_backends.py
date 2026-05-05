@@ -479,6 +479,14 @@ class RmsVadBackendTests(unittest.TestCase):
         backend = voice_backends.RmsVadBackend(threshold=1000)
         backend.reset()  # should not raise
 
+    def test_is_speech_handles_float32_normalized_audio(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        # Normalized float32 audio at amplitude ~0.15 ≈ int16 5000 — well above
+        # threshold 1000. Without proper rescaling this would astype(int16)
+        # truncate to all zeros and incorrectly return False.
+        loud_float = np.ones(1024, dtype=np.float32) * 0.15
+        self.assertTrue(backend.is_speech(loud_float))
+
 
 if __name__ == "__main__":
     unittest.main()

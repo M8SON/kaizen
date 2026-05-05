@@ -138,7 +138,11 @@ class RmsVadBackend:
 
     def is_speech(self, audio_chunk: np.ndarray) -> bool:
         if audio_chunk.dtype != np.int16:
-            audio_chunk = audio_chunk.astype(np.int16)
+            # Treat any non-int16 input as float in [-1, 1] (the convention used
+            # elsewhere in voice.py); rescale to int16 magnitude before comparing
+            # to threshold. Direct astype(int16) would truncate normalized
+            # samples to zero and silently report all audio as silence.
+            audio_chunk = (audio_chunk * 32768.0).astype(np.int16)
         level = np.abs(audio_chunk).mean()
         return level > self.threshold
 

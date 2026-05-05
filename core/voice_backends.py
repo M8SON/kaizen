@@ -103,7 +103,24 @@ class OpenWakeWordBackend:
         return score >= self.threshold
 
     def reset(self) -> None:
+        # openwakeword 0.4.0's Model.reset() only clears prediction_buffer.
+        # The AudioFeatures preprocessor keeps a rolling mel/embedding state
+        # that survives across calls, so on re-entry after a wake event the
+        # next chunk scores on features primed by the prior wake utterance —
+        # firing instantly. Clear those preprocessor buffers in place too.
+        # Re-constructing the preprocessor would reload ONNX models (slow).
         self.model.reset()
+        pre = getattr(self.model, "preprocessor", None)
+        if pre is None:
+            return
+        if hasattr(pre, "raw_data_buffer"):
+            pre.raw_data_buffer.clear()
+        if hasattr(pre, "melspectrogram_buffer"):
+            pre.melspectrogram_buffer = np.ones((76, 32))
+        if hasattr(pre, "accumulated_samples"):
+            pre.accumulated_samples = 0
+        if hasattr(pre, "feature_buffer"):
+            pre.feature_buffer = np.zeros_like(pre.feature_buffer)
 
 
 class WhisperBackend:

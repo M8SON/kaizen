@@ -122,10 +122,23 @@ def build_voice_interface():
     )
 
 
+def _display_wake_word() -> str:
+    """Return the human-readable wake word currently active for display.
+
+    When WAKE_BACKEND=openwakeword, the banners should reflect the openWakeWord
+    model name (e.g. "hey jarvis") rather than the legacy WAKE_PHRASE substring,
+    which is only consulted on the Whisper fallback path.
+    """
+    backend_name = os.getenv("WAKE_BACKEND", "openwakeword")
+    if backend_name == "openwakeword":
+        return os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
+    return os.getenv("WAKE_PHRASE", "computer")
+
+
 def run_voice_mode(orchestrator, voice=None):
     """Run the assistant in voice mode with microphone input."""
     voice = voice or build_voice_interface()
-    wake_phrase = os.getenv("WAKE_PHRASE", "computer")
+    wake_phrase = _display_wake_word()
 
     from core.meta_skill import MetaSkillExecutor
     orchestrator.container_manager._meta_skill_executor = MetaSkillExecutor(

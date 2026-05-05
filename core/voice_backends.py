@@ -58,6 +58,54 @@ class WhisperWakeBackend:
         pass
 
 
+try:
+    import openwakeword
+    _OPENWAKEWORD_AVAILABLE = True
+except ImportError:
+    openwakeword = None  # type: ignore[assignment]
+    _OPENWAKEWORD_AVAILABLE = False
+
+
+class OpenWakeWordBackend:
+    """Primary wake backend — purpose-built keyword spotter.
+
+    Expects ~80ms audio chunks at 16kHz int16 or float32. Returns True when
+    the model's score for `model_name` crosses `threshold`.
+
+    `model_name` accepts canonical openwakeword names ("hey_jarvis", "alexa",
+    "hey_mycroft", "timer", "weather"). The backend resolves to the bundled
+    ONNX path and to the version-suffixed score-dict key automatically.
+    """
+
+    def __init__(self, model_name: str = "hey_jarvis", threshold: float = 0.5):
+        if not _OPENWAKEWORD_AVAILABLE:
+            raise ImportError("openwakeword not installed")
+        if model_name not in openwakeword.models:
+            raise ValueError(
+                f"unknown openwakeword model {model_name!r}; "
+                f"available: {list(openwakeword.models)}"
+            )
+
+        logger.info("Loading openWakeWord model: %s", model_name)
+        self.model_name = model_name
+        self.threshold = threshold
+
+        meta = openwakeword.models[model_name]
+        model_path = meta["model_path"]
+        # Score-dict key is the bundled filename stem (e.g. "hey_jarvis_v0.1").
+        self._score_key = Path(model_path).stem
+
+        self.model = openwakeword.Model(wakeword_model_paths=[model_path])
+
+    def detect(self, audio_chunk: np.ndarray) -> bool:
+        scores = self.model.predict(audio_chunk)
+        score = scores.get(self._score_key, 0.0)
+        return score >= self.threshold
+
+    def reset(self) -> None:
+        self.model.reset()
+
+
 class WhisperBackend:
     """Default speech-to-text backend using Whisper for wake and full transcription."""
 

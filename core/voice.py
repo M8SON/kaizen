@@ -242,7 +242,24 @@ class VoiceInterface:
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
-                buffer.append(np.frombuffer(data, dtype=np.int16))
+                chunk_int16 = np.frombuffer(data, dtype=np.int16)
+
+                # Streaming wake backend (e.g. openWakeWord): every chunk goes
+                # straight to the detector, which maintains its own rolling
+                # feature buffer. No 2s windowing — that batched shape silently
+                # zeroes the score because the model's internal buffer never
+                # primes.
+                if self.wake_backend is not None:
+                    if self.wake_backend.detect(chunk_int16):
+                        logger.info("Wake detected")
+                        self._shared_audio = audio
+                        self._shared_stream = stream
+                        return True
+                    continue
+
+                # Legacy Whisper-substring path: 2s sliding window, evaluated
+                # once per WAKE_STEP_SECONDS.
+                buffer.append(chunk_int16)
                 samples_collected += self.CHUNK
 
                 if samples_collected < step_samples:
@@ -250,31 +267,18 @@ class VoiceInterface:
 
                 samples_collected = 0
 
-                # Build window from buffer, trim to last 2 seconds
                 window = np.concatenate(buffer)
                 if len(window) > window_samples:
                     window = window[-window_samples:]
                     buffer = [window]
 
-                # Transcribe window with tiny model
                 audio_float = window.astype(np.float32) / 32768.0
+                transcript = self.stt_backend.transcribe_wake_audio(audio_float)
+                if transcript:
+                    logger.info("Wake window heard: '%s'", transcript)
 
-                if self.wake_backend is not None:
-                    detected = self.wake_backend.detect(audio_float)
-                    detected_transcript = None
-                else:
-                    transcript = self.stt_backend.transcribe_wake_audio(audio_float)
-                    if transcript:
-                        logger.info("Wake window heard: '%s'", transcript)
-                    detected = self.wake_phrase in transcript
-                    detected_transcript = transcript if detected else None
-
-                if detected:
-                    if detected_transcript is not None:
-                        logger.info("Wake phrase detected: '%s'", detected_transcript)
-                    else:
-                        logger.info("Wake detected")
-                    # Keep stream open — listen() will use it immediately
+                if self.wake_phrase in transcript:
+                    logger.info("Wake phrase detected: '%s'", transcript)
                     self._shared_audio = audio
                     self._shared_stream = stream
                     return True

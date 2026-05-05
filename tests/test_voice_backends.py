@@ -545,6 +545,17 @@ class SileroVadBackendTests(unittest.TestCase):
         self.assertEqual(mock_model.call_count, 0)
         mock_model.reset_states.assert_called_once()
 
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_true_when_score_equals_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.5)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        self.assertTrue(backend.is_speech(np.zeros(512, dtype=np.float32)))
+
 
 if __name__ == "__main__":
     unittest.main()

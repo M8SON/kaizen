@@ -16,3 +16,6 @@ torch>=2.2.0
 
 # Test
 pytest>=8.0
+
+# Wake word
+openwakeword>=0.6.0

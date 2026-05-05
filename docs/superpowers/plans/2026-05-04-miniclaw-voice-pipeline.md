@@ -171,6 +171,8 @@ git commit -m "feat(voice): add WakeBackend protocol + WhisperWakeBackend fallba
 - Modify: `core/voice_backends.py`
 - Modify: `tests/test_voice_backends.py`
 
+**API note (openwakeword 0.4.0):** the `Model` constructor takes `wakeword_model_paths` (file paths) rather than `wakeword_models` (names). Path resolution is via `openwakeword.models[name]["model_path"]`. The score dict keys are version-suffixed (e.g. `"hey_jarvis_v0.1"`), not bare names. The backend takes a friendly `model_name` ("hey_jarvis") and handles both translations internally so callers stay clean.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/test_voice_backends.py`:
@@ -179,8 +181,14 @@ class OpenWakeWordBackendTests(unittest.TestCase):
     @patch("core.voice_backends.openwakeword")
     def test_detect_returns_true_when_score_exceeds_threshold(self, mock_owww):
         mock_model = MagicMock()
-        mock_model.predict.return_value = {"hey_jarvis": 0.85}
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.85}
         mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {
+                "model_path": "/fake/hey_jarvis_v0.1.onnx",
+                "filename": "hey_jarvis_v0.1.onnx",
+            }
+        }
 
         backend = voice_backends.OpenWakeWordBackend(
             model_name="hey_jarvis", threshold=0.5
@@ -188,12 +196,21 @@ class OpenWakeWordBackendTests(unittest.TestCase):
         audio = np.zeros(1280, dtype=np.float32)
 
         self.assertTrue(backend.detect(audio))
+        mock_owww.Model.assert_called_once_with(
+            wakeword_model_paths=["/fake/hey_jarvis_v0.1.onnx"]
+        )
 
     @patch("core.voice_backends.openwakeword")
     def test_detect_returns_false_when_score_below_threshold(self, mock_owww):
         mock_model = MagicMock()
-        mock_model.predict.return_value = {"hey_jarvis": 0.3}
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.3}
         mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {
+                "model_path": "/fake/hey_jarvis_v0.1.onnx",
+                "filename": "hey_jarvis_v0.1.onnx",
+            }
+        }
 
         backend = voice_backends.OpenWakeWordBackend(
             model_name="hey_jarvis", threshold=0.5
@@ -201,9 +218,20 @@ class OpenWakeWordBackendTests(unittest.TestCase):
         self.assertFalse(backend.detect(np.zeros(1280, dtype=np.float32)))
 
     @patch("core.voice_backends.openwakeword")
+    def test_init_raises_for_unknown_model_name(self, mock_owww):
+        mock_owww.models = {"hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}}
+        with self.assertRaises(ValueError):
+            voice_backends.OpenWakeWordBackend(
+                model_name="not_a_real_model", threshold=0.5
+            )
+
+    @patch("core.voice_backends.openwakeword")
     def test_reset_clears_model_state(self, mock_owww):
         mock_model = MagicMock()
         mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}
+        }
 
         backend = voice_backends.OpenWakeWordBackend(
             model_name="hey_jarvis", threshold=0.5
@@ -216,7 +244,7 @@ class OpenWakeWordBackendTests(unittest.TestCase):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_voice_backends.py::OpenWakeWordBackendTests -v`
-Expected: 3 FAILs with `AttributeError: module 'core.voice_backends' has no attribute 'OpenWakeWordBackend'`.
+Expected: 4 FAILs with `AttributeError: module 'core.voice_backends' has no attribute 'OpenWakeWordBackend'`.
 
 - [ ] **Step 3: Implement the class**
 
@@ -224,7 +252,6 @@ In `core/voice_backends.py`, after `WhisperWakeBackend`, add:
 ```python
 try:
     import openwakeword
-    from openwakeword.model import Model as _OwwwModel  # noqa: F401  (used via openwakeword.Model)
     _OPENWAKEWORD_AVAILABLE = True
 except ImportError:
     openwakeword = None  # type: ignore[assignment]
@@ -236,29 +263,47 @@ class OpenWakeWordBackend:
 
     Expects ~80ms audio chunks at 16kHz int16 or float32. Returns True when
     the model's score for `model_name` crosses `threshold`.
+
+    `model_name` accepts canonical openwakeword names ("hey_jarvis", "alexa",
+    "hey_mycroft", "timer", "weather"). The backend resolves to the bundled
+    ONNX path and to the version-suffixed score-dict key automatically.
     """
 
     def __init__(self, model_name: str = "hey_jarvis", threshold: float = 0.5):
         if not _OPENWAKEWORD_AVAILABLE:
             raise ImportError("openwakeword not installed")
+        if model_name not in openwakeword.models:
+            raise ValueError(
+                f"unknown openwakeword model {model_name!r}; "
+                f"available: {list(openwakeword.models)}"
+            )
+
         logger.info("Loading openWakeWord model: %s", model_name)
         self.model_name = model_name
         self.threshold = threshold
-        self.model = openwakeword.Model(wakeword_models=[model_name])
+
+        meta = openwakeword.models[model_name]
+        model_path = meta["model_path"]
+        # Score-dict key is the bundled filename without extension (e.g. "hey_jarvis_v0.1").
+        self._score_key = Path(model_path).stem
+
+        self.model = openwakeword.Model(wakeword_model_paths=[model_path])
 
     def detect(self, audio_chunk: np.ndarray) -> bool:
         scores = self.model.predict(audio_chunk)
-        score = scores.get(self.model_name, 0.0)
+        score = scores.get(self._score_key, 0.0)
         return score >= self.threshold
 
     def reset(self) -> None:
         self.model.reset()
 ```
 
+(`Path` is already imported at the top of `voice_backends.py`. If it isn't, add `from pathlib import Path`.)
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_voice_backends.py::OpenWakeWordBackendTests -v`
-Expected: 3 PASSes.
+Expected: 4 PASSes.
 
 - [ ] **Step 5: Commit**
 

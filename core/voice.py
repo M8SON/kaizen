@@ -64,6 +64,7 @@ class VoiceInterface:
         silence_duration: float = 2.0,
         stt_backend=None,
         tts_backend=None,
+        wake_backend=None,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
@@ -83,6 +84,7 @@ class VoiceInterface:
             wake_model=wake_model,
             transcription_model=whisper_model,
         )
+        self.wake_backend = wake_backend  # may be None for legacy callers
         self.tts_backend = (
             tts_backend
             if tts_backend is not None
@@ -256,13 +258,17 @@ class VoiceInterface:
 
                 # Transcribe window with tiny model
                 audio_float = window.astype(np.float32) / 32768.0
-                transcript = self.stt_backend.transcribe_wake_audio(audio_float)
 
-                if transcript:
-                    logger.info("Wake window heard: '%s'", transcript)
+                if self.wake_backend is not None:
+                    detected = self.wake_backend.detect(audio_float)
+                else:
+                    transcript = self.stt_backend.transcribe_wake_audio(audio_float)
+                    if transcript:
+                        logger.info("Wake window heard: '%s'", transcript)
+                    detected = self.wake_phrase in transcript
 
-                if self.wake_phrase in transcript:
-                    logger.info("Wake phrase detected: '%s'", transcript)
+                if detected:
+                    logger.info("Wake detected")
                     # Keep stream open — listen() will use it immediately
                     self._shared_audio = audio
                     self._shared_stream = stream

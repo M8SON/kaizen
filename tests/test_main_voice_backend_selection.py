@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 import main
@@ -37,6 +38,46 @@ class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
         main.build_voice_interface()
 
         mock_print.assert_called_once_with(message)
+
+
+class VoiceWakeBackendIntegrationTests(unittest.TestCase):
+    @patch("core.voice.pyaudio.PyAudio")
+    @patch("core.voice.resolve_input_device", return_value=None)
+    @patch("core.voice.resolve_output_device", return_value=None)
+    @patch("core.voice.output_samplerate", return_value=48000)
+    def test_wait_for_wake_word_uses_wake_backend_when_provided(
+        self, _mock_sr, _mock_out, _mock_in, mock_pa
+    ):
+        from core.voice import VoiceInterface
+
+        wake_backend = unittest.mock.MagicMock()
+        # Simulate: silence, silence, wake. The exact number of False returns
+        # depends on how often wait_for_wake_word evaluates the buffer; allow
+        # any prefix of False before the True.
+        wake_backend.detect.side_effect = [False, False, True]
+        stt_backend = unittest.mock.MagicMock()
+        tts_backend = unittest.mock.MagicMock()
+
+        mock_stream = unittest.mock.MagicMock()
+        # 1s of silence at 16kHz mono int16 per read
+        mock_stream.read.return_value = b"\x00" * 32000
+        mock_pa.return_value.open.return_value = mock_stream
+
+        voice = VoiceInterface(
+            stt_backend=stt_backend,
+            wake_backend=wake_backend,
+            tts_backend=tts_backend,
+            enable_tts=False,
+        )
+
+        result = voice.wait_for_wake_word()
+
+        self.assertTrue(result)
+        # Some number of calls before True; at least one
+        self.assertGreaterEqual(wake_backend.detect.call_count, 1)
+        # Critically: stt_backend.transcribe_wake_audio is never called
+        # when wake_backend is provided.
+        stt_backend.transcribe_wake_audio.assert_not_called()
 
 
 if __name__ == "__main__":

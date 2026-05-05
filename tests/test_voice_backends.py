@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
+
+import numpy as np
 
 from core import voice_backends
 
@@ -267,6 +269,199 @@ class HailoWakeRuntimeAssetTests(unittest.TestCase):
                     model_name="tiny",
                     assets_root=Path(tmp),
                 )
+
+
+class WhisperWakeBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_returns_true_when_phrase_present(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello computer hi"}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        audio = np.zeros(16000, dtype=np.float32)
+
+        self.assertTrue(backend.detect(audio))
+
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_returns_false_when_phrase_absent(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello world"}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        audio = np.zeros(16000, dtype=np.float32)
+
+        self.assertFalse(backend.detect(audio))
+
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_normalises_case_and_whitespace(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "  Computer.  "}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        self.assertTrue(backend.detect(np.zeros(16000, dtype=np.float32)))
+
+
+class OpenWakeWordBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.openwakeword")
+    def test_detect_returns_true_when_score_exceeds_threshold(self, mock_owww):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.85}
+        mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {
+                "model_path": "/fake/hey_jarvis_v0.1.onnx",
+                "filename": "hey_jarvis_v0.1.onnx",
+            }
+        }
+
+        backend = voice_backends.OpenWakeWordBackend(
+            model_name="hey_jarvis", threshold=0.5
+        )
+        audio = np.zeros(1280, dtype=np.float32)
+
+        self.assertTrue(backend.detect(audio))
+        mock_owww.Model.assert_called_once_with(
+            wakeword_model_paths=["/fake/hey_jarvis_v0.1.onnx"]
+        )
+
+    @patch("core.voice_backends.openwakeword")
+    def test_detect_returns_false_when_score_below_threshold(self, mock_owww):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.3}
+        mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {
+                "model_path": "/fake/hey_jarvis_v0.1.onnx",
+                "filename": "hey_jarvis_v0.1.onnx",
+            }
+        }
+
+        backend = voice_backends.OpenWakeWordBackend(
+            model_name="hey_jarvis", threshold=0.5
+        )
+        self.assertFalse(backend.detect(np.zeros(1280, dtype=np.float32)))
+
+    @patch("core.voice_backends.openwakeword")
+    def test_init_raises_for_unknown_model_name(self, mock_owww):
+        mock_owww.models = {"hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}}
+        with self.assertRaises(ValueError):
+            voice_backends.OpenWakeWordBackend(
+                model_name="not_a_real_model", threshold=0.5
+            )
+
+    @patch("core.voice_backends.openwakeword")
+    def test_reset_clears_model_state(self, mock_owww):
+        mock_model = MagicMock()
+        mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}
+        }
+
+        backend = voice_backends.OpenWakeWordBackend(
+            model_name="hey_jarvis", threshold=0.5
+        )
+        backend.reset()
+
+        mock_model.reset.assert_called_once()
+
+    @patch("core.voice_backends._OPENWAKEWORD_AVAILABLE", False)
+    def test_init_raises_when_openwakeword_unavailable(self):
+        with self.assertRaises(ImportError):
+            voice_backends.OpenWakeWordBackend(
+                model_name="hey_jarvis", threshold=0.5
+            )
+
+    @patch("core.voice_backends.openwakeword")
+    def test_detect_returns_true_when_score_equals_threshold(self, mock_owww):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.5}
+        mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}
+        }
+
+        backend = voice_backends.OpenWakeWordBackend(
+            model_name="hey_jarvis", threshold=0.5
+        )
+
+        self.assertTrue(backend.detect(np.zeros(1280, dtype=np.float32)))
+
+
+class BuildWakeBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.OpenWakeWordBackend")
+    def test_returns_openwakeword_when_backend_is_openwakeword(self, mock_owww):
+        instance = object()
+        mock_owww.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="openwakeword",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("openwakeword", message)
+        self.assertIn("hey_jarvis", message)
+
+    @patch("core.voice_backends.WhisperWakeBackend")
+    def test_returns_whisper_when_backend_is_whisper(self, mock_whisper):
+        instance = object()
+        mock_whisper.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="whisper",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("whisper", message)
+        self.assertIn("computer", message)
+
+    @patch("core.voice_backends.WhisperWakeBackend")
+    @patch(
+        "core.voice_backends.OpenWakeWordBackend",
+        side_effect=ImportError("openwakeword not installed"),
+    )
+    def test_falls_back_to_whisper_on_openwakeword_failure(
+        self, mock_owww, mock_whisper
+    ):
+        instance = object()
+        mock_whisper.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="openwakeword",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("fallback", message.lower())
+
+    def test_raises_for_unknown_backend_name(self):
+        with self.assertRaises(ValueError):
+            voice_backends.build_wake_backend(
+                backend_name="oepnwakeword",  # typo
+                model_name="hey_jarvis",
+                threshold=0.5,
+                wake_phrase="computer",
+                whisper_model="tiny",
+            )
 
 
 if __name__ == "__main__":

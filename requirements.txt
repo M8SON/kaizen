@@ -16,3 +16,9 @@ torch>=2.2.0
 
 # Test
 pytest>=8.0
+
+# Wake word
+# Pinned to 0.4.0: 0.5.0+ requires tflite-runtime, which has no PyPI wheel
+# for Python 3.12+ on ARM/x86. 0.4.0 uses ONNX (already a transitive dep)
+# and ships the prebuilt model files bundled in the package.
+openwakeword==0.4.0

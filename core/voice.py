@@ -64,11 +64,17 @@ class VoiceInterface:
         silence_duration: float = 2.0,
         stt_backend=None,
         tts_backend=None,
+        wake_backend=None,
+        display_wake_word: str | None = None,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
         self.wake_phrase = wake_phrase.lower().strip()
+        # display_wake_word is shown in user-facing logs; wake_phrase still
+        # drives the legacy Whisper-substring path. They differ when the
+        # active backend is openWakeWord (display = "hey jarvis", phrase = "computer").
+        self.display_wake_word = (display_wake_word or self.wake_phrase).strip()
 
         self._input_device_index = resolve_input_device()
         self._output_device_index = resolve_output_device()
@@ -83,6 +89,7 @@ class VoiceInterface:
             wake_model=wake_model,
             transcription_model=whisper_model,
         )
+        self.wake_backend = wake_backend  # may be None for legacy callers
         self.tts_backend = (
             tts_backend
             if tts_backend is not None
@@ -98,7 +105,7 @@ class VoiceInterface:
             )
         )
 
-        logger.info("Models loaded — wake phrase: '%s'", self.wake_phrase)
+        logger.info("Models loaded — wake phrase: '%s'", self.display_wake_word)
 
         # Elevator-music feature state
         self._music_playing = False
@@ -235,12 +242,36 @@ class VoiceInterface:
         samples_collected = 0
         buffer = []
 
-        logger.info("Waiting for wake phrase: '%s'", self.wake_phrase)
+        # Streaming wake backends (openWakeWord) accumulate a rolling feature
+        # buffer across calls. Without a reset between sessions, the next
+        # wake-loop entry sees the tail of the prior wake event still in the
+        # model's buffer and fires immediately.
+        if self.wake_backend is not None:
+            self.wake_backend.reset()
+
+        logger.info("Waiting for wake phrase: '%s'", self.display_wake_word)
 
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
-                buffer.append(np.frombuffer(data, dtype=np.int16))
+                chunk_int16 = np.frombuffer(data, dtype=np.int16)
+
+                # Streaming wake backend (e.g. openWakeWord): every chunk goes
+                # straight to the detector, which maintains its own rolling
+                # feature buffer. No 2s windowing — that batched shape silently
+                # zeroes the score because the model's internal buffer never
+                # primes.
+                if self.wake_backend is not None:
+                    if self.wake_backend.detect(chunk_int16):
+                        logger.info("Wake detected")
+                        self._shared_audio = audio
+                        self._shared_stream = stream
+                        return True
+                    continue
+
+                # Legacy Whisper-substring path: 2s sliding window, evaluated
+                # once per WAKE_STEP_SECONDS.
+                buffer.append(chunk_int16)
                 samples_collected += self.CHUNK
 
                 if samples_collected < step_samples:
@@ -248,22 +279,18 @@ class VoiceInterface:
 
                 samples_collected = 0
 
-                # Build window from buffer, trim to last 2 seconds
                 window = np.concatenate(buffer)
                 if len(window) > window_samples:
                     window = window[-window_samples:]
                     buffer = [window]
 
-                # Transcribe window with tiny model
                 audio_float = window.astype(np.float32) / 32768.0
                 transcript = self.stt_backend.transcribe_wake_audio(audio_float)
-
                 if transcript:
                     logger.info("Wake window heard: '%s'", transcript)
 
                 if self.wake_phrase in transcript:
                     logger.info("Wake phrase detected: '%s'", transcript)
-                    # Keep stream open — listen() will use it immediately
                     self._shared_audio = audio
                     self._shared_stream = stream
                     return True

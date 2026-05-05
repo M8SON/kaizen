@@ -488,5 +488,63 @@ class RmsVadBackendTests(unittest.TestCase):
         self.assertTrue(backend.is_speech(loud_float))
 
 
+class SileroVadBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_true_when_score_above_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.85)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x  # passthrough
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        # 1024 samples → exactly two 512-sample sub-frames consumed
+        audio = np.zeros(1024, dtype=np.float32)
+
+        self.assertTrue(backend.is_speech(audio))
+        self.assertEqual(mock_model.call_count, 2)
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_false_when_score_below_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.2)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        self.assertFalse(backend.is_speech(np.zeros(1024, dtype=np.float32)))
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_carry_over_short_chunks(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.0)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        # Two 300-sample chunks: first call has no full 512-frame, second does
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 1)
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_reset_clears_buffer_and_model_state(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        backend.is_speech(np.zeros(300, dtype=np.float32))  # leaves 300 samples in buffer
+        backend.reset()
+        # After reset, a 200-sample chunk should not yet trigger the model (buffer cleared)
+        backend.is_speech(np.zeros(200, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        mock_model.reset_states.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

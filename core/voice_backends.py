@@ -151,6 +151,61 @@ class RmsVadBackend:
         pass
 
 
+try:
+    import silero_vad
+    import torch
+    _SILERO_AVAILABLE = True
+except ImportError:
+    silero_vad = None  # type: ignore[assignment]
+    torch = None  # type: ignore[assignment]
+    _SILERO_AVAILABLE = False
+
+
+class SileroVadBackend:
+    """Primary VAD — Silero TorchScript speech-probability model.
+
+    Silero VAD only accepts 512-sample frames at 16kHz. PyAudio chunks are
+    typically 1024 samples, so we keep a carry-over buffer that yields exact
+    512-sample frames to the model. Returns True if any frame in the current
+    call's accumulated audio scored above the threshold (conservative — a
+    single speech-positive frame keeps `recording` armed in the endpoint loop).
+    """
+
+    FRAME_SIZE = 512
+
+    def __init__(self, threshold: float = 0.5):
+        if not _SILERO_AVAILABLE:
+            raise ImportError("silero-vad not installed")
+        logger.info("Loading Silero VAD model")
+        self.threshold = threshold
+        self.model = silero_vad.load_silero_vad()
+        self._buffer = np.zeros(0, dtype=np.float32)
+
+    def is_speech(self, audio_chunk: np.ndarray) -> bool:
+        if audio_chunk.dtype != np.float32:
+            audio_chunk = audio_chunk.astype(np.float32) / 32768.0
+
+        self._buffer = np.concatenate([self._buffer, audio_chunk])
+
+        any_speech = False
+        while len(self._buffer) >= self.FRAME_SIZE:
+            frame = self._buffer[: self.FRAME_SIZE]
+            self._buffer = self._buffer[self.FRAME_SIZE :]
+            tensor = torch.from_numpy(frame)
+            score = self.model(tensor, 16000).item()
+            if score >= self.threshold:
+                any_speech = True
+        return any_speech
+
+    def reset(self) -> None:
+        # Clear streaming carry-over and the model's internal LSTM state.
+        # The endpoint loop calls reset() between sessions so a stale tail
+        # doesn't carry into the next utterance.
+        self._buffer = np.zeros(0, dtype=np.float32)
+        if hasattr(self.model, "reset_states"):
+            self.model.reset_states()
+
+
 class WhisperBackend:
     """Default speech-to-text backend using Whisper for wake and full transcription."""
 

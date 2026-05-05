@@ -65,11 +65,16 @@ class VoiceInterface:
         stt_backend=None,
         tts_backend=None,
         wake_backend=None,
+        display_wake_word: str | None = None,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
         self.wake_phrase = wake_phrase.lower().strip()
+        # display_wake_word is shown in user-facing logs; wake_phrase still
+        # drives the legacy Whisper-substring path. They differ when the
+        # active backend is openWakeWord (display = "hey jarvis", phrase = "computer").
+        self.display_wake_word = (display_wake_word or self.wake_phrase).strip()
 
         self._input_device_index = resolve_input_device()
         self._output_device_index = resolve_output_device()
@@ -100,7 +105,7 @@ class VoiceInterface:
             )
         )
 
-        logger.info("Models loaded — wake phrase: '%s'", self.wake_phrase)
+        logger.info("Models loaded — wake phrase: '%s'", self.display_wake_word)
 
         # Elevator-music feature state
         self._music_playing = False
@@ -244,7 +249,7 @@ class VoiceInterface:
         if self.wake_backend is not None:
             self.wake_backend.reset()
 
-        logger.info("Waiting for wake phrase: '%s'", self.wake_phrase)
+        logger.info("Waiting for wake phrase: '%s'", self.display_wake_word)
 
         try:
             while True:

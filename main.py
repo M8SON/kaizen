@@ -112,6 +112,7 @@ def build_voice_interface():
         whisper_model=os.getenv("WHISPER_MODEL", "base"),
         wake_model=os.getenv("WAKE_MODEL", "tiny"),
         wake_phrase=wake_phrase,
+        display_wake_word=_display_wake_word(),
         enable_tts=os.getenv("ENABLE_TTS", "true").lower() == "true",
         tts_voice=os.getenv("TTS_VOICE", "af_heart"),
         tts_speed=float(os.getenv("TTS_SPEED", "1.2")),

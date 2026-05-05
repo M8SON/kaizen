@@ -373,6 +373,28 @@ class OpenWakeWordBackendTests(unittest.TestCase):
 
         mock_model.reset.assert_called_once()
 
+    @patch("core.voice_backends._OPENWAKEWORD_AVAILABLE", False)
+    def test_init_raises_when_openwakeword_unavailable(self):
+        with self.assertRaises(ImportError):
+            voice_backends.OpenWakeWordBackend(
+                model_name="hey_jarvis", threshold=0.5
+            )
+
+    @patch("core.voice_backends.openwakeword")
+    def test_detect_returns_true_when_score_equals_threshold(self, mock_owww):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = {"hey_jarvis_v0.1": 0.5}
+        mock_owww.Model.return_value = mock_model
+        mock_owww.models = {
+            "hey_jarvis": {"model_path": "/fake/hey_jarvis_v0.1.onnx"}
+        }
+
+        backend = voice_backends.OpenWakeWordBackend(
+            model_name="hey_jarvis", threshold=0.5
+        )
+
+        self.assertTrue(backend.detect(np.zeros(1280, dtype=np.float32)))
+
 
 if __name__ == "__main__":
     unittest.main()

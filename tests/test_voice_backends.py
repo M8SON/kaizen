@@ -453,6 +453,16 @@ class BuildWakeBackendTests(unittest.TestCase):
         self.assertIs(backend, instance)
         self.assertIn("fallback", message.lower())
 
+    def test_raises_for_unknown_backend_name(self):
+        with self.assertRaises(ValueError):
+            voice_backends.build_wake_backend(
+                backend_name="oepnwakeword",  # typo
+                model_name="hey_jarvis",
+                threshold=0.5,
+                wake_phrase="computer",
+                whisper_model="tiny",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

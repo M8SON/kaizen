@@ -295,15 +295,23 @@ def build_wake_backend(
         try:
             backend = OpenWakeWordBackend(model_name=model_name, threshold=threshold)
             return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
-        except (ImportError, Exception) as exc:
-            logger.warning("openWakeWord unavailable (%s) — falling back to Whisper wake", exc)
+        except Exception:
+            logger.warning(
+                "openWakeWord unavailable — falling back to Whisper wake",
+                exc_info=True,
+            )
             backend = WhisperWakeBackend(
                 model_name=whisper_model, wake_phrase=wake_phrase
             )
             return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}') — openwakeword fallback"
 
-    backend = WhisperWakeBackend(model_name=whisper_model, wake_phrase=wake_phrase)
-    return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}')"
+    if backend_name == "whisper":
+        backend = WhisperWakeBackend(model_name=whisper_model, wake_phrase=wake_phrase)
+        return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}')"
+
+    raise ValueError(
+        f"unknown wake backend {backend_name!r}; expected 'openwakeword' or 'whisper'"
+    )
 
 
 class KokoroTTSBackend:

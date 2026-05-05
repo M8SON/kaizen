@@ -396,5 +396,63 @@ class OpenWakeWordBackendTests(unittest.TestCase):
         self.assertTrue(backend.detect(np.zeros(1280, dtype=np.float32)))
 
 
+class BuildWakeBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.OpenWakeWordBackend")
+    def test_returns_openwakeword_when_backend_is_openwakeword(self, mock_owww):
+        instance = object()
+        mock_owww.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="openwakeword",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("openwakeword", message)
+        self.assertIn("hey_jarvis", message)
+
+    @patch("core.voice_backends.WhisperWakeBackend")
+    def test_returns_whisper_when_backend_is_whisper(self, mock_whisper):
+        instance = object()
+        mock_whisper.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="whisper",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("whisper", message)
+        self.assertIn("computer", message)
+
+    @patch("core.voice_backends.WhisperWakeBackend")
+    @patch(
+        "core.voice_backends.OpenWakeWordBackend",
+        side_effect=ImportError("openwakeword not installed"),
+    )
+    def test_falls_back_to_whisper_on_openwakeword_failure(
+        self, mock_owww, mock_whisper
+    ):
+        instance = object()
+        mock_whisper.return_value = instance
+
+        backend, message = voice_backends.build_wake_backend(
+            backend_name="openwakeword",
+            model_name="hey_jarvis",
+            threshold=0.5,
+            wake_phrase="computer",
+            whisper_model="tiny",
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("fallback", message.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

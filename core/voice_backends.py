@@ -283,6 +283,29 @@ def build_stt_backend(
     )
 
 
+def build_wake_backend(
+    backend_name: str,
+    model_name: str,
+    threshold: float,
+    wake_phrase: str,
+    whisper_model: str,
+) -> tuple[WakeBackend, str]:
+    """Select wake backend by name with automatic fallback to Whisper."""
+    if backend_name == "openwakeword":
+        try:
+            backend = OpenWakeWordBackend(model_name=model_name, threshold=threshold)
+            return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
+        except (ImportError, Exception) as exc:
+            logger.warning("openWakeWord unavailable (%s) — falling back to Whisper wake", exc)
+            backend = WhisperWakeBackend(
+                model_name=whisper_model, wake_phrase=wake_phrase
+            )
+            return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}') — openwakeword fallback"
+
+    backend = WhisperWakeBackend(model_name=whisper_model, wake_phrase=wake_phrase)
+    return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}')"
+
+
 class KokoroTTSBackend:
     """Default text-to-speech backend using Kokoro with streaming playback."""
 

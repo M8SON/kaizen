@@ -66,6 +66,8 @@ class VoiceInterface:
         tts_backend=None,
         wake_backend=None,
         display_wake_word: str | None = None,
+        vad_backend=None,
+        vad_min_silence_ms: int = 700,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
@@ -90,6 +92,8 @@ class VoiceInterface:
             transcription_model=whisper_model,
         )
         self.wake_backend = wake_backend  # may be None for legacy callers
+        self.vad_backend = vad_backend
+        self.vad_min_silence_ms = vad_min_silence_ms
         self.tts_backend = (
             tts_backend
             if tts_backend is not None
@@ -471,27 +475,44 @@ class VoiceInterface:
 
         logger.info("Recording...")
 
+        if self.vad_backend is not None:
+            self.vad_backend.reset()
+
         frames = []
         silence_frames = 0
         silence_limit = int(self.RATE / self.CHUNK * self.silence_duration)
         max_wait_chunks = int(self.RATE / self.CHUNK * max_wait_seconds) if max_wait_seconds else 0
         waited_chunks = 0
         recording = False
+        chunk_ms = int(self.CHUNK / self.RATE * 1000)
+        silence_ms = 0
 
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
                 frames.append(data)
+                chunk_int16 = np.frombuffer(data, dtype=np.int16)
 
-                level = np.abs(np.frombuffer(data, dtype=np.int16)).mean()
+                if self.vad_backend is not None:
+                    is_speech = self.vad_backend.is_speech(chunk_int16)
+                else:
+                    level = np.abs(chunk_int16).mean()
+                    is_speech = level > self.silence_threshold
 
-                if level > self.silence_threshold:
+                if is_speech:
                     recording = True
+                    silence_ms = 0
                     silence_frames = 0
                 elif recording:
+                    silence_ms += chunk_ms
                     silence_frames += 1
 
-                if recording and silence_frames > silence_limit:
+                if self.vad_backend is not None:
+                    endpoint = recording and silence_ms >= self.vad_min_silence_ms
+                else:
+                    endpoint = recording and silence_frames > silence_limit
+
+                if endpoint:
                     if on_speech_done is not None:
                         try:
                             on_speech_done()

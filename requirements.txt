@@ -22,3 +22,6 @@ pytest>=8.0
 # for Python 3.12+ on ARM/x86. 0.4.0 uses ONNX (already a transitive dep)
 # and ships the prebuilt model files bundled in the package.
 openwakeword==0.4.0
+
+# Voice activity detection
+silero-vad>=5.0

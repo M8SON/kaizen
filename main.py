@@ -29,7 +29,7 @@ from core import profiling
 from core.scheduler import SchedulesStore, SchedulerThread
 from core.location_preference import resolve_location
 from core.session_archive import SessionArchive
-from core.voice_backends import build_stt_backend
+from core.voice_backends import build_stt_backend, build_wake_backend
 
 load_dotenv()
 
@@ -94,6 +94,20 @@ def build_voice_interface():
     )
     print(stt_status)
 
+    wake_backend_name = os.getenv("WAKE_BACKEND", "openwakeword")
+    wake_word_model = os.getenv("WAKE_WORD_MODEL", "hey_jarvis")
+    wake_word_threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
+    whisper_wake_model = os.getenv("WAKE_MODEL", "tiny")
+
+    wake_backend, wake_msg = build_wake_backend(
+        backend_name=wake_backend_name,
+        model_name=wake_word_model,
+        threshold=wake_word_threshold,
+        wake_phrase=wake_phrase,
+        whisper_model=whisper_wake_model,
+    )
+    logger.info(wake_msg)
+
     return VoiceInterface(
         whisper_model=os.getenv("WHISPER_MODEL", "base"),
         wake_model=os.getenv("WAKE_MODEL", "tiny"),
@@ -104,6 +118,7 @@ def build_voice_interface():
         silence_threshold=int(os.getenv("SILENCE_THRESHOLD", "1000")),
         silence_duration=float(os.getenv("SILENCE_DURATION", "2.0")),
         stt_backend=stt_backend,
+        wake_backend=wake_backend,
     )
 
 

@@ -557,5 +557,53 @@ class SileroVadBackendTests(unittest.TestCase):
         self.assertTrue(backend.is_speech(np.zeros(512, dtype=np.float32)))
 
 
+class BuildVadBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.SileroVadBackend")
+    def test_returns_silero_when_backend_is_silero(self, mock_silero):
+        instance = object()
+        mock_silero.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="silero", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("silero", message)
+
+    @patch("core.voice_backends.RmsVadBackend")
+    def test_returns_rms_when_backend_is_rms(self, mock_rms):
+        instance = object()
+        mock_rms.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="rms", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("rms", message)
+
+    @patch("core.voice_backends.RmsVadBackend")
+    @patch(
+        "core.voice_backends.SileroVadBackend",
+        side_effect=ImportError("silero-vad not installed"),
+    )
+    def test_falls_back_to_rms_on_silero_failure(self, mock_silero, mock_rms):
+        instance = object()
+        mock_rms.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="silero", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("fallback", message.lower())
+
+    def test_raises_for_unknown_backend_name(self):
+        with self.assertRaises(ValueError):
+            voice_backends.build_vad_backend(
+                backend_name="nonexistent", threshold=0.5, rms_threshold=1000
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

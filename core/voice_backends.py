@@ -206,6 +206,33 @@ class SileroVadBackend:
             self.model.reset_states()
 
 
+def build_vad_backend(
+    backend_name: str,
+    threshold: float,
+    rms_threshold: int,
+) -> tuple[VadBackend, str]:
+    """Select VAD backend by name with automatic fallback to RMS on Silero failure."""
+    if backend_name == "silero":
+        try:
+            backend = SileroVadBackend(threshold=threshold)
+            return backend, f"VAD backend: silero (threshold={threshold})"
+        except Exception:
+            logger.warning(
+                "Silero VAD unavailable — falling back to RMS",
+                exc_info=True,
+            )
+            backend = RmsVadBackend(threshold=rms_threshold)
+            return backend, f"VAD backend: rms (threshold={rms_threshold}) — silero fallback"
+
+    if backend_name == "rms":
+        backend = RmsVadBackend(threshold=rms_threshold)
+        return backend, f"VAD backend: rms (threshold={rms_threshold})"
+
+    raise ValueError(
+        f"unknown VAD backend {backend_name!r}; expected 'silero' or 'rms'"
+    )
+
+
 class WhisperBackend:
     """Default speech-to-text backend using Whisper for wake and full transcription."""
 

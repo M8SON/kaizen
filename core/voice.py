@@ -237,6 +237,13 @@ class VoiceInterface:
         samples_collected = 0
         buffer = []
 
+        # Streaming wake backends (openWakeWord) accumulate a rolling feature
+        # buffer across calls. Without a reset between sessions, the next
+        # wake-loop entry sees the tail of the prior wake event still in the
+        # model's buffer and fires immediately.
+        if self.wake_backend is not None:
+            self.wake_backend.reset()
+
         logger.info("Waiting for wake phrase: '%s'", self.wake_phrase)
 
         try:

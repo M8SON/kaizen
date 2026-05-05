@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import Protocol
 
+import numpy as np
+
 import sounddevice as sd
 import whisper
 from kokoro import KPipeline
@@ -26,6 +28,34 @@ SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS = {"base", "tiny", "tiny.en", "ba
 class SttBackend(Protocol):
     def transcribe_wake_audio(self, audio_float) -> str: ...
     def transcribe_file(self, audio_file: str) -> str: ...
+
+
+class WakeBackend(Protocol):
+    """Continuous wake-word detector. Consumes audio chunks, returns trigger bool."""
+    def detect(self, audio_chunk: np.ndarray) -> bool: ...
+    def reset(self) -> None: ...
+
+
+class WhisperWakeBackend:
+    """Fallback wake backend — runs Whisper on a 2s window and substring-matches.
+
+    Preserves current MiniClaw behaviour. Used when WAKE_BACKEND=whisper or when
+    openWakeWord fails to load.
+    """
+
+    def __init__(self, model_name: str = "tiny", wake_phrase: str = "computer"):
+        logger.info("Loading Whisper wake model: %s", model_name)
+        self.model = whisper.load_model(model_name)
+        self.wake_phrase = wake_phrase.lower().strip()
+
+    def detect(self, audio_chunk: np.ndarray) -> bool:
+        result = self.model.transcribe(audio_chunk, language="en", fp16=False)
+        transcript = result["text"].lower().strip()
+        return self.wake_phrase in transcript
+
+    def reset(self) -> None:
+        # Whisper is stateless per call; nothing to reset.
+        pass
 
 
 class WhisperBackend:

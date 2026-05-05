@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
+
+import numpy as np
 
 from core import voice_backends
 
@@ -267,6 +269,45 @@ class HailoWakeRuntimeAssetTests(unittest.TestCase):
                     model_name="tiny",
                     assets_root=Path(tmp),
                 )
+
+
+class WhisperWakeBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_returns_true_when_phrase_present(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello computer hi"}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        audio = np.zeros(16000, dtype=np.float32)
+
+        self.assertTrue(backend.detect(audio))
+
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_returns_false_when_phrase_absent(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello world"}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        audio = np.zeros(16000, dtype=np.float32)
+
+        self.assertFalse(backend.detect(audio))
+
+    @patch("core.voice_backends.whisper.load_model")
+    def test_detect_normalises_case_and_whitespace(self, mock_load):
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "  Computer.  "}
+        mock_load.return_value = model
+
+        backend = voice_backends.WhisperWakeBackend(
+            model_name="tiny", wake_phrase="computer"
+        )
+        self.assertTrue(backend.detect(np.zeros(16000, dtype=np.float32)))
 
 
 if __name__ == "__main__":

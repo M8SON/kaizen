@@ -464,5 +464,21 @@ class BuildWakeBackendTests(unittest.TestCase):
             )
 
 
+class RmsVadBackendTests(unittest.TestCase):
+    def test_is_speech_true_when_amplitude_above_threshold(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        loud = (np.ones(1024, dtype=np.int16) * 5000).astype(np.int16)
+        self.assertTrue(backend.is_speech(loud))
+
+    def test_is_speech_false_when_amplitude_below_threshold(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        quiet = np.zeros(1024, dtype=np.int16)
+        self.assertFalse(backend.is_speech(quiet))
+
+    def test_reset_is_noop(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        backend.reset()  # should not raise
+
+
 if __name__ == "__main__":
     unittest.main()

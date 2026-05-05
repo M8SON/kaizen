@@ -123,6 +123,30 @@ class OpenWakeWordBackend:
             pre.feature_buffer = np.zeros_like(pre.feature_buffer)
 
 
+class VadBackend(Protocol):
+    """Voice activity detector. Consumes audio chunks, returns speech bool."""
+    def is_speech(self, audio_chunk: np.ndarray) -> bool: ...
+    def reset(self) -> None: ...
+
+
+class RmsVadBackend:
+    """Fallback VAD — amplitude threshold. Preserves current MiniClaw behavior
+    when VAD_BACKEND=rms or when Silero VAD fails to load."""
+
+    def __init__(self, threshold: int = 1000):
+        self.threshold = threshold
+
+    def is_speech(self, audio_chunk: np.ndarray) -> bool:
+        if audio_chunk.dtype != np.int16:
+            audio_chunk = audio_chunk.astype(np.int16)
+        level = np.abs(audio_chunk).mean()
+        return level > self.threshold
+
+    def reset(self) -> None:
+        # RMS check is stateless; nothing to clear between sessions.
+        pass
+
+
 class WhisperBackend:
     """Default speech-to-text backend using Whisper for wake and full transcription."""
 

@@ -57,6 +57,38 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-05-05: voice-pipeline Wave 1 shipped — openWakeWord-based wake detection
+  replaces Whisper-tiny continuous-transcription wake stream; `WakeBackend` Protocol
+  with `OpenWakeWordBackend` (primary) + `WhisperWakeBackend` (fallback) gated by
+  `WAKE_BACKEND=openwakeword|whisper`. Default wake word `hey_jarvis` via
+  `WAKE_WORD_MODEL`; per-environment threshold via `WAKE_WORD_THRESHOLD` (Pi
+  XVF3800 settled on 0.7).
+  openwakeword pinned to **0.4.0** because 0.5+ requires `tflite-runtime`, which
+  has no PyPI wheel for Python 3.12+ on ARM/x86. 0.4.0 ships ONNX models bundled
+  in the package. Constructor takes `wakeword_model_paths`, score-dict keys are
+  version-suffixed (e.g. `hey_jarvis_v0.1`).
+  Smoke-test surfaced two bugs caught + fixed before merge: (1) every PyAudio
+  chunk must be fed to `wake_backend.detect()` continuously — earlier 2-second
+  windowing silently zeroed scores because the model's internal buffer never
+  primed; (2) `Model.reset()` in 0.4.0 only clears `prediction_buffer`, leaving
+  the `AudioFeatures` preprocessor's `raw_data_buffer`, `melspectrogram_buffer`,
+  `accumulated_samples`, and `feature_buffer` primed with the prior wake utterance
+  — `OpenWakeWordBackend.reset()` now clears all of them in place.
+  Spec at `docs/superpowers/specs/2026-05-04-miniclaw-voice-pipeline-design.md`,
+  plan at `docs/superpowers/plans/2026-05-04-miniclaw-voice-pipeline.md`. Wave 2
+  (Silero VAD), Wave 3 (faster-whisper + small), Wave 4 (Ollama→Kokoro streaming)
+  are the remaining waves.
+- 2026-05-05: voice-pipeline Wave 2 in progress — Silero VAD endpointing
+  replaces RMS amplitude threshold in `_record_until_silence` with `VadBackend`
+  Protocol + `SileroVadBackend` (primary) + `RmsVadBackend` (fallback) gated by
+  `VAD_BACKEND=silero|rms`. Pi smoke-test ongoing on `feat/voice-pipeline-wave2`.
+  silero-vad 6.x via `load_silero_vad()` returns a TorchScript module that only
+  accepts **exactly 512 samples at 16 kHz** per call — `SileroVadBackend` keeps
+  an internal carry-over buffer to yield 512-sample frames from PyAudio's
+  1024-sample chunks. `reset()` clears both that buffer and the model's LSTM
+  state via `model.reset_states()`. Pi-tuning settled on
+  `VAD_MIN_SILENCE_MS=1200` (default 700 was too aggressive for halting speech
+  / spelling).
 - 2026-04-26: voice latency tuning Phase 1 + 3 (Phase 2 pending)
   user reported 7-10s gap from end-of-speech to first audio in voice mode
   root cause: `orchestrator.process_message()` blocks for full LLM response before TTS starts in `main.py:194-196` — Kokoro's chunk streaming can't help because it never starts mid-LLM

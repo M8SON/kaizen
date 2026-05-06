@@ -78,17 +78,20 @@ Update this file when durable project context changes. Do not create overlapping
   plan at `docs/superpowers/plans/2026-05-04-miniclaw-voice-pipeline.md`. Wave 2
   (Silero VAD), Wave 3 (faster-whisper + small), Wave 4 (Ollama→Kokoro streaming)
   are the remaining waves.
-- 2026-05-05: voice-pipeline Wave 2 in progress — Silero VAD endpointing
+- 2026-05-05: voice-pipeline Wave 2 shipped — Silero VAD endpointing
   replaces RMS amplitude threshold in `_record_until_silence` with `VadBackend`
   Protocol + `SileroVadBackend` (primary) + `RmsVadBackend` (fallback) gated by
-  `VAD_BACKEND=silero|rms`. Pi smoke-test ongoing on `feat/voice-pipeline-wave2`.
+  `VAD_BACKEND=silero|rms`. Pi smoke-test waived after sufficient conversational
+  validation; branch `feat/voice-pipeline-wave2` pushed to origin (merge to main
+  pending user consent in next session).
   silero-vad 6.x via `load_silero_vad()` returns a TorchScript module that only
   accepts **exactly 512 samples at 16 kHz** per call — `SileroVadBackend` keeps
   an internal carry-over buffer to yield 512-sample frames from PyAudio's
   1024-sample chunks. `reset()` clears both that buffer and the model's LSTM
   state via `model.reset_states()`. Pi-tuning settled on
   `VAD_MIN_SILENCE_MS=1200` (default 700 was too aggressive for halting speech
-  / spelling).
+  / spelling). Wave 3 (faster-whisper + small) and Wave 4 (Ollama → Kokoro
+  streaming) are the remaining waves.
 - 2026-04-26: voice latency tuning Phase 1 + 3 (Phase 2 pending)
   user reported 7-10s gap from end-of-speech to first audio in voice mode
   root cause: `orchestrator.process_message()` blocks for full LLM response before TTS starts in `main.py:194-196` — Kokoro's chunk streaming can't help because it never starts mid-LLM

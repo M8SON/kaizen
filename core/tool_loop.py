@@ -133,6 +133,13 @@ class ToolLoop:
                             except Exception:
                                 logger.exception("on_chunk callback raised; continuing")
                         response = stream.get_final_message()
+                        # Streamed text blocks carry an SDK-internal `parsed_output`
+                        # field that the Anthropic API rejects on echo with a 400.
+                        # Replace each content block with a clean dict copy that
+                        # excludes the helper fields.
+                        response.content = [
+                            self._sanitize_block(block) for block in response.content
+                        ]
 
             if response.stop_reason == "tool_use":
                 tool_results = self._handle_tool_calls(response, tool_activity)
@@ -199,11 +206,14 @@ class ToolLoop:
         tool_results = []
 
         for block in response.content:
-            if block.type != "tool_use":
+            # After sanitisation in the streaming path, blocks are plain
+            # dicts; the non-streaming path has SDK objects. Read fields
+            # uniformly to handle both shapes.
+            if self._block_field(block, "type") != "tool_use":
                 continue
 
-            tool_name = block.name
-            tool_input = block.input
+            tool_name = self._block_field(block, "name")
+            tool_input = self._block_field(block, "input")
             logger.info("Tool call: %s(%s)", tool_name, json.dumps(tool_input)[:200])
 
             skill = self.skill_loader.get_skill(tool_name)
@@ -223,12 +233,19 @@ class ToolLoop:
             tool_results.append(
                 {
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": self._block_field(block, "id"),
                     "content": result,
                 }
             )
 
         return tool_results
+
+    @staticmethod
+    def _block_field(block, name):
+        """Read a content-block field whether the block is an SDK object or a dict."""
+        if isinstance(block, dict):
+            return block.get(name)
+        return getattr(block, name, None)
 
     def _extract_and_save_remember(self, result: str) -> str:
         """Strip ## remember: blocks from skill output and file them to the memory vault."""
@@ -247,10 +264,45 @@ class ToolLoop:
 
         return cleaned.strip() or "Skill completed with no output"
 
+    @staticmethod
+    def _sanitize_block(block):
+        """Strip SDK-internal helper fields from a content block.
+
+        Anthropic's streaming SDK attaches `parsed_output` to text blocks
+        (and would for tool_use blocks too, in some configurations). The
+        API rejects those fields with HTTP 400 'Extra inputs are not
+        permitted' when we echo the content back on the next turn.
+        Convert to a plain dict via model_dump and keep only API-accepted
+        fields per block type.
+        """
+        if hasattr(block, "model_dump"):
+            data = block.model_dump(exclude_none=True)
+        elif isinstance(block, dict):
+            data = dict(block)
+        else:
+            return block
+
+        block_type = data.get("type")
+        allowed = {
+            "text": {"type", "text", "citations"},
+            "tool_use": {"type", "id", "name", "input"},
+            "thinking": {"type", "thinking", "signature"},
+            "redacted_thinking": {"type", "data"},
+        }
+        keep = allowed.get(block_type)
+        if keep is None:
+            return data
+        return {k: v for k, v in data.items() if k in keep}
+
     def _extract_text(self, response) -> str:
-        """Extract text content from Claude's response."""
+        """Extract text content from Claude's response.
+
+        Handles both SDK content-block objects (non-streaming path) and
+        sanitised dicts (streaming path)."""
         parts = []
         for block in response.content:
-            if block.type == "text":
-                parts.append(block.text)
+            if self._block_field(block, "type") == "text":
+                text = self._block_field(block, "text")
+                if text:
+                    parts.append(text)
         return " ".join(parts)

@@ -451,13 +451,19 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("TTS error: %s", e)
 
-    def speak_stream_feeder(self):
+    def speak_stream_feeder(self, on_first_chunk=None):
         """Return (push, finalize) for feeding text deltas into a streaming TTS run.
 
-        Spins up a daemon thread that consumes from a queue and drives
-        tts_backend.speak_stream. The orchestrator pushes deltas via
-        on_chunk; the voice loop calls finalize() when the LLM round is
-        done so the consumer drains and the TTS thread joins.
+        The Kokoro consumer thread is spawned LAZILY on the first non-empty
+        delta — we don't claim the audio device until we have something to
+        speak. This lets elevator music keep playing during the LLM wait
+        (which on Pi 5 + Ollama timeout can easily be 25-30 seconds of
+        otherwise-silent dead air).
+
+        on_first_chunk: optional zero-arg callable fired exactly once when the
+        first non-empty delta arrives. The voice loop uses this to stop the
+        elevator-music stream immediately before Kokoro's OutputStream opens
+        on the same USB DAC.
 
         When TTS is disabled or no backend is configured, push is a no-op
         and finalize returns immediately — callers get a uniform interface
@@ -478,6 +484,8 @@ class VoiceInterface:
         q: queue.Queue = queue.Queue()
         SENTINEL = object()
         backend = self.tts_backend
+        thread_holder: list = [None]
+        first_chunk_seen = [False]
 
         def _gen():
             while True:
@@ -492,16 +500,33 @@ class VoiceInterface:
             except Exception:
                 logger.exception("speak_stream consumer raised")
 
-        thread = threading.Thread(target=_consume, daemon=True, name="kokoro-stream")
-        thread.start()
+        def _ensure_thread() -> None:
+            if thread_holder[0] is not None:
+                return
+            t = threading.Thread(target=_consume, daemon=True, name="kokoro-stream")
+            t.start()
+            thread_holder[0] = t
 
         def push(delta: str) -> None:
+            if not delta:
+                return
+            if not first_chunk_seen[0]:
+                first_chunk_seen[0] = True
+                if on_first_chunk is not None:
+                    try:
+                        on_first_chunk()
+                    except Exception:
+                        logger.exception("on_first_chunk hook raised")
+                _ensure_thread()
             q.put(delta)
 
         def finalize() -> None:
+            if thread_holder[0] is None:
+                # No deltas ever arrived; nothing to drain or join.
+                return
             q.put(SENTINEL)
-            thread.join(timeout=30)
-            if thread.is_alive():
+            thread_holder[0].join(timeout=30)
+            if thread_holder[0].is_alive():
                 logger.warning("Kokoro stream thread did not finish within 30s")
 
         return push, finalize

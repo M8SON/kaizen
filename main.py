@@ -255,19 +255,21 @@ def run_voice_mode(orchestrator, voice=None):
                         return
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
-                        # Music shares the output device with Kokoro — release
-                        # it before the streaming feeder spawns, otherwise the
-                        # Kokoro consumer thread fights elevator music for the
-                        # USB DAC.
-                        voice.stop_thinking_music()
-                        push, finalize = voice.speak_stream_feeder()
+                        # Keep elevator music running until the FIRST delta
+                        # arrives, then stop it and let Kokoro take the device.
+                        # If we stop music up-front the user hears 25-30s of
+                        # silence while Ollama times out + Claude responds.
+                        push_raw, finalize = voice.speak_stream_feeder(
+                            on_first_chunk=voice.stop_thinking_music,
+                        )
                         try:
                             with profiling.stage("tts"):
                                 response = orchestrator.process_message(
-                                    transcription, on_chunk=push
+                                    transcription, on_chunk=push_raw
                                 )
                                 finalize()
                         except Exception:
+                            voice.stop_thinking_music()
                             finalize()
                             raise
                         print(f"Assistant: {response}\n")

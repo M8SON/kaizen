@@ -72,15 +72,20 @@ class FakeVoice:
     def shutdown(self):
         self.shutdown_calls += 1
 
-    def speak_stream_feeder(self):
+    def speak_stream_feeder(self, on_first_chunk=None):
         chunks = []
+        first_seen = [False]
 
         def push(delta: str) -> None:
+            if not delta:
+                return
+            if not first_seen[0]:
+                first_seen[0] = True
+                if on_first_chunk is not None:
+                    on_first_chunk()
             chunks.append(delta)
 
         def finalize() -> None:
-            # Spoken output is the concatenation of all deltas — record it
-            # in self.spoken so existing assertions keep working.
             if chunks:
                 self.spoken.append("".join(chunks))
             chunks.clear()

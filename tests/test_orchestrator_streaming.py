@@ -87,6 +87,43 @@ class TestToolLoopStreaming(unittest.TestCase):
         # The streaming context manager should NOT have been touched.
         client.messages.stream.assert_not_called()
 
+    def test_streaming_strips_sdk_internal_parsed_output_field(self):
+        """Anthropic's streaming SDK adds `parsed_output` to text blocks.
+
+        The API rejects that field with HTTP 400 on echo, so the tool loop
+        must sanitise streamed content before committing to conversation
+        state.
+        """
+        loop, client = _make_tool_loop()
+
+        # Mock a streamed text block with an SDK-internal field present.
+        class _Block:
+            def model_dump(self, **kw):
+                return {"type": "text", "text": "Hello.", "parsed_output": {"junk": True}}
+
+        final = SimpleNamespace(
+            content=[_Block()],
+            stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+        )
+        stream_obj = MagicMock()
+        stream_obj.text_stream = iter(["Hello."])
+        stream_obj.get_final_message.return_value = final
+
+        @contextmanager
+        def stream_cm(**_kwargs):
+            yield stream_obj
+
+        client.messages.stream = stream_cm
+
+        loop.run(user_message="hi", system_prompt="x", on_chunk=lambda _t: None)
+
+        # Whatever was committed to conversation state must NOT contain
+        # parsed_output on any block — that's the API-rejected field.
+        committed_content = loop.conversation_state.append_assistant_content.call_args.args[0]
+        for block in committed_content:
+            self.assertNotIn("parsed_output", block)
+
     def test_on_chunk_exception_does_not_break_round(self):
         loop, client = _make_tool_loop()
         stream_cm, _ = _make_streaming_response(

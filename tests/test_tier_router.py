@@ -120,14 +120,14 @@ class TestSkillPrediction(unittest.TestCase):
         return sel
 
     def test_claude_only_skill_routes_to_claude(self):
-        sel = self._make_selector_predicting("install_skill")
-        router = _make_router(claude_only={"install_skill"}, skill_selector=sel)
+        sel = self._make_selector_predicting("install-skill")
+        router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("make me a new skill")
         self.assertEqual(result.tier, "claude")
 
     def test_non_claude_only_skill_routes_to_ollama(self):
         sel = self._make_selector_predicting("weather")
-        router = _make_router(claude_only={"install_skill"}, skill_selector=sel)
+        router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("what is the weather in London")
         self.assertEqual(result.tier, "ollama")
 
@@ -147,7 +147,7 @@ class TestSkillPrediction(unittest.TestCase):
         sel = MagicMock()
         sel.available = True
         sel.select.return_value = None
-        router = _make_router(claude_only={"install_skill"}, skill_selector=sel)
+        router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("do something")
         self.assertEqual(result.tier, "ollama")
 
@@ -155,14 +155,14 @@ class TestSkillPrediction(unittest.TestCase):
         sel = MagicMock()
         sel.available = True
         sel.select.side_effect = RuntimeError("model error")
-        router = _make_router(claude_only={"install_skill"}, skill_selector=sel)
+        router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("do something")
         self.assertEqual(result.tier, "ollama")
 
     def test_escalate_pattern_skips_skill_selector(self):
         sel = MagicMock()
         sel.available = True
-        router = _make_router(claude_only={"install_skill"}, skill_selector=sel)
+        router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         router.route("remember to buy milk")
         sel.select.assert_not_called()
 

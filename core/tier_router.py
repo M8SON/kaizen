@@ -50,7 +50,7 @@ class TierRouter:
         self._dispatch: list[dict] = []
         self._escalate: list[re.Pattern] = []
         self._skill_selector = skill_selector
-        self._claude_only: set[str] = claude_only_skills or {"install_skill"}
+        self._claude_only: set[str] = claude_only_skills or {"install-skill"}
         self._load_patterns(patterns_path)
 
     def _load_patterns(self, path: Path) -> None:

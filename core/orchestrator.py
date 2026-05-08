@@ -132,7 +132,7 @@ class Orchestrator:
             from core.ollama_tool_loop import OllamaToolLoop
             _patterns_path = Path(__file__).parent.parent / "config" / "intent_patterns.yaml"
             _claude_only = {
-                s.strip() for s in os.getenv("CLAUDE_ONLY_SKILLS", "install_skill").split(",")
+                s.strip() for s in os.getenv("CLAUDE_ONLY_SKILLS", "install-skill").split(",")
             }
             self._tier_router = TierRouter(
                 patterns_path=_patterns_path,
@@ -468,7 +468,7 @@ class Orchestrator:
         """
         End the current session: save anything worth remembering, then say goodbye.
 
-        Sends a final internal message so Claude can call save_memory if the
+        Sends a final internal message so Claude can call save-memory if the
         conversation contained anything worth keeping, then returns a spoken goodbye.
         """
         if not self.conversation_state.messages:
@@ -479,7 +479,7 @@ class Orchestrator:
             user_message=(
                 "The user is ending this conversation. "
                 "If anything worth remembering came up — a preference, a project detail, "
-                "something to keep in mind for next time — use save_memory to save it now. "
+                "something to keep in mind for next time — use save-memory to save it now. "
                 "Then say a brief, warm goodbye."
             ),
             system_prompt=self.system_prompt,

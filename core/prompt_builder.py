@@ -58,7 +58,7 @@ take effort to clean up.
 class PromptBuilder:
     """Build the full system prompt used for Claude requests."""
 
-    ALWAYS_FULL_SKILLS = {"set_env_var", "save_memory", "install_skill"}
+    ALWAYS_FULL_SKILLS = {"set-env-var", "save-memory", "install-skill"}
 
     BASE_PROMPT_TEMPLATE = (
         "Your name is {persona}. You are Mason's personal voice assistant, running on a Raspberry Pi. "
@@ -81,7 +81,7 @@ class PromptBuilder:
         "X but I am not sure, could you repeat that?'\n"
         "- If you learn something genuinely worth remembering about Mason — a preference, "
         "an ongoing project, something he asked you to keep in mind, or a useful fact about "
-        "his life or work — save it using the save_memory skill without waiting to be asked. "
+        "his life or work — save it using the save-memory skill without waiting to be asked. "
         "Do not save passing remarks or one-off requests. Only save what would be useful "
         "to recall in a future session.\n"
     )

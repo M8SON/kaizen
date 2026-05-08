@@ -40,9 +40,9 @@ SKILLS = {
     "soundcloud": FakeSkill("soundcloud", "Play music from SoundCloud"),
     "weather": FakeSkill("weather", "Get current weather"),
     "dashboard": FakeSkill("dashboard", "Show a visual dashboard"),
-    "set_env_var": FakeSkill("set_env_var", "Set an environment variable"),
-    "save_memory": FakeSkill("save_memory", "Save a memory note"),
-    "install_skill": FakeSkill("install_skill", "Install a new skill"),
+    "set-env-var": FakeSkill("set-env-var", "Set an environment variable"),
+    "save-memory": FakeSkill("save-memory", "Save a memory note"),
+    "install-skill": FakeSkill("install-skill", "Install a new skill"),
 }
 
 
@@ -73,7 +73,7 @@ class TestPromptBuilderSelector(unittest.TestCase):
     def test_always_full_skills_always_expanded(self):
         builder = self._make_builder(selector=MockSelector())
         prompt = builder.build(SKILLS, {}, user_message="play a song")
-        for always_full in ("set_env_var", "save_memory", "install_skill"):
+        for always_full in ("set-env-var", "save-memory", "install-skill"):
             self.assertIn(f"### {always_full}", prompt)
 
     def test_without_user_message_expands_all_skills(self):

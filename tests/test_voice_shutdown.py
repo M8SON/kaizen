@@ -111,3 +111,27 @@ def test_shutdown_stops_music_thread(voice):
 
     assert voice._music_playing is False
     voice._music_thread is None  # cleared by stop_thinking_music
+
+
+def test_record_until_silence_propagates_keyboard_interrupt(voice):
+    """Ctrl+C during recording must propagate so main can exit cleanly.
+
+    Previous behaviour swallowed the signal, returning an empty WAV; the
+    main loop treated that as an idle timeout and bounced back to the wake
+    loop. The program kept running and the user had to kill the terminal."""
+    fake_audio = MagicMock()
+    fake_audio.get_sample_size.return_value = 2
+    fake_stream = MagicMock()
+    fake_stream.read.side_effect = KeyboardInterrupt
+    fake_audio.open.return_value = fake_stream
+
+    with pytest.raises(KeyboardInterrupt):
+        with __import__("unittest.mock", fromlist=["patch"]).patch(
+            "core.voice.pyaudio.PyAudio", return_value=fake_audio
+        ):
+            voice._record_until_silence()
+
+    # Cleanup still ran via finally
+    fake_stream.stop_stream.assert_called_once()
+    fake_stream.close.assert_called_once()
+    fake_audio.terminate.assert_called_once()

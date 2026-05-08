@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 
 import requests
@@ -141,6 +142,14 @@ class OllamaToolLoop:
 
         keep_alive = os.environ.get("OLLAMA_KEEP_ALIVE")
 
+        prompt_chars = self._estimate_prompt_chars(local_messages, tool_definitions)
+        overall_start = time.perf_counter()
+        logger.info(
+            "OllamaToolLoop: starting with %d tool def(s), ~%d prompt chars",
+            len(tool_definitions or []),
+            prompt_chars,
+        )
+
         while rounds < self.max_rounds:
             rounds += 1
 
@@ -155,6 +164,7 @@ class OllamaToolLoop:
                 # model in RAM so it never cold-loads between turns.
                 payload["keep_alive"] = keep_alive
 
+            round_start = time.perf_counter()
             try:
                 with profiling.stage("llm_ollama"):
                     response = requests.post(
@@ -164,11 +174,26 @@ class OllamaToolLoop:
                     )
                     response.raise_for_status()
             except requests.Timeout:
-                logger.warning("OllamaToolLoop: timeout after %.1fs → escalate", self.timeout)
+                elapsed = time.perf_counter() - round_start
+                logger.warning(
+                    "OllamaToolLoop: round %d timed out at %.1fs/%.1fs (%d tool def(s), ~%d prompt chars) → escalate",
+                    rounds, elapsed, self.timeout,
+                    len(tool_definitions or []), prompt_chars,
+                )
                 return EscalateWithContext(_executed_tools) if _executed_tools else EscalateSignal
             except requests.RequestException as exc:
-                logger.warning("OllamaToolLoop: request error %s → escalate", exc)
+                elapsed = time.perf_counter() - round_start
+                logger.warning(
+                    "OllamaToolLoop: round %d request error after %.1fs: %s → escalate",
+                    rounds, elapsed, exc,
+                )
                 return EscalateWithContext(_executed_tools) if _executed_tools else EscalateSignal
+
+            round_elapsed = time.perf_counter() - round_start
+            logger.info(
+                "OllamaToolLoop: round %d completed in %.1fs",
+                rounds, round_elapsed,
+            )
 
             # Tool call handling and response extraction added in Task 5
             try:
@@ -246,7 +271,11 @@ class OllamaToolLoop:
             # Final text response
             if content:
                 self._commit_to_state(user_message, content)
-                logger.info("OllamaToolLoop: response ready in %d round(s)", rounds)
+                total_elapsed = time.perf_counter() - overall_start
+                logger.info(
+                    "OllamaToolLoop: response ready in %d round(s), %.1fs total",
+                    rounds, total_elapsed,
+                )
                 return content
 
             logger.warning("OllamaToolLoop: empty response → escalate")
@@ -289,6 +318,20 @@ class OllamaToolLoop:
         # Mirrors PromptBuilder._estimate_tokens (~4 chars per token) so the
         # token-budget math agrees across the codebase.
         return max(1, len(text) // 4)
+
+    def _estimate_prompt_chars(self, messages: list[dict], tools: list | None) -> int:
+        """Approximate total prompt size in characters for diagnostic logging.
+
+        Prompt-eval time on Pi 5 CPU scales with this, so seeing it next to
+        round latency tells us whether slowness is prompt-eval (large size)
+        or generation (small size, long latency)."""
+        try:
+            chars = sum(len(json.dumps(m)) for m in messages)
+            if tools:
+                chars += sum(len(json.dumps(t)) for t in tools)
+            return chars
+        except (TypeError, ValueError):
+            return 0
 
     def _trim_history(self, history: list[dict]) -> list[dict]:
         """Keep the most recent messages within the budget; never return empty

@@ -587,7 +587,11 @@ class VoiceInterface:
                         break
 
         except KeyboardInterrupt:
-            pass
+            # Re-raise so main's outer 'except KeyboardInterrupt' runs the
+            # shutdown path. Swallowing it here previously made Ctrl+C silently
+            # end the current session and bounce back into the wake loop —
+            # the program kept running and Mason had to kill the terminal.
+            raise
         finally:
             sample_width = audio.get_sample_size(self.FORMAT)
             self._close_pyaudio(audio, stream)

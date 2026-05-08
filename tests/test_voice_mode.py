@@ -64,6 +64,10 @@ class FakeVoice:
         self.thinking_sounds = 0
         self.music_starts = 0
         self.music_stops = 0
+        self.shutdown_calls = 0
+
+    def shutdown(self):
+        self.shutdown_calls += 1
 
     def wait_for_wake_word(self):
         if not self.wake_results:
@@ -156,6 +160,46 @@ class VoiceModeTests(unittest.TestCase):
 
         rendered = output.getvalue()
         self.assertIn("[scheduled] Scheduled briefing", rendered)
+
+
+class VoiceModeShutdownTests(unittest.TestCase):
+    def test_voice_shutdown_runs_on_normal_exit(self):
+        orchestrator = FakeOrchestrator(["Hi"])
+        voice = FakeVoice(wake_results=[True], listen_results=["goodbye"])
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+
+        self.assertGreaterEqual(voice.shutdown_calls, 1)
+
+    def test_voice_shutdown_runs_on_keyboard_interrupt(self):
+        orchestrator = FakeOrchestrator([])
+        voice = FakeVoice(wake_results=[], listen_results=[])
+
+        def raise_kbi():
+            raise KeyboardInterrupt
+        voice.wait_for_wake_word = raise_kbi
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+
+        self.assertGreaterEqual(voice.shutdown_calls, 1)
+
+    def test_voice_mode_restores_prior_signal_handlers(self):
+        import signal as _signal
+        orchestrator = FakeOrchestrator(["Hi"])
+        voice = FakeVoice(wake_results=[True], listen_results=["goodbye"])
+
+        sentinel_int = _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+        sentinel_term = _signal.signal(_signal.SIGTERM, _signal.SIG_DFL)
+        try:
+            with redirect_stdout(io.StringIO()):
+                main.run_voice_mode(orchestrator, voice=voice)
+            self.assertEqual(_signal.getsignal(_signal.SIGINT), _signal.SIG_DFL)
+            self.assertEqual(_signal.getsignal(_signal.SIGTERM), _signal.SIG_DFL)
+        finally:
+            _signal.signal(_signal.SIGINT, sentinel_int)
+            _signal.signal(_signal.SIGTERM, sentinel_term)
 
 
 if __name__ == "__main__":

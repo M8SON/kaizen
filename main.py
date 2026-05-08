@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import logging
+import signal
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -185,6 +186,22 @@ def run_voice_mode(orchestrator, voice=None):
 
     active_flag = getattr(orchestrator, "_conversation_active_flag", [False])
 
+    # Close PyAudio cleanly on Ctrl+C / SIGTERM. Without this, an interrupt
+    # delivered while a stream.read is in PortAudio's C-extension can leave
+    # /dev/snd/pcmC*D0c claimed by the orphaned process, and the next
+    # ./run.sh --voice fails with Errno -9996 on the XVF3800.
+    def _shutdown_voice(signum, _frame):
+        try:
+            voice.shutdown()
+        except Exception:
+            logger.exception("voice.shutdown failed in signal handler")
+        if signum == signal.SIGINT:
+            raise KeyboardInterrupt
+        sys.exit(0)
+
+    prev_sigint = signal.signal(signal.SIGINT, _shutdown_voice)
+    prev_sigterm = signal.signal(signal.SIGTERM, _shutdown_voice)
+
     try:
         while True:
             # Drain any scheduled fires that arrived while we were idle.
@@ -256,6 +273,12 @@ def run_voice_mode(orchestrator, voice=None):
     except KeyboardInterrupt:
         print("\n\nShutting down...")
     finally:
+        signal.signal(signal.SIGINT, prev_sigint)
+        signal.signal(signal.SIGTERM, prev_sigterm)
+        try:
+            voice.shutdown()
+        except Exception:
+            logger.exception("voice.shutdown failed during cleanup")
         orchestrator.end_session()
 
 

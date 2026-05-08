@@ -87,6 +87,12 @@ class VoiceInterface:
         self._shared_audio = None
         self._shared_stream = None
 
+        # Active PyAudio resources tracked here so shutdown() (e.g. from a
+        # SIGINT handler) can close them even if the wake/listen loop is
+        # blocked in PortAudio's C-extension when the signal arrives.
+        self._active_audio = None
+        self._active_stream = None
+
         self.stt_backend = stt_backend or WhisperBackend(
             wake_model=wake_model,
             transcription_model=whisper_model,
@@ -220,6 +226,44 @@ class VoiceInterface:
             self._music_thread.join(timeout=1.0)
             self._music_thread = None
 
+    @staticmethod
+    def _close_pyaudio(audio, stream) -> None:
+        """Best-effort PyAudio teardown that swallows late-stage errors.
+
+        Used by both the normal wake/listen exit paths and shutdown()."""
+        if stream is not None:
+            try:
+                stream.stop_stream()
+            except Exception:
+                pass
+            try:
+                stream.close()
+            except Exception:
+                pass
+        if audio is not None:
+            try:
+                audio.terminate()
+            except Exception:
+                pass
+
+    def shutdown(self) -> None:
+        """Release every audio resource this VoiceInterface owns.
+
+        Idempotent and exception-safe so it can run from a signal handler
+        or a finally block. Closes the elevator-music stream, the shared
+        wake→listen handoff stream, and any stream currently being read
+        by wait_for_wake_word / _record_until_silence (PyAudio's C-level
+        stream.read can pin /dev/snd until the device is explicitly
+        terminated, which strands the next ./run.sh --voice with
+        Errno -9996 on the XVF3800)."""
+        self.stop_thinking_music()
+        self._close_pyaudio(self._shared_audio, self._shared_stream)
+        self._shared_audio = None
+        self._shared_stream = None
+        self._close_pyaudio(self._active_audio, self._active_stream)
+        self._active_audio = None
+        self._active_stream = None
+
     def wait_for_wake_word(self) -> bool:
         """
         Block until the wake phrase is detected in the microphone stream.
@@ -240,6 +284,8 @@ class VoiceInterface:
             input_device_index=self._input_device_index,
             frames_per_buffer=self.CHUNK,
         )
+        self._active_audio = audio
+        self._active_stream = stream
 
         window_samples = int(self.RATE * self.WAKE_WINDOW_SECONDS)
         step_samples = int(self.RATE * self.WAKE_STEP_SECONDS)
@@ -270,6 +316,8 @@ class VoiceInterface:
                         logger.info("Wake detected")
                         self._shared_audio = audio
                         self._shared_stream = stream
+                        self._active_audio = None
+                        self._active_stream = None
                         return True
                     continue
 
@@ -297,17 +345,19 @@ class VoiceInterface:
                     logger.info("Wake phrase detected: '%s'", transcript)
                     self._shared_audio = audio
                     self._shared_stream = stream
+                    self._active_audio = None
+                    self._active_stream = None
                     return True
 
         except KeyboardInterrupt:
-            stream.stop_stream()
-            stream.close()
-            audio.terminate()
+            self._close_pyaudio(audio, stream)
+            self._active_audio = None
+            self._active_stream = None
             return False
         except Exception:
-            stream.stop_stream()
-            stream.close()
-            audio.terminate()
+            self._close_pyaudio(audio, stream)
+            self._active_audio = None
+            self._active_stream = None
             raise
 
     def listen(self, max_wait_seconds: float = 0, on_speech_done=None) -> str | None:
@@ -472,6 +522,8 @@ class VoiceInterface:
                 input_device_index=self._input_device_index,
                 frames_per_buffer=self.CHUNK,
             )
+        self._active_audio = audio
+        self._active_stream = stream
 
         logger.info("Recording...")
 
@@ -530,9 +582,9 @@ class VoiceInterface:
             pass
         finally:
             sample_width = audio.get_sample_size(self.FORMAT)
-            stream.stop_stream()
-            stream.close()
-            audio.terminate()
+            self._close_pyaudio(audio, stream)
+            self._active_audio = None
+            self._active_stream = None
 
         temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         with wave.open(temp_file.name, "wb") as wf:

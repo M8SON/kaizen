@@ -391,6 +391,80 @@ class KokoroTTSBackend:
         self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
         self.pipeline = KPipeline(lang_code="a")
 
+    SENTENCE_TERMINATORS = (".", "?", "!", "\n")
+    BUFFER_CAP = 200
+
+    def speak_stream(self, chunks) -> None:
+        """Consume an iterable of text deltas, flush sentences to TTS as they form.
+
+        Pi 5 Kokoro first-audio for a buffered 86-token response was measured
+        at ~23s on 2026-05-08. Streaming sentence-by-sentence drops perceived
+        latency to roughly the time of the first sentence's synthesis (~1-2s).
+
+        Flush triggers:
+          - sentence-terminating punctuation (. ? ! \\n)
+          - BUFFER_CAP characters with no terminator (defensive — prevents
+            stalls on long parentheticals or bullet-list-style replies)
+          - end of stream — final non-empty buffer is flushed
+        """
+        buffer = ""
+        t0 = time.perf_counter()
+        first_chunk_at: float | None = None
+        flushes = 0
+
+        with sd.OutputStream(
+            samplerate=self.output_samplerate,
+            channels=1,
+            dtype="float32",
+            device=self.output_device,
+        ) as stream:
+            def _flush(text: str) -> None:
+                nonlocal first_chunk_at, flushes
+                if not text.strip():
+                    return
+                flushes += 1
+                for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+                    if first_chunk_at is None:
+                        first_chunk_at = time.perf_counter()
+                    stream.write(resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate))
+
+            for delta in chunks:
+                buffer += delta
+                while True:
+                    boundary = -1
+                    for term in self.SENTENCE_TERMINATORS:
+                        idx = buffer.find(term)
+                        if idx != -1 and (boundary == -1 or idx < boundary):
+                            boundary = idx
+                    if boundary != -1:
+                        flush_text = buffer[: boundary + 1]
+                        buffer = buffer[boundary + 1 :]
+                        _flush(flush_text)
+                        continue
+                    if len(buffer) >= self.BUFFER_CAP:
+                        _flush(buffer[: self.BUFFER_CAP])
+                        buffer = buffer[self.BUFFER_CAP :]
+                        continue
+                    break
+
+            if buffer.strip():
+                _flush(buffer)
+
+        total_ms = int((time.perf_counter() - t0) * 1000)
+        if flushes == 0:
+            return  # nothing speakable; don't log a noisy 0/0 line
+        if first_chunk_at is None:
+            logger.info(
+                "Kokoro TTS stream: %d flush(es), %dms total (no audio produced)",
+                flushes, total_ms,
+            )
+        else:
+            first_ms = int((first_chunk_at - t0) * 1000)
+            logger.info(
+                "Kokoro TTS stream: %d flush(es), %dms to first audio, %dms total",
+                flushes, first_ms, total_ms,
+            )
+
     def speak(self, text: str) -> None:
         """Stream generated speech directly to the output device.
 

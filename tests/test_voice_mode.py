@@ -35,9 +35,12 @@ class FakeOrchestrator:
     def list_skills(self):
         return [{"name": "skill_tells_random", "description": "Tell a random joke"}]
 
-    def process_message(self, transcription):
+    def process_message(self, transcription, on_chunk=None):
         self.processed.append(transcription)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if on_chunk is not None:
+            on_chunk(response)
+        return response
 
     def close_session(self):
         return "Goodbye!"
@@ -68,6 +71,21 @@ class FakeVoice:
 
     def shutdown(self):
         self.shutdown_calls += 1
+
+    def speak_stream_feeder(self):
+        chunks = []
+
+        def push(delta: str) -> None:
+            chunks.append(delta)
+
+        def finalize() -> None:
+            # Spoken output is the concatenation of all deltas — record it
+            # in self.spoken so existing assertions keep working.
+            if chunks:
+                self.spoken.append("".join(chunks))
+            chunks.clear()
+
+        return push, finalize
 
     def wait_for_wake_word(self):
         if not self.wake_results:

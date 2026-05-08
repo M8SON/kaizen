@@ -254,13 +254,31 @@ def run_voice_mode(orchestrator, voice=None):
                         active_flag[0] = False
                         return
 
-                    try:
-                        response = orchestrator.process_message(transcription)
-                    finally:
+                    if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
+                        # Music shares the output device with Kokoro — release
+                        # it before the streaming feeder spawns, otherwise the
+                        # Kokoro consumer thread fights elevator music for the
+                        # USB DAC.
                         voice.stop_thinking_music()
-                    print(f"Assistant: {response}\n")
-                    with profiling.stage("tts"):
-                        voice.speak(response)
+                        push, finalize = voice.speak_stream_feeder()
+                        try:
+                            with profiling.stage("tts"):
+                                response = orchestrator.process_message(
+                                    transcription, on_chunk=push
+                                )
+                                finalize()
+                        except Exception:
+                            finalize()
+                            raise
+                        print(f"Assistant: {response}\n")
+                    else:
+                        try:
+                            response = orchestrator.process_message(transcription)
+                        finally:
+                            voice.stop_thinking_music()
+                        print(f"Assistant: {response}\n")
+                        with profiling.stage("tts"):
+                            voice.speak(response)
 
                 print("Listening...")
 

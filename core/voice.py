@@ -451,6 +451,61 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("TTS error: %s", e)
 
+    def speak_stream_feeder(self):
+        """Return (push, finalize) for feeding text deltas into a streaming TTS run.
+
+        Spins up a daemon thread that consumes from a queue and drives
+        tts_backend.speak_stream. The orchestrator pushes deltas via
+        on_chunk; the voice loop calls finalize() when the LLM round is
+        done so the consumer drains and the TTS thread joins.
+
+        When TTS is disabled or no backend is configured, push is a no-op
+        and finalize returns immediately — callers get a uniform interface
+        regardless of TTS availability.
+        """
+        import queue
+        import threading
+
+        if not self.enable_tts or self.tts_backend is None or not hasattr(
+            self.tts_backend, "speak_stream"
+        ):
+            def _push(_delta: str) -> None:
+                return
+            def _finalize() -> None:
+                return
+            return _push, _finalize
+
+        q: queue.Queue = queue.Queue()
+        SENTINEL = object()
+        backend = self.tts_backend
+
+        def _gen():
+            while True:
+                item = q.get()
+                if item is SENTINEL:
+                    return
+                yield item
+
+        def _consume():
+            try:
+                backend.speak_stream(_gen())
+            except Exception:
+                logger.exception("speak_stream consumer raised")
+
+        thread = threading.Thread(target=_consume, daemon=True, name="kokoro-stream")
+        thread.start()
+
+        def push(delta: str) -> None:
+            q.put(delta)
+
+        def finalize() -> None:
+            q.put(SENTINEL)
+            thread.join(timeout=30)
+            if thread.is_alive():
+                logger.warning("Kokoro stream thread did not finish within 30s")
+
+        return push, finalize
+
     def _record_until_silence(self, max_wait_seconds: float = 0, on_speech_done=None) -> str:
         """Record audio with automatic silence detection, return temp WAV file path.
 

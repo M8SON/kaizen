@@ -67,7 +67,7 @@ def test_end_session_without_start_is_noop(archive: SessionArchive):
 def test_process_message_archives_user_and_assistant(archive: SessionArchive):
     orch, tl = _make_orchestrator(archive)
 
-    def fake_run(user_message, system_prompt, archive_callback=None):
+    def fake_run(user_message, system_prompt, archive_callback=None, on_chunk=None):
         if archive_callback:
             archive_callback(user_message, [], "the assistant reply")
         return "the assistant reply"
@@ -91,7 +91,7 @@ def test_process_message_archives_user_and_assistant(archive: SessionArchive):
 def test_process_message_archives_tool_activity(archive: SessionArchive):
     orch, tl = _make_orchestrator(archive)
 
-    def fake_run(user_message, system_prompt, archive_callback=None):
+    def fake_run(user_message, system_prompt, archive_callback=None, on_chunk=None):
         if archive_callback:
             tool_activity = [{
                 "name": "weather",
@@ -127,7 +127,7 @@ def test_archive_noop_without_started_session(archive: SessionArchive):
     """If no session has been started, archive_callback writes nothing but does not raise."""
     orch, tl = _make_orchestrator(archive)
 
-    def fake_run(user_message, system_prompt, archive_callback=None):
+    def fake_run(user_message, system_prompt, archive_callback=None, on_chunk=None):
         if archive_callback:
             archive_callback(user_message, [], "reply")
         return "reply"

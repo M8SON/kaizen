@@ -6,6 +6,7 @@ conversation control logic in VoiceInterface.
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import Protocol
 
@@ -391,7 +392,14 @@ class KokoroTTSBackend:
         self.pipeline = KPipeline(lang_code="a")
 
     def speak(self, text: str) -> None:
-        """Stream generated speech directly to the output device."""
+        """Stream generated speech directly to the output device.
+
+        Logs perceived latency (time-to-first-audio-sample) separately
+        from total wall time so the synthesis-cold-start gap is visible
+        independently of how long the utterance actually plays.
+        """
+        t0 = time.perf_counter()
+        first_chunk_at: float | None = None
         with sd.OutputStream(
             samplerate=self.output_samplerate,
             channels=1,
@@ -399,4 +407,14 @@ class KokoroTTSBackend:
             device=self.output_device,
         ) as stream:
             for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+                if first_chunk_at is None:
+                    first_chunk_at = time.perf_counter()
                 stream.write(resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate))
+        total_ms = int((time.perf_counter() - t0) * 1000)
+        if first_chunk_at is None:
+            logger.info("Kokoro TTS: %dms total (no audio produced)", total_ms)
+        else:
+            first_ms = int((first_chunk_at - t0) * 1000)
+            logger.info(
+                "Kokoro TTS: %dms to first audio, %dms total", first_ms, total_ms
+            )

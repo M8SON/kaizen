@@ -252,6 +252,36 @@ class HybridWhisperBackend:
         return result["text"].strip()
 
 
+try:
+    from faster_whisper import WhisperModel
+    _FASTER_WHISPER_AVAILABLE = True
+except ImportError:
+    WhisperModel = None  # type: ignore[assignment]
+    _FASTER_WHISPER_AVAILABLE = False
+
+
+class FasterWhisperBackend:
+    """CPU STT backend using faster-whisper (CTranslate2).
+
+    Drop-in replacement for WhisperBackend.transcribe_file. Runs at int8
+    quantization on CPU — materially better accuracy than openai-whisper
+    base on Pi 5 without a meaningful latency hit because Whisper-small
+    via CTranslate2 is roughly the same wall time as base via the
+    reference implementation.
+    """
+
+    def __init__(self, model_name: str = "small"):
+        if not _FASTER_WHISPER_AVAILABLE:
+            raise ImportError("faster-whisper not installed")
+        logger.info("Loading faster-whisper model: %s", model_name)
+        self.model_name = model_name
+        self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+
+    def transcribe_file(self, audio_file: str) -> str:
+        segments, _info = self.model.transcribe(audio_file, language="en")
+        return "".join(seg.text for seg in segments).strip()
+
+
 def hailo_runtime_available() -> bool:
     return Path("/dev/hailo0").exists()
 

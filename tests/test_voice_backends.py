@@ -378,6 +378,34 @@ class SileroVadBackendTests(unittest.TestCase):
         self.assertTrue(backend.is_speech(np.zeros(512, dtype=np.float32)))
 
 
+class FasterWhisperBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.WhisperModel")
+    def test_transcribe_file_returns_concatenated_text(self, mock_model_cls):
+        seg1 = MagicMock(text="Hello world.")
+        seg2 = MagicMock(text=" Goodbye.")
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = ([seg1, seg2], MagicMock())
+        mock_model_cls.return_value = mock_model
+
+        backend = voice_backends.FasterWhisperBackend(model_name="small")
+        result = backend.transcribe_file("/tmp/fake.wav")
+
+        self.assertEqual(result, "Hello world. Goodbye.")
+
+    @patch("core.voice_backends.WhisperModel")
+    def test_loads_model_with_int8_compute_type_for_cpu(self, mock_model_cls):
+        voice_backends.FasterWhisperBackend(model_name="small")
+        args, kwargs = mock_model_cls.call_args
+        self.assertEqual(args[0], "small")
+        self.assertEqual(kwargs.get("compute_type"), "int8")
+        self.assertEqual(kwargs.get("device"), "cpu")
+
+    @patch("core.voice_backends._FASTER_WHISPER_AVAILABLE", False)
+    def test_init_raises_when_faster_whisper_unavailable(self):
+        with self.assertRaises(ImportError):
+            voice_backends.FasterWhisperBackend(model_name="small")
+
+
 class BuildVadBackendTests(unittest.TestCase):
     @patch("core.voice_backends.SileroVadBackend")
     def test_returns_silero_when_backend_is_silero(self, mock_silero):

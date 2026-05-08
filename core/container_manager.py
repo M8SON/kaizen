@@ -54,6 +54,8 @@ class ContainerManager:
         self._dashboard_timer: threading.Timer | None = None
         self._mpv_process: subprocess.Popen | None = None
         self._mpv_socket_path: str = "/tmp/miniclaw-mpv.sock"
+        self._mpv_log_path: Path = Path.home() / ".miniclaw" / "mpv.log"
+        self._mpv_log_fh = None  # opened on play, closed on stop
         self._self_update_seen: dict[str, str] = {}
         self._current_turn_id: str = ""
         self._native_handlers = {
@@ -667,16 +669,30 @@ class ContainerManager:
         first_title = pairs[0][0]
         urls = [url for _, url in pairs]
 
+        # Detach mpv into its own session so signals delivered to the
+        # orchestrator's process group (e.g. SIGINT/SIGHUP from the voice
+        # loop) don't propagate to the music player. Capture stderr to a
+        # log file so a dying mpv leaves a trail; --really-quiet was
+        # routing crash output to /dev/null and made the regression
+        # invisible on Pi.
+        try:
+            self._mpv_log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._mpv_log_fh = self._mpv_log_path.open("ab", buffering=0)
+        except OSError:
+            self._mpv_log_fh = None
+
         self._mpv_process = subprocess.Popen(
             [
                 "mpv",
                 "--no-video",
-                "--really-quiet",
+                "--no-terminal",
+                "--msg-level=all=warn",
                 f"--input-ipc-server={self._mpv_socket_path}",
                 *urls,
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=self._mpv_log_fh or subprocess.DEVNULL,
+            start_new_session=True,
         )
 
         now_playing_path = Path.home() / ".miniclaw" / "now_playing.json"
@@ -699,10 +715,19 @@ class ContainerManager:
         self._send_mpv_command(command)
         return success_msg
 
+    def _close_mpv_log(self) -> None:
+        if self._mpv_log_fh is not None:
+            try:
+                self._mpv_log_fh.close()
+            except OSError:
+                pass
+            self._mpv_log_fh = None
+
     def _terminate_mpv_process(self) -> None:
         if self._mpv_process and self._mpv_process.poll() is None:
             self._mpv_process.terminate()
         self._mpv_process = None
+        self._close_mpv_log()
 
     def _stop_mpv(self) -> str:
         """Terminate mpv, clean up socket and now-playing files."""
@@ -712,6 +737,7 @@ class ContainerManager:
         if was_running:
             self._mpv_process.terminate()
         self._mpv_process = None
+        self._close_mpv_log()
         if os.path.exists(self._mpv_socket_path):
             try:
                 os.unlink(self._mpv_socket_path)

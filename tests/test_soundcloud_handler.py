@@ -287,6 +287,65 @@ class TestPlayQueue(unittest.TestCase):
 
         self.assertEqual(result, "Now playing: Track 0")
 
+    def test_play_detaches_mpv_into_new_session(self):
+        """mpv must run in its own session so signals to the orchestrator's
+        process group (SIGINT/SIGHUP) don't propagate and kill the player."""
+        def fake_run(cmd, **kwargs):
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = self._yt_dlp_output(1)
+            return mock
+
+        with patch("shutil.which", return_value="/usr/bin/x"), \
+             patch("subprocess.run", side_effect=fake_run), \
+             patch("subprocess.Popen") as mock_popen, \
+             patch("pathlib.Path.write_text"), \
+             patch("pathlib.Path.mkdir"), \
+             patch("pathlib.Path.open", MagicMock()):
+            self.manager._execute_soundcloud({"action": "play", "query": "x"})
+
+        kwargs = mock_popen.call_args.kwargs
+        self.assertTrue(kwargs.get("start_new_session"))
+
+    def test_play_uses_no_terminal_not_really_quiet(self):
+        """--really-quiet routes crash output to a black hole; --no-terminal
+        keeps mpv quiet on stdout while letting stderr land in the log."""
+        def fake_run(cmd, **kwargs):
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = self._yt_dlp_output(1)
+            return mock
+
+        with patch("shutil.which", return_value="/usr/bin/x"), \
+             patch("subprocess.run", side_effect=fake_run), \
+             patch("subprocess.Popen") as mock_popen, \
+             patch("pathlib.Path.write_text"), \
+             patch("pathlib.Path.mkdir"), \
+             patch("pathlib.Path.open", MagicMock()):
+            self.manager._execute_soundcloud({"action": "play", "query": "x"})
+
+        argv = mock_popen.call_args.args[0]
+        self.assertIn("--no-terminal", argv)
+        self.assertNotIn("--really-quiet", argv)
+
+    def test_stop_closes_log_filehandle(self):
+        """The log fh held for mpv stderr must be released on stop so we
+        don't leak descriptors across plays."""
+        proc = MagicMock()
+        proc.poll.return_value = None
+        self.manager._mpv_process = proc
+        log_fh = MagicMock()
+        self.manager._mpv_log_fh = log_fh
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            with patch.object(self.manager, "_mpv_socket_path", str(tmp_p / "x.sock")), \
+                 patch("pathlib.Path.home", return_value=tmp_p):
+                self.manager._execute_soundcloud({"action": "stop"})
+
+        log_fh.close.assert_called_once()
+        self.assertIsNone(self.manager._mpv_log_fh)
+
     def test_play_with_no_results_returns_no_results_message(self):
         def fake_run(cmd, **kwargs):
             mock = MagicMock()

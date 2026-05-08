@@ -82,6 +82,7 @@ class OllamaToolLoop:
         timeout_seconds: float = 8.0,
         max_rounds: int = 10,
         max_history_tokens: int | None = None,
+        skill_selector=None,
     ):
         self.host = host.rstrip("/")
         self.model = model
@@ -91,6 +92,7 @@ class OllamaToolLoop:
         self.memory_provider = memory_provider
         self.timeout = timeout_seconds
         self.max_rounds = max_rounds
+        self._skill_selector = skill_selector
         if max_history_tokens is not None:
             self.max_history_tokens = max_history_tokens
         else:
@@ -133,7 +135,7 @@ class OllamaToolLoop:
         modified on success.
         """
         local_messages = self._build_local_messages(system_prompt, user_message)
-        tool_definitions = self._build_tool_definitions()
+        tool_definitions = self._build_tool_definitions(user_message)
         rounds = 0
         _executed_tools: list[dict] = []
 
@@ -308,19 +310,48 @@ class OllamaToolLoop:
             kept.pop(0)
         return kept
 
-    def _build_tool_definitions(self) -> list:
-        """Convert Anthropic-format tool definitions to OpenAI format."""
-        result = []
-        for td in self.skill_loader.get_tool_definitions():
-            result.append({
+    def _build_tool_definitions(self, user_message: str | None = None) -> list:
+        """Convert Anthropic-format tool definitions to OpenAI format.
+
+        When a SkillSelector is wired in and the user message is non-empty,
+        filter to the top-K semantically relevant tools so phi4-mini's
+        prompt-eval doesn't have to chew through every loaded skill on a
+        Pi-class CPU. Falls back to the full list if the selector is
+        unavailable or returns nothing usable.
+        """
+        all_defs = self.skill_loader.get_tool_definitions()
+
+        if (
+            user_message
+            and self._skill_selector is not None
+            and self._skill_selector.available
+        ):
+            try:
+                selected = self._skill_selector.select(user_message)
+            except Exception as exc:
+                logger.warning("OllamaToolLoop: skill_selector raised %s — sending all tools", exc)
+                selected = set()
+            if selected:
+                filtered = [td for td in all_defs if td["name"] in selected]
+                if filtered:
+                    logger.debug(
+                        "OllamaToolLoop: filtered %d → %d tool defs via selector",
+                        len(all_defs),
+                        len(filtered),
+                    )
+                    all_defs = filtered
+
+        return [
+            {
                 "type": "function",
                 "function": {
                     "name": td["name"],
                     "description": td.get("description", ""),
                     "parameters": td.get("input_schema", {}),
                 },
-            })
-        return result
+            }
+            for td in all_defs
+        ]
 
     def _commit_to_state(self, user_message: str, assistant_response: str) -> None:
         """Commit a successful turn to ConversationState."""

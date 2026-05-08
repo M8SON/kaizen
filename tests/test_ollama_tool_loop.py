@@ -431,5 +431,148 @@ class TestWarmup(unittest.TestCase):
         mock_post.assert_called_once()
 
 
+class TestSkillSelectorFiltering(unittest.TestCase):
+    """OllamaToolLoop should filter tool defs to top-K when a SkillSelector is wired in."""
+
+    def _defs(self, *names):
+        return [
+            {
+                "name": n,
+                "description": f"desc-{n}",
+                "input_schema": {"type": "object"},
+            }
+            for n in names
+        ]
+
+    def test_filters_to_selected_when_selector_available(self):
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search", "schedule", "soundcloud")
+        selector = MagicMock()
+        selector.available = True
+        selector.select.return_value = {"weather"}
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions("what's the weather")
+        names = [d["function"]["name"] for d in defs]
+        self.assertEqual(names, ["weather"])
+        selector.select.assert_called_once_with("what's the weather")
+
+    def test_falls_back_to_all_when_selector_unavailable(self):
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search")
+        selector = MagicMock()
+        selector.available = False
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions("hello")
+        names = sorted(d["function"]["name"] for d in defs)
+        self.assertEqual(names, ["weather", "web-search"])
+        selector.select.assert_not_called()
+
+    def test_falls_back_to_all_when_selector_returns_empty(self):
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search")
+        selector = MagicMock()
+        selector.available = True
+        selector.select.return_value = set()
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions("hello")
+        names = sorted(d["function"]["name"] for d in defs)
+        self.assertEqual(names, ["weather", "web-search"])
+
+    def test_falls_back_to_all_when_no_user_message(self):
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search")
+        selector = MagicMock()
+        selector.available = True
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions(None)
+        names = sorted(d["function"]["name"] for d in defs)
+        self.assertEqual(names, ["weather", "web-search"])
+        selector.select.assert_not_called()
+
+    def test_selector_exception_falls_back_to_all(self):
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search")
+        selector = MagicMock()
+        selector.available = True
+        selector.select.side_effect = RuntimeError("boom")
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions("hello")
+        names = sorted(d["function"]["name"] for d in defs)
+        self.assertEqual(names, ["weather", "web-search"])
+
+    def test_filtered_zero_match_falls_back_to_all(self):
+        # Selector returns names that don't exist in the loaded tool defs —
+        # never strand the model with zero tools.
+        sl = MagicMock()
+        sl.get_tool_definitions.return_value = self._defs("weather", "web-search")
+        selector = MagicMock()
+        selector.available = True
+        selector.select.return_value = {"nonexistent-skill"}
+
+        from core.ollama_tool_loop import OllamaToolLoop
+        from core.conversation_state import ConversationState
+        loop = OllamaToolLoop(
+            host="http://localhost:11434",
+            model="phi4-mini",
+            skill_loader=sl,
+            container_manager=MagicMock(),
+            conversation_state=ConversationState(),
+            skill_selector=selector,
+        )
+        defs = loop._build_tool_definitions("hello")
+        names = sorted(d["function"]["name"] for d in defs)
+        self.assertEqual(names, ["weather", "web-search"])
+
+
 if __name__ == "__main__":
     unittest.main()

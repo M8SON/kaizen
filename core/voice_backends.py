@@ -395,27 +395,32 @@ class KokoroTTSBackend:
     BUFFER_CAP = 200
 
     def speak_stream(self, chunks) -> None:
-        """Consume an iterable of text deltas, flush to TTS at smart boundaries.
+        """Consume an iterable of text deltas, flush sentences to TTS as they form.
 
-        Strategy (tuned for Pi 5 CPU's ~6-9s/sentence Kokoro overhead):
-          1. Accumulate deltas until the first sentence boundary
-          2. Flush that first sentence immediately — user hears speech in
-             ~1-2s instead of waiting for the full response (was ~23s for
-             buffered, measured 2026-05-08)
-          3. After the first flush, BATCH the rest — accumulate everything
-             and synthesize as one Kokoro call at end-of-stream
+        Strategy: per-sentence flushing. Each Kokoro call yields exactly one
+        audio chunk (per-flush diagnostic on Pi 5 2026-05-08 confirmed
+        chunks_n=1 for both 44-char and 277-char inputs), so a long batched
+        call waits the full synthesis time before producing any audio. With
+        per-sentence flushing on Pi 5 (~1.4x slower than real-time):
 
-        Flushing per-sentence after the first one created N-1 Kokoro calls
-        each with ~6s of fixed overhead on Pi 5: a 4-sentence reply spent
-        36s in synthesis with ~6s gaps between sentences. Batching the
-        remainder collapses 3 gaps to 1 and lets Kokoro amortize its
-        per-call overhead.
+          - Total time is the same as batched: ~1.4 × total_audio
+          - But the waits are distributed: a small gap (~1.4 × per_sentence)
+            between each sentence instead of one long gap (~1.4 × total_audio)
+            after the first sentence
+
+        Distributed gaps feel like natural speaker pauses; the single big
+        gap of the batched approach felt like the program had hung.
+
+        Flush triggers:
+          - sentence-terminating punctuation (. ? ! \\n)
+          - BUFFER_CAP characters with no terminator (defensive — prevents
+            stalls on long parentheticals or bullet-list-style replies)
+          - end of stream — final non-empty buffer is flushed
         """
         buffer = ""
         t0 = time.perf_counter()
         first_chunk_at: float | None = None
         flushes = 0
-        first_sentence_flushed = False
 
         with sd.OutputStream(
             samplerate=self.output_samplerate,
@@ -467,28 +472,23 @@ class KokoroTTSBackend:
 
             for delta in chunks:
                 buffer += delta
-                if first_sentence_flushed:
-                    # Just keep accumulating — single batch flush at end
-                    continue
-                # Find earliest sentence terminator (or hit BUFFER_CAP)
-                boundary = -1
-                for term in self.SENTENCE_TERMINATORS:
-                    idx = buffer.find(term)
-                    if idx != -1 and (boundary == -1 or idx < boundary):
-                        boundary = idx
-                if boundary != -1:
-                    flush_text = buffer[: boundary + 1]
-                    buffer = buffer[boundary + 1 :]
-                    _flush(flush_text)
-                    first_sentence_flushed = True
-                elif len(buffer) >= self.BUFFER_CAP:
-                    _flush(buffer[: self.BUFFER_CAP])
-                    buffer = buffer[self.BUFFER_CAP :]
-                    first_sentence_flushed = True
+                while True:
+                    boundary = -1
+                    for term in self.SENTENCE_TERMINATORS:
+                        idx = buffer.find(term)
+                        if idx != -1 and (boundary == -1 or idx < boundary):
+                            boundary = idx
+                    if boundary != -1:
+                        flush_text = buffer[: boundary + 1]
+                        buffer = buffer[boundary + 1 :]
+                        _flush(flush_text)
+                        continue
+                    if len(buffer) >= self.BUFFER_CAP:
+                        _flush(buffer[: self.BUFFER_CAP])
+                        buffer = buffer[self.BUFFER_CAP :]
+                        continue
+                    break
 
-            # End of LLM stream: one batch call for everything that wasn't
-            # the first sentence (or the entire response if no boundary
-            # appeared and we never hit BUFFER_CAP).
             if buffer.strip():
                 _flush(buffer)
 

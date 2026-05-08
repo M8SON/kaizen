@@ -464,5 +464,146 @@ class BuildWakeBackendTests(unittest.TestCase):
             )
 
 
+class RmsVadBackendTests(unittest.TestCase):
+    def test_is_speech_true_when_amplitude_above_threshold(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        loud = (np.ones(1024, dtype=np.int16) * 5000).astype(np.int16)
+        self.assertTrue(backend.is_speech(loud))
+
+    def test_is_speech_false_when_amplitude_below_threshold(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        quiet = np.zeros(1024, dtype=np.int16)
+        self.assertFalse(backend.is_speech(quiet))
+
+    def test_reset_is_noop(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        backend.reset()  # should not raise
+
+    def test_is_speech_handles_float32_normalized_audio(self):
+        backend = voice_backends.RmsVadBackend(threshold=1000)
+        # Normalized float32 audio at amplitude ~0.15 ≈ int16 5000 — well above
+        # threshold 1000. Without proper rescaling this would astype(int16)
+        # truncate to all zeros and incorrectly return False.
+        loud_float = np.ones(1024, dtype=np.float32) * 0.15
+        self.assertTrue(backend.is_speech(loud_float))
+
+
+class SileroVadBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_true_when_score_above_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.85)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x  # passthrough
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        # 1024 samples → exactly two 512-sample sub-frames consumed
+        audio = np.zeros(1024, dtype=np.float32)
+
+        self.assertTrue(backend.is_speech(audio))
+        self.assertEqual(mock_model.call_count, 2)
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_false_when_score_below_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.2)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        self.assertFalse(backend.is_speech(np.zeros(1024, dtype=np.float32)))
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_carry_over_short_chunks(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.0)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        # Two 300-sample chunks: first call has no full 512-frame, second does
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 1)
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_reset_clears_buffer_and_model_state(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        backend.is_speech(np.zeros(300, dtype=np.float32))  # leaves 300 samples in buffer
+        backend.reset()
+        # After reset, a 200-sample chunk should not yet trigger the model (buffer cleared)
+        backend.is_speech(np.zeros(200, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        mock_model.reset_states.assert_called_once()
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_is_speech_true_when_score_equals_threshold(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.5)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        self.assertTrue(backend.is_speech(np.zeros(512, dtype=np.float32)))
+
+
+class BuildVadBackendTests(unittest.TestCase):
+    @patch("core.voice_backends.SileroVadBackend")
+    def test_returns_silero_when_backend_is_silero(self, mock_silero):
+        instance = object()
+        mock_silero.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="silero", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("silero", message)
+
+    @patch("core.voice_backends.RmsVadBackend")
+    def test_returns_rms_when_backend_is_rms(self, mock_rms):
+        instance = object()
+        mock_rms.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="rms", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("rms", message)
+
+    @patch("core.voice_backends.RmsVadBackend")
+    @patch(
+        "core.voice_backends.SileroVadBackend",
+        side_effect=ImportError("silero-vad not installed"),
+    )
+    def test_falls_back_to_rms_on_silero_failure(self, mock_silero, mock_rms):
+        instance = object()
+        mock_rms.return_value = instance
+
+        backend, message = voice_backends.build_vad_backend(
+            backend_name="silero", threshold=0.5, rms_threshold=1000
+        )
+
+        self.assertIs(backend, instance)
+        self.assertIn("fallback", message.lower())
+
+    def test_raises_for_unknown_backend_name(self):
+        with self.assertRaises(ValueError):
+            voice_backends.build_vad_backend(
+                backend_name="nonexistent", threshold=0.5, rms_threshold=1000
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

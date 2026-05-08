@@ -710,36 +710,74 @@ git commit -m "feat(voice): add VadBackend protocol + RmsVadBackend fallback"
 - Modify: `core/voice_backends.py`
 - Modify: `tests/test_voice_backends.py`
 
+**API note (silero-vad 6.x via `load_silero_vad()`):** the returned object is a TorchScript `RecursiveScriptModule` and is a **stateful streaming VAD** — `model(tensor, 16000)` rejects any tensor whose length is not exactly 512 samples at 16kHz (256 / 1024 / 1280 all raise). PyAudio gives us 1024-sample chunks, so the backend must keep an internal carry-over buffer that yields 512-sample frames to the model.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/test_voice_backends.py`:
 ```python
 class SileroVadBackendTests(unittest.TestCase):
     @patch("core.voice_backends.silero_vad")
-    def test_is_speech_true_when_score_above_threshold(self, mock_silero):
+    @patch("core.voice_backends.torch")
+    def test_is_speech_true_when_score_above_threshold(self, mock_torch, mock_silero):
         mock_model = MagicMock()
         mock_model.return_value = MagicMock(item=lambda: 0.85)
         mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x  # passthrough
 
         backend = voice_backends.SileroVadBackend(threshold=0.5)
-        audio = np.zeros(512, dtype=np.float32)
+        # 1024 samples → exactly two 512-sample sub-frames consumed
+        audio = np.zeros(1024, dtype=np.float32)
 
         self.assertTrue(backend.is_speech(audio))
+        self.assertEqual(mock_model.call_count, 2)
 
     @patch("core.voice_backends.silero_vad")
-    def test_is_speech_false_when_score_below_threshold(self, mock_silero):
+    @patch("core.voice_backends.torch")
+    def test_is_speech_false_when_score_below_threshold(self, mock_torch, mock_silero):
         mock_model = MagicMock()
         mock_model.return_value = MagicMock(item=lambda: 0.2)
         mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
 
         backend = voice_backends.SileroVadBackend(threshold=0.5)
-        self.assertFalse(backend.is_speech(np.zeros(512, dtype=np.float32)))
+        self.assertFalse(backend.is_speech(np.zeros(1024, dtype=np.float32)))
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_carry_over_short_chunks(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_model.return_value = MagicMock(item=lambda: 0.0)
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        # Two 300-sample chunks: first call has no full 512-frame, second does
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        backend.is_speech(np.zeros(300, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 1)
+
+    @patch("core.voice_backends.silero_vad")
+    @patch("core.voice_backends.torch")
+    def test_reset_clears_buffer_and_model_state(self, mock_torch, mock_silero):
+        mock_model = MagicMock()
+        mock_silero.load_silero_vad.return_value = mock_model
+        mock_torch.from_numpy.side_effect = lambda x: x
+
+        backend = voice_backends.SileroVadBackend(threshold=0.5)
+        backend.is_speech(np.zeros(300, dtype=np.float32))  # leaves 300 samples in buffer
+        backend.reset()
+        # After reset, a 200-sample chunk should not yet trigger the model (buffer cleared)
+        backend.is_speech(np.zeros(200, dtype=np.float32))
+        self.assertEqual(mock_model.call_count, 0)
+        mock_model.reset_states.assert_called_once()
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_voice_backends.py::SileroVadBackendTests -v`
-Expected: 2 FAILs with `AttributeError: module 'core.voice_backends' has no attribute 'SileroVadBackend'`.
+Expected: 4 FAILs with `AttributeError: module 'core.voice_backends' has no attribute 'SileroVadBackend'`.
 
 - [ ] **Step 3: Implement the class**
 
@@ -756,10 +794,16 @@ except ImportError:
 
 
 class SileroVadBackend:
-    """Primary VAD — Silero ONNX speech-probability model.
+    """Primary VAD — Silero TorchScript speech-probability model.
 
-    Expects 16kHz mono float32 chunks of 512 samples (32ms).
+    Silero VAD only accepts 512-sample frames at 16kHz. PyAudio chunks are
+    typically 1024 samples, so we keep a carry-over buffer that yields exact
+    512-sample frames to the model. Returns True if any frame in the current
+    call's accumulated audio scored above the threshold (conservative — a
+    single speech-positive frame keeps `recording` armed in the endpoint loop).
     """
+
+    FRAME_SIZE = 512
 
     def __init__(self, threshold: float = 0.5):
         if not _SILERO_AVAILABLE:
@@ -767,16 +811,29 @@ class SileroVadBackend:
         logger.info("Loading Silero VAD model")
         self.threshold = threshold
         self.model = silero_vad.load_silero_vad()
+        self._buffer = np.zeros(0, dtype=np.float32)
 
     def is_speech(self, audio_chunk: np.ndarray) -> bool:
         if audio_chunk.dtype != np.float32:
             audio_chunk = audio_chunk.astype(np.float32) / 32768.0
-        tensor = torch.from_numpy(audio_chunk)
-        score = self.model(tensor, 16000).item()
-        return score >= self.threshold
+
+        self._buffer = np.concatenate([self._buffer, audio_chunk])
+
+        any_speech = False
+        while len(self._buffer) >= self.FRAME_SIZE:
+            frame = self._buffer[: self.FRAME_SIZE]
+            self._buffer = self._buffer[self.FRAME_SIZE :]
+            tensor = torch.from_numpy(frame)
+            score = self.model(tensor, 16000).item()
+            if score >= self.threshold:
+                any_speech = True
+        return any_speech
 
     def reset(self) -> None:
-        # Silero models are stateful via internal LSTM; expose reset hook.
+        # Clear streaming carry-over and the model's internal LSTM state.
+        # The endpoint loop calls reset() between sessions so a stale tail
+        # doesn't carry into the next utterance.
+        self._buffer = np.zeros(0, dtype=np.float32)
         if hasattr(self.model, "reset_states"):
             self.model.reset_states()
 ```
@@ -784,13 +841,13 @@ class SileroVadBackend:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_voice_backends.py::SileroVadBackendTests -v`
-Expected: 2 PASSes.
+Expected: 4 PASSes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add core/voice_backends.py tests/test_voice_backends.py
-git commit -m "feat(voice): add SileroVadBackend"
+git commit -m "feat(voice): add SileroVadBackend with 512-frame carry-over buffer"
 ```
 
 ### Task 2.4: Add `build_vad_backend` factory (test-first)

@@ -29,7 +29,7 @@ from core import profiling
 from core.scheduler import SchedulesStore, SchedulerThread
 from core.location_preference import resolve_location
 from core.session_archive import SessionArchive
-from core.voice_backends import build_stt_backend, build_wake_backend
+from core.voice_backends import build_stt_backend, build_wake_backend, build_vad_backend
 
 load_dotenv()
 
@@ -108,6 +108,18 @@ def build_voice_interface():
     )
     logger.info(wake_msg)
 
+    vad_backend_name = os.getenv("VAD_BACKEND", "silero")
+    vad_threshold = float(os.getenv("VAD_THRESHOLD", "0.5"))
+    vad_min_silence_ms = int(os.getenv("VAD_MIN_SILENCE_MS", "700"))
+    rms_threshold = int(os.getenv("SILENCE_THRESHOLD", "1000"))
+
+    vad_backend, vad_msg = build_vad_backend(
+        backend_name=vad_backend_name,
+        threshold=vad_threshold,
+        rms_threshold=rms_threshold,
+    )
+    logger.info(vad_msg)
+
     return VoiceInterface(
         whisper_model=os.getenv("WHISPER_MODEL", "base"),
         wake_model=os.getenv("WAKE_MODEL", "tiny"),
@@ -120,6 +132,8 @@ def build_voice_interface():
         silence_duration=float(os.getenv("SILENCE_DURATION", "2.0")),
         stt_backend=stt_backend,
         wake_backend=wake_backend,
+        vad_backend=vad_backend,
+        vad_min_silence_ms=vad_min_silence_ms,
     )
 
 

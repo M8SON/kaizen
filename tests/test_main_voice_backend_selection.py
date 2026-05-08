@@ -80,5 +80,44 @@ class VoiceWakeBackendIntegrationTests(unittest.TestCase):
         stt_backend.transcribe_wake_audio.assert_not_called()
 
 
+class VadBackendIntegrationTests(unittest.TestCase):
+    @patch("core.voice.pyaudio.PyAudio")
+    @patch("core.voice.tempfile.NamedTemporaryFile")
+    @patch("core.voice.wave.open")
+    @patch("core.voice.resolve_input_device", return_value=None)
+    @patch("core.voice.resolve_output_device", return_value=None)
+    @patch("core.voice.output_samplerate", return_value=48000)
+    def test_record_until_silence_uses_vad_backend(
+        self, _mock_sr, _mock_out, _mock_in, mock_wave, mock_tmp, mock_pa
+    ):
+        from core.voice import VoiceInterface
+
+        # 5 chunks of "speech" then 6 chunks of "silence"
+        speech_pattern = [True] * 5 + [False] * 6
+        vad_backend = unittest.mock.MagicMock()
+        vad_backend.is_speech.side_effect = speech_pattern
+
+        mock_stream = unittest.mock.MagicMock()
+        mock_stream.read.return_value = b"\x00" * 2048  # 1024 int16 samples
+        mock_pa.return_value.open.return_value = mock_stream
+
+        mock_tmp.return_value.__enter__.return_value.name = "/tmp/test.wav"
+
+        voice = VoiceInterface(
+            stt_backend=unittest.mock.MagicMock(),
+            tts_backend=unittest.mock.MagicMock(),
+            vad_backend=vad_backend,
+            vad_min_silence_ms=200,
+            enable_tts=False,
+        )
+
+        voice._record_until_silence()
+
+        # vad_backend.is_speech called for each chunk consumed (>=6 to reach endpoint)
+        self.assertGreaterEqual(vad_backend.is_speech.call_count, 6)
+        # vad_backend.reset called once at the top of the function
+        vad_backend.reset.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

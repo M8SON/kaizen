@@ -279,30 +279,43 @@ class Orchestrator:
             logger.warning("unknown delivery mode %r for schedule %s", delivery, entry.id)
         return None
 
-    def process_message(self, user_message: str) -> str:
-        """Process a user message through the tiered intelligence stack."""
+    def process_message(self, user_message: str, on_chunk=None) -> str:
+        """Process a user message through the tiered intelligence stack.
+
+        on_chunk: optional Callable[[str], None]. When provided, the Claude
+        path streams text deltas through it as they arrive; the orchestrator
+        still returns the full assembled response. The Ollama path is
+        currently non-streaming — if the request stays on Ollama, on_chunk
+        receives the final response in one delta. (Ollama streaming is a
+        separate followup; the high-impact win is the Claude path because
+        that's where most user-visible TTS time is spent on Pi 5.)
+        """
         # Reuse the outer profiling.turn() if the voice loop already opened
         # one; otherwise own the scope so text-mode turns still produce a
         # [TIMING-SUMMARY] line.
         outer = profiling._current_turn.get()
         ctx = contextlib.nullcontext() if outer is not None else profiling.turn()
         with ctx:
-            return self._process_message(user_message)
+            return self._process_message(user_message, on_chunk=on_chunk)
 
-    def _process_message(self, user_message: str) -> str:
+    def _process_message(self, user_message: str, on_chunk=None) -> str:
         if self._tier_router is None:
             system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=system_prompt,
                 archive_callback=self._archive_callback,
+                on_chunk=on_chunk,
             )
 
         route = self._tier_router.route(user_message)
         logger.info("TierRouter: %s → tier=%s", user_message[:60], route.tier)
 
         if route.tier == "direct":
-            return self._execute_direct(route, user_message)
+            result = self._execute_direct(route, user_message)
+            if on_chunk is not None and result:
+                on_chunk(result)
+            return result
 
         if route.tier == "claude":
             system_prompt = self._build_system_prompt(user_message=user_message)
@@ -310,6 +323,7 @@ class Orchestrator:
                 user_message=user_message,
                 system_prompt=system_prompt,
                 archive_callback=self._archive_callback,
+                on_chunk=on_chunk,
             )
 
         # Ollama tier — slim prompt, lazy Claude prompt build only on escalation.
@@ -323,7 +337,9 @@ class Orchestrator:
             logger.info("OllamaToolLoop escalated → Claude (no tools ran)")
             system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
-                user_message=user_message, system_prompt=system_prompt
+                user_message=user_message,
+                system_prompt=system_prompt,
+                on_chunk=on_chunk,
             )
         if isinstance(result, EscalateWithContext):
             logger.info(
@@ -334,6 +350,11 @@ class Orchestrator:
             return self._claude_finalize_ollama_turn(
                 user_message, result.tool_activity, system_prompt
             )
+        if on_chunk is not None and result:
+            # Ollama returned the full response in one shot; deliver it as a
+            # single delta so callers using the streaming path get something
+            # to feed to TTS without a second code path.
+            on_chunk(result)
         return result
 
     def _claude_finalize_ollama_turn(

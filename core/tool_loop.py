@@ -56,6 +56,7 @@ class ToolLoop:
         user_message: str,
         system_prompt: str,
         archive_callback=None,
+        on_chunk=None,
     ) -> str:
         """
         Process a user message through Claude with tool support.
@@ -64,6 +65,13 @@ class ToolLoop:
         Called once per completed turn with (user_message, tool_activity,
         response_text). tool_activity is a list of {"name", "input", "result"}
         dicts, one per tool call this turn (in order). Fires before prune.
+
+        on_chunk: optional Callable[[str], None]. When provided, the Anthropic
+        request runs in streaming mode and text deltas are forwarded to this
+        callback as they arrive. Tool-use rounds still complete fully before
+        tools execute; the streaming only affects WHEN text reaches the
+        caller, not the round structure. When None, behaviour is identical
+        to the non-streaming path.
         """
         if hasattr(self.container_manager, "start_turn"):
             self.container_manager.start_turn()
@@ -100,13 +108,31 @@ class ToolLoop:
                 round_system = effective_system_prompt
 
             with profiling.stage("llm_claude"):
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=4096,
-                    system=round_system,
-                    messages=self.conversation_state.select_messages_for_prompt(),
-                    tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
-                )
+                if on_chunk is None:
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=4096,
+                        system=round_system,
+                        messages=self.conversation_state.select_messages_for_prompt(),
+                        tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
+                    )
+                else:
+                    # Stream text deltas to on_chunk as they arrive; the final
+                    # message (including any tool_use blocks) is reconstructed
+                    # via get_final_message so the rest of the loop is unchanged.
+                    with self.client.messages.stream(
+                        model=self.model,
+                        max_tokens=4096,
+                        system=round_system,
+                        messages=self.conversation_state.select_messages_for_prompt(),
+                        tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
+                    ) as stream:
+                        for delta in stream.text_stream:
+                            try:
+                                on_chunk(delta)
+                            except Exception:
+                                logger.exception("on_chunk callback raised; continuing")
+                        response = stream.get_final_message()
 
             if response.stop_reason == "tool_use":
                 tool_results = self._handle_tool_calls(response, tool_activity)

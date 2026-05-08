@@ -428,10 +428,42 @@ class KokoroTTSBackend:
                 if not text.strip():
                     return
                 flushes += 1
+                flush_n = flushes
+                t_flush_start = time.perf_counter()
+                t_first_chunk: float | None = None
+                t_last_chunk: float | None = None
+                chunks_n = 0
+                audio_samples = 0
                 for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+                    now = time.perf_counter()
+                    if t_first_chunk is None:
+                        t_first_chunk = now
                     if first_chunk_at is None:
-                        first_chunk_at = time.perf_counter()
+                        first_chunk_at = now
+                    chunks_n += 1
+                    audio_samples += len(audio) if audio is not None else 0
                     stream.write(resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate))
+                    t_last_chunk = now
+                # Per-flush diagnostic — when Kokoro stalls on Pi 5 we need
+                # to know whether the wait was before first chunk (model
+                # warmup / prompt-eval-equivalent) or between chunks (slow
+                # sequential generation) so we can target the fix.
+                t_done = time.perf_counter()
+                total_ms = int((t_done - t_flush_start) * 1000)
+                if t_first_chunk is None:
+                    logger.info(
+                        "Kokoro flush #%d (%d chars): NO AUDIO produced in %dms",
+                        flush_n, len(text), total_ms,
+                    )
+                else:
+                    ttfb_ms = int((t_first_chunk - t_flush_start) * 1000)
+                    audio_ms = int(audio_samples / KOKORO_SAMPLE_RATE * 1000)
+                    logger.info(
+                        "Kokoro flush #%d (%d chars): %dms ttfb, %d chunks, "
+                        "~%dms audio, %dms total (synth-vs-realtime ratio: %.1fx)",
+                        flush_n, len(text), ttfb_ms, chunks_n, audio_ms, total_ms,
+                        (total_ms / max(audio_ms, 1)),
+                    )
 
             for delta in chunks:
                 buffer += delta

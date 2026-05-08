@@ -395,22 +395,27 @@ class KokoroTTSBackend:
     BUFFER_CAP = 200
 
     def speak_stream(self, chunks) -> None:
-        """Consume an iterable of text deltas, flush sentences to TTS as they form.
+        """Consume an iterable of text deltas, flush to TTS at smart boundaries.
 
-        Pi 5 Kokoro first-audio for a buffered 86-token response was measured
-        at ~23s on 2026-05-08. Streaming sentence-by-sentence drops perceived
-        latency to roughly the time of the first sentence's synthesis (~1-2s).
+        Strategy (tuned for Pi 5 CPU's ~6-9s/sentence Kokoro overhead):
+          1. Accumulate deltas until the first sentence boundary
+          2. Flush that first sentence immediately — user hears speech in
+             ~1-2s instead of waiting for the full response (was ~23s for
+             buffered, measured 2026-05-08)
+          3. After the first flush, BATCH the rest — accumulate everything
+             and synthesize as one Kokoro call at end-of-stream
 
-        Flush triggers:
-          - sentence-terminating punctuation (. ? ! \\n)
-          - BUFFER_CAP characters with no terminator (defensive — prevents
-            stalls on long parentheticals or bullet-list-style replies)
-          - end of stream — final non-empty buffer is flushed
+        Flushing per-sentence after the first one created N-1 Kokoro calls
+        each with ~6s of fixed overhead on Pi 5: a 4-sentence reply spent
+        36s in synthesis with ~6s gaps between sentences. Batching the
+        remainder collapses 3 gaps to 1 and lets Kokoro amortize its
+        per-call overhead.
         """
         buffer = ""
         t0 = time.perf_counter()
         first_chunk_at: float | None = None
         flushes = 0
+        first_sentence_flushed = False
 
         with sd.OutputStream(
             samplerate=self.output_samplerate,
@@ -430,23 +435,28 @@ class KokoroTTSBackend:
 
             for delta in chunks:
                 buffer += delta
-                while True:
-                    boundary = -1
-                    for term in self.SENTENCE_TERMINATORS:
-                        idx = buffer.find(term)
-                        if idx != -1 and (boundary == -1 or idx < boundary):
-                            boundary = idx
-                    if boundary != -1:
-                        flush_text = buffer[: boundary + 1]
-                        buffer = buffer[boundary + 1 :]
-                        _flush(flush_text)
-                        continue
-                    if len(buffer) >= self.BUFFER_CAP:
-                        _flush(buffer[: self.BUFFER_CAP])
-                        buffer = buffer[self.BUFFER_CAP :]
-                        continue
-                    break
+                if first_sentence_flushed:
+                    # Just keep accumulating — single batch flush at end
+                    continue
+                # Find earliest sentence terminator (or hit BUFFER_CAP)
+                boundary = -1
+                for term in self.SENTENCE_TERMINATORS:
+                    idx = buffer.find(term)
+                    if idx != -1 and (boundary == -1 or idx < boundary):
+                        boundary = idx
+                if boundary != -1:
+                    flush_text = buffer[: boundary + 1]
+                    buffer = buffer[boundary + 1 :]
+                    _flush(flush_text)
+                    first_sentence_flushed = True
+                elif len(buffer) >= self.BUFFER_CAP:
+                    _flush(buffer[: self.BUFFER_CAP])
+                    buffer = buffer[self.BUFFER_CAP :]
+                    first_sentence_flushed = True
 
+            # End of LLM stream: one batch call for everything that wasn't
+            # the first sentence (or the entire response if no boundary
+            # appeared and we never hit BUFFER_CAP).
             if buffer.strip():
                 _flush(buffer)
 

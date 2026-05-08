@@ -525,9 +525,21 @@ class VoiceInterface:
                 # No deltas ever arrived; nothing to drain or join.
                 return
             q.put(SENTINEL)
-            thread_holder[0].join(timeout=30)
+            # Pi 5 Kokoro can spend 30-60s synthesising a multi-sentence
+            # response. The previous 30s timeout fired during normal
+            # operation, after which main.py opened the mic for the next
+            # turn while Kokoro was still using the speaker — assistant's
+            # tail-end audio leaked back into the mic and ALSA threw
+            # 'Device unavailable -9985' when elevator-music tried to claim
+            # the same speaker. 300s is large enough for any reasonable
+            # response; anything longer is a real deadlock and recovery
+            # must be manual.
+            thread_holder[0].join(timeout=300)
             if thread_holder[0].is_alive():
-                logger.warning("Kokoro stream thread did not finish within 30s")
+                logger.warning(
+                    "Kokoro stream thread did not finish within 300s — "
+                    "audio device may be stuck; subsequent turns may glitch"
+                )
 
         return push, finalize
 

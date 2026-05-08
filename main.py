@@ -258,21 +258,24 @@ def run_voice_mode(orchestrator, voice=None):
                         # Keep elevator music running until the FIRST delta
                         # arrives, then stop it and let Kokoro take the device.
                         # If we stop music up-front the user hears 25-30s of
-                        # silence while Ollama times out + Claude responds.
+                        # silence while the LLM is responding.
                         push_raw, finalize = voice.speak_stream_feeder(
                             on_first_chunk=voice.stop_thinking_music,
                         )
                         try:
+                            response = orchestrator.process_message(
+                                transcription, on_chunk=push_raw
+                            )
+                            # Print the assistant text the moment the LLM is
+                            # done — don't gate the CLI display on Kokoro
+                            # finishing playback (which can take 30+s on Pi).
+                            print(f"Assistant: {response}\n")
                             with profiling.stage("tts"):
-                                response = orchestrator.process_message(
-                                    transcription, on_chunk=push_raw
-                                )
                                 finalize()
                         except Exception:
                             voice.stop_thinking_music()
                             finalize()
                             raise
-                        print(f"Assistant: {response}\n")
                     else:
                         try:
                             response = orchestrator.process_message(transcription)

@@ -395,32 +395,83 @@ class KokoroTTSBackend:
     BUFFER_CAP = 200
 
     def speak_stream(self, chunks) -> None:
-        """Consume an iterable of text deltas, flush sentences to TTS as they form.
+        """Consume LLM text deltas, run Kokoro per sentence, write audio.
 
-        Strategy: per-sentence flushing. Each Kokoro call yields exactly one
-        audio chunk (per-flush diagnostic on Pi 5 2026-05-08 confirmed
-        chunks_n=1 for both 44-char and 277-char inputs), so a long batched
-        call waits the full synthesis time before producing any audio. With
-        per-sentence flushing on Pi 5 (~1.4x slower than real-time):
+        Three-stage pipeline that overlaps synthesis with playback:
 
-          - Total time is the same as batched: ~1.4 × total_audio
-          - But the waits are distributed: a small gap (~1.4 × per_sentence)
-            between each sentence instead of one long gap (~1.4 × total_audio)
-            after the first sentence
+          Main thread:  LLM deltas → sentence-queue
+          Synth thread: sentence-queue → audio-queue  (Kokoro pipeline)
+          Writer thread: audio-queue → OutputStream  (stream.write blocks
+                         until the device drains, so it paces playback)
 
-        Distributed gaps feel like natural speaker pauses; the single big
-        gap of the batched approach felt like the program had hung.
+        Per-flush diagnostic (Pi 5 2026-05-08) showed Kokoro yields exactly
+        one chunk per pipeline call after the full synthesis finishes — no
+        in-call streaming. The earlier sequential implementation therefore
+        stalled the user between sentences for the full per-sentence synth
+        time (~1.4x audio duration on Pi 5 CPU). With this pipeline,
+        sentence N+1's synthesis runs while sentence N is playing, so the
+        between-sentence gap shrinks to max(0, synth_time - playback_time)
+        — typically near-zero for short sentences and small for long ones.
 
-        Flush triggers:
-          - sentence-terminating punctuation (. ? ! \\n)
-          - BUFFER_CAP characters with no terminator (defensive — prevents
-            stalls on long parentheticals or bullet-list-style replies)
-          - end of stream — final non-empty buffer is flushed
+        Sentence boundaries are detected by SENTENCE_TERMINATORS plus a
+        defensive BUFFER_CAP so no flush stalls forever on a comma-heavy
+        delta stream.
         """
-        buffer = ""
+        import queue
+        import threading
+
+        SENTINEL = object()
+        sentence_q: queue.Queue = queue.Queue()
+        # Bounded queue — a runaway synth (e.g. Kokoro returning huge audio)
+        # shouldn't OOM the host while writer is blocked on the device.
+        audio_q: queue.Queue = queue.Queue(maxsize=8)
+
         t0 = time.perf_counter()
-        first_chunk_at: float | None = None
-        flushes = 0
+        first_audio_at: list[float | None] = [None]
+        flushes_counter = [0]
+
+        def synth_worker():
+            """Pull sentences, synthesise, push audio chunks to audio_q."""
+            while True:
+                sent = sentence_q.get()
+                if sent is SENTINEL:
+                    audio_q.put(SENTINEL)
+                    return
+                if not sent.strip():
+                    continue
+                flushes_counter[0] += 1
+                flush_n = flushes_counter[0]
+                t_synth_start = time.perf_counter()
+                t_first_chunk: float | None = None
+                chunks_n = 0
+                audio_samples = 0
+                try:
+                    for _, _, audio in self.pipeline(
+                        sent, voice=self.voice, speed=self.speed
+                    ):
+                        if t_first_chunk is None:
+                            t_first_chunk = time.perf_counter()
+                        chunks_n += 1
+                        audio_samples += len(audio) if audio is not None else 0
+                        audio_q.put(audio)
+                except Exception:
+                    logger.exception("Kokoro synth raised on flush #%d", flush_n)
+                    continue
+                synth_ms = int((time.perf_counter() - t_synth_start) * 1000)
+                if t_first_chunk is None:
+                    logger.info(
+                        "Kokoro flush #%d (%d chars): NO AUDIO in %dms",
+                        flush_n, len(sent), synth_ms,
+                    )
+                else:
+                    ttfb_ms = int((t_first_chunk - t_synth_start) * 1000)
+                    audio_ms = int(audio_samples / KOKORO_SAMPLE_RATE * 1000)
+                    logger.info(
+                        "Kokoro flush #%d (%d chars): %dms synth (%dms ttfb), "
+                        "%d chunk(s), ~%dms audio, synth/audio %.2fx",
+                        flush_n, len(sent), synth_ms, ttfb_ms,
+                        chunks_n, audio_ms, synth_ms / max(audio_ms, 1),
+                    )
 
         with sd.OutputStream(
             samplerate=self.output_samplerate,
@@ -428,48 +479,30 @@ class KokoroTTSBackend:
             dtype="float32",
             device=self.output_device,
         ) as stream:
-            def _flush(text: str) -> None:
-                nonlocal first_chunk_at, flushes
-                if not text.strip():
-                    return
-                flushes += 1
-                flush_n = flushes
-                t_flush_start = time.perf_counter()
-                t_first_chunk: float | None = None
-                t_last_chunk: float | None = None
-                chunks_n = 0
-                audio_samples = 0
-                for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
-                    now = time.perf_counter()
-                    if t_first_chunk is None:
-                        t_first_chunk = now
-                    if first_chunk_at is None:
-                        first_chunk_at = now
-                    chunks_n += 1
-                    audio_samples += len(audio) if audio is not None else 0
-                    stream.write(resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate))
-                    t_last_chunk = now
-                # Per-flush diagnostic — when Kokoro stalls on Pi 5 we need
-                # to know whether the wait was before first chunk (model
-                # warmup / prompt-eval-equivalent) or between chunks (slow
-                # sequential generation) so we can target the fix.
-                t_done = time.perf_counter()
-                total_ms = int((t_done - t_flush_start) * 1000)
-                if t_first_chunk is None:
-                    logger.info(
-                        "Kokoro flush #%d (%d chars): NO AUDIO produced in %dms",
-                        flush_n, len(text), total_ms,
-                    )
-                else:
-                    ttfb_ms = int((t_first_chunk - t_flush_start) * 1000)
-                    audio_ms = int(audio_samples / KOKORO_SAMPLE_RATE * 1000)
-                    logger.info(
-                        "Kokoro flush #%d (%d chars): %dms ttfb, %d chunks, "
-                        "~%dms audio, %dms total (synth-vs-realtime ratio: %.1fx)",
-                        flush_n, len(text), ttfb_ms, chunks_n, audio_ms, total_ms,
-                        (total_ms / max(audio_ms, 1)),
+            def writer_worker():
+                """Drain audio_q to the device. Blocks on stream.write so
+                playback is naturally paced; freed audio-queue slots let
+                synth_worker get further ahead during long playback."""
+                while True:
+                    audio = audio_q.get()
+                    if audio is SENTINEL:
+                        return
+                    if first_audio_at[0] is None:
+                        first_audio_at[0] = time.perf_counter()
+                    stream.write(
+                        resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate)
                     )
 
+            synth_thread = threading.Thread(
+                target=synth_worker, daemon=True, name="kokoro-synth"
+            )
+            writer_thread = threading.Thread(
+                target=writer_worker, daemon=True, name="kokoro-writer"
+            )
+            synth_thread.start()
+            writer_thread.start()
+
+            buffer = ""
             for delta in chunks:
                 buffer += delta
                 while True:
@@ -479,29 +512,41 @@ class KokoroTTSBackend:
                         if idx != -1 and (boundary == -1 or idx < boundary):
                             boundary = idx
                     if boundary != -1:
-                        flush_text = buffer[: boundary + 1]
+                        sent_text = buffer[: boundary + 1]
                         buffer = buffer[boundary + 1 :]
-                        _flush(flush_text)
+                        if sent_text.strip():
+                            sentence_q.put(sent_text)
                         continue
                     if len(buffer) >= self.BUFFER_CAP:
-                        _flush(buffer[: self.BUFFER_CAP])
+                        cap_text = buffer[: self.BUFFER_CAP]
                         buffer = buffer[self.BUFFER_CAP :]
+                        if cap_text.strip():
+                            sentence_q.put(cap_text)
                         continue
                     break
 
             if buffer.strip():
-                _flush(buffer)
+                sentence_q.put(buffer)
+            sentence_q.put(SENTINEL)
+
+            # Drain order matters: synth must finish (and put SENTINEL on
+            # audio_q) before writer can complete; writer must finish before
+            # the OutputStream context manager exits and closes the device.
+            synth_thread.join()
+            writer_thread.join()
 
         total_ms = int((time.perf_counter() - t0) * 1000)
+        flushes = flushes_counter[0]
+        first = first_audio_at[0]
         if flushes == 0:
-            return  # nothing speakable; don't log a noisy 0/0 line
-        if first_chunk_at is None:
+            return
+        if first is None:
             logger.info(
                 "Kokoro TTS stream: %d flush(es), %dms total (no audio produced)",
                 flushes, total_ms,
             )
         else:
-            first_ms = int((first_chunk_at - t0) * 1000)
+            first_ms = int((first - t0) * 1000)
             logger.info(
                 "Kokoro TTS stream: %d flush(es), %dms to first audio, %dms total",
                 flushes, first_ms, total_ms,

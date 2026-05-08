@@ -91,5 +91,47 @@ class SpeakStreamTests(unittest.TestCase):
         )
 
 
+class KokoroONNXBackendTests(unittest.TestCase):
+    """KokoroONNXBackend mirrors KokoroTTSBackend's interface, just with a
+    different synth library. Smoke-test the override and the missing-asset
+    error path; full streaming behavior is covered by SpeakStreamTests
+    above (the parallel pipeline lives in the parent class)."""
+
+    @patch("core.voice_backends.Path.exists", return_value=False)
+    def test_init_raises_when_model_missing(self, _mock_exists):
+        from core.voice_backends import KokoroONNXBackend
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            KokoroONNXBackend()
+        self.assertIn("kokoro onnx assets missing", str(ctx.exception).lower())
+
+    @patch("core.voice_backends.Path.exists", return_value=True)
+    def test_synth_audio_yields_one_chunk_from_kokoro_create(self, _mock_exists):
+        """_synth_audio must wrap kokoro.create() output as a one-element generator."""
+        import numpy as np
+        from core import voice_backends
+
+        fake_impl = MagicMock()
+        with patch.object(voice_backends, "_KokoroONNXImpl", fake_impl), \
+             patch.object(voice_backends, "_KOKORO_ONNX_AVAILABLE", True):
+            backend = voice_backends.KokoroONNXBackend(voice="af_heart")
+            backend.kokoro = MagicMock()
+            backend.kokoro.create.return_value = (np.zeros(1024, dtype=np.float32), 24000)
+
+            chunks = list(backend._synth_audio("hello"))
+
+        self.assertEqual(len(chunks), 1)
+        backend.kokoro.create.assert_called_once_with(
+            "hello", voice="af_heart", speed=1.0, lang="en-us"
+        )
+
+    @patch("core.voice_backends._KOKORO_ONNX_AVAILABLE", False)
+    def test_init_raises_import_error_when_kokoro_onnx_uninstalled(self):
+        from core.voice_backends import KokoroONNXBackend
+
+        with self.assertRaises(ImportError):
+            KokoroONNXBackend()
+
+
 if __name__ == "__main__":
     unittest.main()

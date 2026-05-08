@@ -372,8 +372,18 @@ def build_wake_backend(
     return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
 
 
+KOKORO_ONNX_ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "kokoro-onnx"
+
+try:
+    from kokoro_onnx import Kokoro as _KokoroONNXImpl
+    _KOKORO_ONNX_AVAILABLE = True
+except ImportError:
+    _KokoroONNXImpl = None  # type: ignore[assignment]
+    _KOKORO_ONNX_AVAILABLE = False
+
+
 class KokoroTTSBackend:
-    """Default text-to-speech backend using Kokoro with streaming playback."""
+    """Text-to-speech backend using the kokoro PyTorch package."""
 
     sample_rate = KOKORO_SAMPLE_RATE
 
@@ -393,6 +403,15 @@ class KokoroTTSBackend:
 
     SENTENCE_TERMINATORS = (".", "?", "!", "\n")
     BUFFER_CAP = 200
+
+    def _synth_audio(self, text: str):
+        """Yield audio chunks for `text` at KOKORO_SAMPLE_RATE float32.
+
+        Extension point for backends that share the parallel-pipeline
+        machinery but use a different synth library underneath.
+        """
+        for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+            yield audio
 
     def speak_stream(self, chunks) -> None:
         """Consume LLM text deltas, run Kokoro per sentence, write audio.
@@ -446,9 +465,7 @@ class KokoroTTSBackend:
                 chunks_n = 0
                 audio_samples = 0
                 try:
-                    for _, _, audio in self.pipeline(
-                        sent, voice=self.voice, speed=self.speed
-                    ):
+                    for audio in self._synth_audio(sent):
                         if t_first_chunk is None:
                             t_first_chunk = time.perf_counter()
                         chunks_n += 1
@@ -567,7 +584,7 @@ class KokoroTTSBackend:
             dtype="float32",
             device=self.output_device,
         ) as stream:
-            for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+            for audio in self._synth_audio(text):
                 if first_chunk_at is None:
                     first_chunk_at = time.perf_counter()
                 stream.write(resample(audio, KOKORO_SAMPLE_RATE, self.output_samplerate))
@@ -579,3 +596,62 @@ class KokoroTTSBackend:
             logger.info(
                 "Kokoro TTS: %dms to first audio, %dms total", first_ms, total_ms
             )
+
+
+class KokoroONNXBackend(KokoroTTSBackend):
+    """Same Kokoro voices, ONNX Runtime instead of PyTorch.
+
+    Pi 5 voice test 2026-05-08 measured the kokoro PyTorch package at
+    ~1.4x slower than realtime — fast enough to be smooth on a laptop
+    but too slow for gap-free playback on Pi 5 ARM64. The int8-quantized
+    Kokoro ONNX model runs ~2-3x faster on the same CPU; combined with
+    the parallel synth pipeline this brings synth-vs-realtime under 1.0
+    and the audio queue stays full ahead of the writer.
+
+    Inherits the parallel-pipeline machinery (sentence segmentation,
+    synth + writer threads, OutputStream lifecycle) and overrides only
+    the actual synthesis call.
+
+    Model files (download once with scripts/download_kokoro_onnx.py):
+      - <KOKORO_ONNX_ASSET_ROOT>/kokoro-v1.0.int8.onnx  (~30 MB)
+      - <KOKORO_ONNX_ASSET_ROOT>/voices-v1.0.bin         (~10 MB)
+    """
+
+    def __init__(
+        self,
+        voice: str = "af_heart",
+        speed: float = 1.0,
+        output_device: int | None = None,
+        output_samplerate: int | None = None,
+        model_path: Path | None = None,
+        voices_path: Path | None = None,
+    ):
+        if not _KOKORO_ONNX_AVAILABLE:
+            raise ImportError("kokoro-onnx not installed")
+
+        model_path = model_path or KOKORO_ONNX_ASSET_ROOT / "kokoro-v1.0.int8.onnx"
+        voices_path = voices_path or KOKORO_ONNX_ASSET_ROOT / "voices-v1.0.bin"
+        if not Path(model_path).exists() or not Path(voices_path).exists():
+            raise FileNotFoundError(
+                f"Kokoro ONNX assets missing — expected at {model_path} and "
+                f"{voices_path}. Run scripts/download_kokoro_onnx.py to fetch."
+            )
+
+        logger.info(
+            "Loading Kokoro ONNX (voice: %s, model: %s)", voice, model_path.name,
+        )
+        self.voice = voice
+        self.speed = speed
+        self.output_device = output_device
+        self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
+        self.kokoro = _KokoroONNXImpl(str(model_path), str(voices_path))
+
+    def _synth_audio(self, text: str):
+        # kokoro.create returns (audio_array, sample_rate). Returns a single
+        # array per call rather than streaming chunks like the PyTorch
+        # pipeline — same observable behavior we already saw on Pi where
+        # the pytorch path also yields one chunk per call.
+        audio, _sr = self.kokoro.create(
+            text, voice=self.voice, speed=self.speed, lang="en-us"
+        )
+        yield audio

@@ -324,9 +324,3 @@ class HailoTranscriptionRuntime:
         return cleaned
 
 
-class HailoWakeRuntime(HailoTranscriptionRuntime):
-    asset_kind = "wake"
-
-    def transcribe_wake_audio(self, audio_float) -> str:
-        audio = np.asarray(audio_float, dtype=np.float32).flatten()
-        return " ".join(self._transcribe_audio_chunks(audio)).lower().strip()

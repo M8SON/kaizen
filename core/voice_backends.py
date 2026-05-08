@@ -15,18 +15,16 @@ import sounddevice as sd
 import whisper
 from kokoro import KPipeline
 from core.audio_devices import resample
-from core.hailo_whisper_runtime import HailoTranscriptionRuntime, HailoWakeRuntime
+from core.hailo_whisper_runtime import HailoTranscriptionRuntime
 
 logger = logging.getLogger(__name__)
 
 KOKORO_SAMPLE_RATE = 24000
 HAILO_WHISPER_ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "hailo-whisper"
-SUPPORTED_HAILO_WHISPER_WAKE_VARIANTS = {"base", "tiny", "tiny.en", "base.en"}
 SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS = {"base", "tiny", "tiny.en", "base.en"}
 
 
 class SttBackend(Protocol):
-    def transcribe_wake_audio(self, audio_float) -> str: ...
     def transcribe_file(self, audio_file: str) -> str: ...
 
 
@@ -34,28 +32,6 @@ class WakeBackend(Protocol):
     """Continuous wake-word detector. Consumes audio chunks, returns trigger bool."""
     def detect(self, audio_chunk: np.ndarray) -> bool: ...
     def reset(self) -> None: ...
-
-
-class WhisperWakeBackend:
-    """Fallback wake backend — runs Whisper on a 2s window and substring-matches.
-
-    Preserves current MiniClaw behaviour. Used when WAKE_BACKEND=whisper or when
-    openWakeWord fails to load.
-    """
-
-    def __init__(self, model_name: str = "tiny", wake_phrase: str = "computer"):
-        logger.info("Loading Whisper wake model: %s", model_name)
-        self.model = whisper.load_model(model_name)
-        self.wake_phrase = wake_phrase.lower().strip()
-
-    def detect(self, audio_chunk: np.ndarray) -> bool:
-        result = self.model.transcribe(audio_chunk, language="en", fp16=False)
-        transcript = result["text"].lower().strip()
-        return self.wake_phrase in transcript
-
-    def reset(self) -> None:
-        # Whisper is stateless per call; nothing to reset.
-        pass
 
 
 try:
@@ -67,7 +43,7 @@ except ImportError:
 
 
 class OpenWakeWordBackend:
-    """Primary wake backend — purpose-built keyword spotter.
+    """Wake backend — purpose-built keyword spotter.
 
     Expects ~80ms audio chunks at 16kHz int16 or float32. Returns True when
     the model's score for `model_name` crosses `threshold`.
@@ -234,23 +210,14 @@ def build_vad_backend(
 
 
 class WhisperBackend:
-    """Default speech-to-text backend using Whisper for wake and full transcription."""
+    """Speech-to-text backend using Whisper for full transcription only.
 
-    def __init__(self, wake_model: str = "tiny", transcription_model: str = "base"):
-        logger.info("Loading Whisper wake model: %s", wake_model)
-        self.wake_model = whisper.load_model(wake_model)
+    Wake detection is handled separately by openWakeWord — see WakeBackend.
+    """
 
+    def __init__(self, transcription_model: str = "base"):
         logger.info("Loading Whisper transcription model: %s", transcription_model)
         self.transcription_model = whisper.load_model(transcription_model)
-
-    def transcribe_wake_audio(self, audio_float) -> str:
-        """Transcribe a wake-word detection audio window."""
-        result = self.wake_model.transcribe(
-            audio_float,
-            language="en",
-            fp16=False,
-        )
-        return result["text"].lower().strip()
 
     def transcribe_file(self, audio_file: str) -> str:
         """Transcribe a recorded WAV file."""
@@ -259,26 +226,14 @@ class WhisperBackend:
 
 
 class HybridWhisperBackend:
-    """Independent Hailo/CPU selection for wake and full transcription."""
+    """Whisper transcription with optional Hailo offload."""
 
     def __init__(
         self,
-        wake_model: str,
         transcription_model: str,
-        use_hailo_wake: bool,
         use_hailo_transcription: bool,
     ):
-        self.use_hailo_wake = use_hailo_wake
         self.use_hailo_transcription = use_hailo_transcription
-
-        if use_hailo_wake:
-            self.hailo_wake_runtime = HailoWakeRuntime(
-                model_name=wake_model,
-                assets_root=HAILO_WHISPER_ASSET_ROOT,
-            )
-        else:
-            logger.info("Loading Whisper wake model: %s", wake_model)
-            self.wake_model = whisper.load_model(wake_model)
 
         if use_hailo_transcription:
             self.hailo_runtime = HailoTranscriptionRuntime(
@@ -288,17 +243,6 @@ class HybridWhisperBackend:
         else:
             logger.info("Loading Whisper transcription model: %s", transcription_model)
             self.transcription_model = whisper.load_model(transcription_model)
-
-    def transcribe_wake_audio(self, audio_float) -> str:
-        if self.use_hailo_wake:
-            return self.hailo_wake_runtime.transcribe_wake_audio(audio_float).strip()
-
-        result = self.wake_model.transcribe(
-            audio_float,
-            language="en",
-            fp16=False,
-        )
-        return result["text"].lower().strip()
 
     def transcribe_file(self, audio_file: str) -> str:
         if self.use_hailo_transcription:
@@ -320,21 +264,6 @@ def hailo_transcription_assets_available(transcription_model: str) -> tuple[bool
     return True, ""
 
 
-def hailo_wake_assets_available(wake_model: str) -> tuple[bool, str]:
-    wake_dir = HAILO_WHISPER_ASSET_ROOT / wake_model
-
-    if not wake_dir.exists():
-        return False, "wake model asset missing"
-    return True, ""
-
-
-def hailo_wake_self_check(wake_model: str) -> None:
-    HailoWakeRuntime.self_check(
-        model_name=wake_model,
-        assets_root=HAILO_WHISPER_ASSET_ROOT,
-    )
-
-
 def hailo_transcription_self_check(transcription_model: str) -> None:
     HailoTranscriptionRuntime.self_check(
         model_name=transcription_model,
@@ -342,103 +271,58 @@ def hailo_transcription_self_check(transcription_model: str) -> None:
     )
 
 
-def build_stt_backend(
-    wake_model: str, transcription_model: str
-) -> tuple[SttBackend, str]:
+def build_stt_backend(transcription_model: str) -> tuple[SttBackend, str]:
+    """Build the speech-to-text backend, preferring Hailo transcription when present."""
     if not hailo_runtime_available():
         return (
-            WhisperBackend(
-                wake_model=wake_model, transcription_model=transcription_model
-            ),
-            f"STT backend: CPU Whisper fallback (wake=cpu:{wake_model}, transcription=cpu:{transcription_model}) — Hailo runtime unavailable",
+            WhisperBackend(transcription_model=transcription_model),
+            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — Hailo runtime unavailable",
         )
 
-    use_hailo_wake = False
-    use_hailo_transcription = False
-    fallback_reasons: list[str] = []
-
-    if wake_model in SUPPORTED_HAILO_WHISPER_WAKE_VARIANTS:
-        wake_assets_ok, wake_reason = hailo_wake_assets_available(wake_model)
-        if wake_assets_ok:
-            try:
-                hailo_wake_self_check(wake_model)
-                use_hailo_wake = True
-            except Exception as exc:
-                fallback_reasons.append(f"wake {exc}")
-        else:
-            fallback_reasons.append(wake_reason)
-    else:
-        fallback_reasons.append("wake model variant unsupported by Hailo")
-
-    if transcription_model in SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS:
-        transcription_assets_ok, transcription_reason = (
-            hailo_transcription_assets_available(transcription_model)
-        )
-        if transcription_assets_ok:
-            try:
-                hailo_transcription_self_check(transcription_model)
-                use_hailo_transcription = True
-            except Exception as exc:
-                fallback_reasons.append(f"transcription {exc}")
-        else:
-            fallback_reasons.append(transcription_reason)
-    else:
-        fallback_reasons.append("transcription model variant unsupported by Hailo")
-
-    if not use_hailo_wake and not use_hailo_transcription:
-        reason = fallback_reasons[0] if fallback_reasons else "Hailo unavailable"
+    if transcription_model not in SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS:
         return (
-            WhisperBackend(
-                wake_model=wake_model, transcription_model=transcription_model
-            ),
-            f"STT backend: CPU Whisper fallback (wake=cpu:{wake_model}, transcription=cpu:{transcription_model}) — {reason}",
+            WhisperBackend(transcription_model=transcription_model),
+            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — model variant unsupported by Hailo",
+        )
+
+    assets_ok, reason = hailo_transcription_assets_available(transcription_model)
+    if not assets_ok:
+        return (
+            WhisperBackend(transcription_model=transcription_model),
+            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — {reason}",
+        )
+
+    try:
+        hailo_transcription_self_check(transcription_model)
+    except Exception as exc:
+        return (
+            WhisperBackend(transcription_model=transcription_model),
+            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — Hailo self-check failed: {exc}",
         )
 
     backend = HybridWhisperBackend(
-        wake_model=wake_model,
         transcription_model=transcription_model,
-        use_hailo_wake=use_hailo_wake,
-        use_hailo_transcription=use_hailo_transcription,
-    )
-    wake_backend = f"{'hailo' if use_hailo_wake else 'cpu'}:{wake_model}"
-    transcription_backend = (
-        f"{'hailo' if use_hailo_transcription else 'cpu'}:{transcription_model}"
+        use_hailo_transcription=True,
     )
     return (
         backend,
-        f"STT backend: Hybrid Whisper (wake={wake_backend}, transcription={transcription_backend})",
+        f"STT backend: Hybrid Whisper (transcription=hailo:{transcription_model})",
     )
 
 
 def build_wake_backend(
-    backend_name: str,
     model_name: str,
     threshold: float,
-    wake_phrase: str,
-    whisper_model: str,
 ) -> tuple[WakeBackend, str]:
-    """Select wake backend by name with automatic fallback to Whisper."""
-    if backend_name == "openwakeword":
-        try:
-            backend = OpenWakeWordBackend(model_name=model_name, threshold=threshold)
-            return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
-        except Exception:
-            logger.warning(
-                "openWakeWord unavailable — falling back to Whisper wake",
-                exc_info=True,
-            )
-            backend = WhisperWakeBackend(
-                model_name=whisper_model, wake_phrase=wake_phrase
-            )
-            return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}') — openwakeword fallback"
+    """Build the openWakeWord wake backend.
 
-    if backend_name == "whisper":
-        backend = WhisperWakeBackend(model_name=whisper_model, wake_phrase=wake_phrase)
-        return backend, f"Wake backend: whisper:{whisper_model} ('{wake_phrase}')"
-
-    raise ValueError(
-        f"unknown wake backend {backend_name!r}; expected 'openwakeword' or 'whisper'"
-    )
+    Raises if openWakeWord is not installed or the requested model name is
+    invalid. There is no fallback: openWakeWord is a single pip dep and the
+    legacy whisper-substring wake path was the source of the wake-stream
+    hallucinations that motivated this backend in the first place.
+    """
+    backend = OpenWakeWordBackend(model_name=model_name, threshold=threshold)
+    return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
 
 
 class KokoroTTSBackend:

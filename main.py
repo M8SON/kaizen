@@ -88,24 +88,17 @@ def build_voice_interface():
     """Construct the default production voice interface from environment config."""
     from core.voice import VoiceInterface
 
-    wake_phrase = os.getenv("WAKE_PHRASE", "computer")
     stt_backend, stt_status = build_stt_backend(
-        wake_model=os.getenv("WAKE_MODEL", "tiny"),
         transcription_model=os.getenv("WHISPER_MODEL", "base"),
     )
     print(stt_status)
 
-    wake_backend_name = os.getenv("WAKE_BACKEND", "openwakeword")
     wake_word_model = os.getenv("WAKE_WORD_MODEL", "hey_jarvis")
     wake_word_threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
-    whisper_wake_model = os.getenv("WAKE_MODEL", "tiny")
 
     wake_backend, wake_msg = build_wake_backend(
-        backend_name=wake_backend_name,
         model_name=wake_word_model,
         threshold=wake_word_threshold,
-        wake_phrase=wake_phrase,
-        whisper_model=whisper_wake_model,
     )
     logger.info(wake_msg)
 
@@ -122,9 +115,7 @@ def build_voice_interface():
     logger.info(vad_msg)
 
     return VoiceInterface(
-        whisper_model=os.getenv("WHISPER_MODEL", "base"),
-        wake_model=os.getenv("WAKE_MODEL", "tiny"),
-        wake_phrase=wake_phrase,
+        transcription_model=os.getenv("WHISPER_MODEL", "base"),
         display_wake_word=_display_wake_word(),
         enable_tts=os.getenv("ENABLE_TTS", "true").lower() == "true",
         tts_voice=os.getenv("TTS_VOICE", "af_heart"),
@@ -139,22 +130,14 @@ def build_voice_interface():
 
 
 def _display_wake_word() -> str:
-    """Return the human-readable wake word currently active for display.
-
-    When WAKE_BACKEND=openwakeword, the banners should reflect the openWakeWord
-    model name (e.g. "hey jarvis") rather than the legacy WAKE_PHRASE substring,
-    which is only consulted on the Whisper fallback path.
-    """
-    backend_name = os.getenv("WAKE_BACKEND", "openwakeword")
-    if backend_name == "openwakeword":
-        return os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
-    return os.getenv("WAKE_PHRASE", "computer")
+    """Human-readable form of the active openWakeWord model (e.g. "hey jarvis")."""
+    return os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
 
 
 def run_voice_mode(orchestrator, voice=None):
     """Run the assistant in voice mode with microphone input."""
     voice = voice or build_voice_interface()
-    wake_phrase = _display_wake_word()
+    wake_word = _display_wake_word()
 
     from core.meta_skill import MetaSkillExecutor
     orchestrator.container_manager._meta_skill_executor = MetaSkillExecutor(
@@ -169,7 +152,7 @@ def run_voice_mode(orchestrator, voice=None):
     print("\n" + "=" * 60)
     print("  MiniClaw")
     print("=" * 60)
-    print(f"\n  Wake phrase: '{wake_phrase}'")
+    print(f"\n  Wake word: '{wake_word}'")
     print("  Say 'goodbye' or 'stop' to exit.")
     print("  Press Ctrl+C to quit.\n")
     print("=" * 60)
@@ -220,7 +203,7 @@ def run_voice_mode(orchestrator, voice=None):
                 voice.speak("Before we chat — " + " ".join(pending))
 
             # Wait for wake word
-            print(f"\nWaiting for wake phrase: '{wake_phrase}'...")
+            print(f"\nWaiting for wake word: '{wake_word}'...")
             detected = voice.wait_for_wake_word()
             if not detected:
                 break  # Ctrl+C

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.prompt_builder import PromptBuilder, persona_name_from_env
 
 
-_WAKE_ENV_VARS = ("WAKE_BACKEND", "WAKE_WORD_MODEL", "WAKE_PHRASE")
+_WAKE_ENV_VARS = ("WAKE_WORD_MODEL",)
 
 
 class _WakeEnv:
@@ -38,58 +38,50 @@ class _WakeEnv:
 
 
 class TestPersonaFromEnv(unittest.TestCase):
-    def test_openwakeword_hey_jarvis_yields_jarvis(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_jarvis"):
+    def test_hey_jarvis_yields_jarvis(self):
+        with _WakeEnv(WAKE_WORD_MODEL="hey_jarvis"):
             self.assertEqual(persona_name_from_env(), "Jarvis")
 
-    def test_openwakeword_alexa_yields_alexa(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="alexa"):
+    def test_alexa_yields_alexa(self):
+        with _WakeEnv(WAKE_WORD_MODEL="alexa"):
             self.assertEqual(persona_name_from_env(), "Alexa")
 
-    def test_openwakeword_hey_mycroft_yields_mycroft(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_mycroft"):
+    def test_hey_mycroft_yields_mycroft(self):
+        with _WakeEnv(WAKE_WORD_MODEL="hey_mycroft"):
             self.assertEqual(persona_name_from_env(), "Mycroft")
 
-    def test_whisper_backend_uses_wake_phrase(self):
-        with _WakeEnv(WAKE_BACKEND="whisper", WAKE_PHRASE="computer"):
-            self.assertEqual(persona_name_from_env(), "Computer")
-
-    def test_whisper_backend_takes_last_token_of_multiword_phrase(self):
-        with _WakeEnv(WAKE_BACKEND="whisper", WAKE_PHRASE="hey computer"):
-            self.assertEqual(persona_name_from_env(), "Computer")
-
     def test_default_is_jarvis_when_env_empty(self):
-        # Defaults: WAKE_BACKEND=openwakeword, WAKE_WORD_MODEL=hey_jarvis.
+        # Default: WAKE_WORD_MODEL=hey_jarvis.
         with _WakeEnv():
             self.assertEqual(persona_name_from_env(), "Jarvis")
 
 
 class TestPromptBuilderPersona(unittest.TestCase):
     def test_base_prompt_uses_persona_name_from_env(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_jarvis"):
+        with _WakeEnv(WAKE_WORD_MODEL="hey_jarvis"):
             pb = PromptBuilder()
         self.assertEqual(pb.persona_name, "Jarvis")
         self.assertIn("Your name is Jarvis.", pb.BASE_PROMPT)
         self.assertNotIn("Your name is Computer.", pb.BASE_PROMPT)
 
     def test_explicit_persona_name_overrides_env(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_jarvis"):
+        with _WakeEnv(WAKE_WORD_MODEL="hey_jarvis"):
             pb = PromptBuilder(persona_name="Custom")
         self.assertEqual(pb.persona_name, "Custom")
         self.assertIn("Your name is Custom.", pb.BASE_PROMPT)
 
     def test_build_emits_persona_in_full_prompt(self):
-        with _WakeEnv(WAKE_BACKEND="whisper", WAKE_PHRASE="computer"):
+        with _WakeEnv(WAKE_WORD_MODEL="alexa"):
             pb = PromptBuilder(max_skill_tokens=None)
         prompt = pb.build(skills={}, skipped_skills={})
-        self.assertIn("Your name is Computer.", prompt)
+        self.assertIn("Your name is Alexa.", prompt)
 
 
 class TestBuildForGreeting(unittest.TestCase):
     """The greeting path skips memories, skills, and self-update guidance."""
 
     def test_includes_persona(self):
-        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_jarvis"):
+        with _WakeEnv(WAKE_WORD_MODEL="hey_jarvis"):
             pb = PromptBuilder()
         prompt = pb.build_for_greeting()
         self.assertIn("Your name is Jarvis.", prompt)

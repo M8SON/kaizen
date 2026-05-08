@@ -32,7 +32,7 @@ def voice(monkeypatch, fake_wav):
     monkeypatch.setattr(voice_module, "KokoroTTSBackend", MagicMock)
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
     monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "false")
-    return voice_module.VoiceInterface(enable_tts=True)
+    return voice_module.VoiceInterface(enable_tts=True, wake_backend=MagicMock())
 
 
 def test_shutdown_with_no_active_resources_is_noop(voice):

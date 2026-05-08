@@ -111,7 +111,7 @@ class VoiceModeTests(unittest.TestCase):
             main.run_voice_mode(orchestrator, voice=voice)
 
         rendered = output.getvalue()
-        self.assertIn("Waiting for wake phrase", rendered)
+        self.assertIn("Waiting for wake word", rendered)
         self.assertIn("You: tell me something", rendered)
         self.assertIn("Assistant: Hello from MiniClaw", rendered)
         self.assertIn("Assistant: Goodbye!", rendered)

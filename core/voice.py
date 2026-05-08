@@ -3,9 +3,8 @@ Voice Interface - Handles microphone input (Whisper STT) and speaker output (Kok
 
 Designed to be swappable — if the AI HAT+ 2 accelerates Whisper, only this module changes.
 
-Wake word detection uses whisper-tiny on a continuous sliding audio window so any
-custom phrase works without training data. The larger transcription model is only
-invoked after the wake phrase is detected.
+Wake detection runs through openWakeWord (purpose-built keyword spotter); the
+Whisper transcription model is only invoked after the wake word fires.
 """
 
 import os
@@ -38,8 +37,8 @@ class VoiceInterface:
     Manages audio input (recording + transcription) and output (TTS).
 
     Audio pipeline:
-      Wake:   Microphone → PyAudio → 2s sliding window → whisper-tiny → phrase check
-      Input:  Microphone → PyAudio → silence detection → whisper-base → text
+      Wake:   Microphone → PyAudio → openWakeWord → trigger
+      Input:  Microphone → PyAudio → VAD → whisper-base → text
       Output: text → Kokoro TTS → WAV → aplay → speaker
     """
 
@@ -48,15 +47,9 @@ class VoiceInterface:
     CHANNELS = 1
     RATE = 16000
 
-    # Wake word window: 2s of audio, re-evaluated every 1s
-    WAKE_WINDOW_SECONDS = 2.0
-    WAKE_STEP_SECONDS = 1.0
-
     def __init__(
         self,
-        whisper_model: str = "base",
-        wake_model: str = "tiny",
-        wake_phrase: str = "computer",
+        transcription_model: str = "base",
         enable_tts: bool = True,
         tts_voice: str = "af_heart",
         tts_speed: float = 1.0,
@@ -65,18 +58,14 @@ class VoiceInterface:
         stt_backend=None,
         tts_backend=None,
         wake_backend=None,
-        display_wake_word: str | None = None,
+        display_wake_word: str = "hey jarvis",
         vad_backend=None,
         vad_min_silence_ms: int = 700,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
-        self.wake_phrase = wake_phrase.lower().strip()
-        # display_wake_word is shown in user-facing logs; wake_phrase still
-        # drives the legacy Whisper-substring path. They differ when the
-        # active backend is openWakeWord (display = "hey jarvis", phrase = "computer").
-        self.display_wake_word = (display_wake_word or self.wake_phrase).strip()
+        self.display_wake_word = display_wake_word.strip()
 
         self._input_device_index = resolve_input_device()
         self._output_device_index = resolve_output_device()
@@ -94,10 +83,14 @@ class VoiceInterface:
         self._active_stream = None
 
         self.stt_backend = stt_backend or WhisperBackend(
-            wake_model=wake_model,
-            transcription_model=whisper_model,
+            transcription_model=transcription_model,
         )
-        self.wake_backend = wake_backend  # may be None for legacy callers
+        if wake_backend is None:
+            raise ValueError(
+                "VoiceInterface requires a wake_backend; build_wake_backend "
+                "constructs the default openWakeWord backend"
+            )
+        self.wake_backend = wake_backend
         self.vad_backend = vad_backend
         self.vad_min_silence_ms = vad_min_silence_ms
         self.tts_backend = (
@@ -115,7 +108,7 @@ class VoiceInterface:
             )
         )
 
-        logger.info("Models loaded — wake phrase: '%s'", self.display_wake_word)
+        logger.info("Models loaded — wake word: '%s'", self.display_wake_word)
 
         # Elevator-music feature state
         self._music_playing = False
@@ -266,14 +259,15 @@ class VoiceInterface:
 
     def wait_for_wake_word(self) -> bool:
         """
-        Block until the wake phrase is detected in the microphone stream.
+        Block until the wake word is detected in the microphone stream.
 
-        Continuously records audio in a sliding 2-second window and runs
-        whisper-tiny on each window. Returns True when the wake phrase is heard,
-        False if interrupted by Ctrl+C.
+        Streams audio chunks straight into the openWakeWord detector, which
+        maintains its own rolling feature buffer. Returns True when the
+        wake word fires, False if interrupted by Ctrl+C.
 
-        On detection the PyAudio stream is kept open and stored in self._shared_stream
-        so that listen() can start capturing immediately with no gap.
+        On detection the PyAudio stream is kept open and stored in
+        self._shared_stream so that listen() can start capturing
+        immediately with no gap.
         """
         audio = pyaudio.PyAudio()
         stream = audio.open(
@@ -287,62 +281,21 @@ class VoiceInterface:
         self._active_audio = audio
         self._active_stream = stream
 
-        window_samples = int(self.RATE * self.WAKE_WINDOW_SECONDS)
-        step_samples = int(self.RATE * self.WAKE_STEP_SECONDS)
-        samples_collected = 0
-        buffer = []
+        # openWakeWord accumulates a rolling feature buffer across calls.
+        # Without a reset between sessions, the next wake-loop entry sees
+        # the tail of the prior wake event still in the model's buffer
+        # and fires immediately.
+        self.wake_backend.reset()
 
-        # Streaming wake backends (openWakeWord) accumulate a rolling feature
-        # buffer across calls. Without a reset between sessions, the next
-        # wake-loop entry sees the tail of the prior wake event still in the
-        # model's buffer and fires immediately.
-        if self.wake_backend is not None:
-            self.wake_backend.reset()
-
-        logger.info("Waiting for wake phrase: '%s'", self.display_wake_word)
+        logger.info("Waiting for wake word: '%s'", self.display_wake_word)
 
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
                 chunk_int16 = np.frombuffer(data, dtype=np.int16)
 
-                # Streaming wake backend (e.g. openWakeWord): every chunk goes
-                # straight to the detector, which maintains its own rolling
-                # feature buffer. No 2s windowing — that batched shape silently
-                # zeroes the score because the model's internal buffer never
-                # primes.
-                if self.wake_backend is not None:
-                    if self.wake_backend.detect(chunk_int16):
-                        logger.info("Wake detected")
-                        self._shared_audio = audio
-                        self._shared_stream = stream
-                        self._active_audio = None
-                        self._active_stream = None
-                        return True
-                    continue
-
-                # Legacy Whisper-substring path: 2s sliding window, evaluated
-                # once per WAKE_STEP_SECONDS.
-                buffer.append(chunk_int16)
-                samples_collected += self.CHUNK
-
-                if samples_collected < step_samples:
-                    continue
-
-                samples_collected = 0
-
-                window = np.concatenate(buffer)
-                if len(window) > window_samples:
-                    window = window[-window_samples:]
-                    buffer = [window]
-
-                audio_float = window.astype(np.float32) / 32768.0
-                transcript = self.stt_backend.transcribe_wake_audio(audio_float)
-                if transcript:
-                    logger.info("Wake window heard: '%s'", transcript)
-
-                if self.wake_phrase in transcript:
-                    logger.info("Wake phrase detected: '%s'", transcript)
+                if self.wake_backend.detect(chunk_int16):
+                    logger.info("Wake detected")
                     self._shared_audio = audio
                     self._shared_stream = stream
                     self._active_audio = None

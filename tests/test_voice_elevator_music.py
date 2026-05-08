@@ -47,7 +47,7 @@ def voice_factory(monkeypatch, fake_wav):
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
 
     def _make(**overrides):
-        kwargs = dict(enable_tts=True)
+        kwargs = dict(enable_tts=True, wake_backend=MagicMock())
         kwargs.update(overrides)
         return voice_module.VoiceInterface(**kwargs)
 

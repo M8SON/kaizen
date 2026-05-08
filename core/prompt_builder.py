@@ -12,23 +12,18 @@ from core.memory_provider import MemoryProvider
 
 
 def persona_name_from_env() -> str:
-    """Derive the assistant's persona name from the active wake word.
+    """Derive the assistant's persona name from the active openWakeWord model.
 
     Mirrors main._display_wake_word so the banner the user sees and the
     persona Claude introduces itself as stay in sync. Examples:
-      WAKE_BACKEND=openwakeword, WAKE_WORD_MODEL=hey_jarvis  -> "Jarvis"
-      WAKE_BACKEND=openwakeword, WAKE_WORD_MODEL=alexa       -> "Alexa"
-      WAKE_BACKEND=whisper,      WAKE_PHRASE=computer        -> "Computer"
-      WAKE_BACKEND=whisper,      WAKE_PHRASE="hey computer"  -> "Computer"
+      WAKE_WORD_MODEL=hey_jarwis   -> "Jarvis"
+      WAKE_WORD_MODEL=alexa        -> "Alexa"
+      WAKE_WORD_MODEL=hey_mycroft  -> "Mycroft"
     """
-    backend = os.getenv("WAKE_BACKEND", "openwakeword")
-    if backend == "openwakeword":
-        raw = os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
-    else:
-        raw = os.getenv("WAKE_PHRASE", "computer")
+    raw = os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
     tokens = raw.strip().split()
     if not tokens:
-        return "Computer"
+        return "Jarvis"
     return tokens[-1].capitalize()
 
 

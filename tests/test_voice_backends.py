@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -11,57 +11,17 @@ from core import voice_backends
 class BuildSttBackendTests(unittest.TestCase):
     @patch("core.voice_backends.WhisperBackend")
     @patch("core.voice_backends.hailo_runtime_available", return_value=False)
-    def test_falls_back_to_cpu_for_both_paths_when_hailo_runtime_unavailable(
+    def test_falls_back_to_cpu_whisper_when_hailo_runtime_unavailable(
         self, mock_runtime, mock_whisper_backend
     ):
         cpu_backend = object()
         mock_whisper_backend.return_value = cpu_backend
 
-        backend, message = voice_backends.build_stt_backend("tiny", "base")
+        backend, message = voice_backends.build_stt_backend("base")
 
         self.assertIs(backend, cpu_backend)
-        self.assertEqual(
-            message,
-            "STT backend: CPU Whisper fallback (wake=cpu:tiny, transcription=cpu:base) — Hailo runtime unavailable",
-        )
-
-    @patch("core.voice_backends.HybridWhisperBackend", create=True)
-    @patch(
-        "core.voice_backends.hailo_transcription_self_check",
-        side_effect=RuntimeError("transcription self-check failed"),
-        create=True,
-    )
-    @patch("core.voice_backends.hailo_wake_self_check", return_value=None, create=True)
-    @patch(
-        "core.voice_backends.hailo_transcription_assets_available",
-        return_value=(True, ""),
-        create=True,
-    )
-    @patch(
-        "core.voice_backends.hailo_wake_assets_available",
-        return_value=(True, ""),
-        create=True,
-    )
-    @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_selects_hailo_wake_but_cpu_transcription_when_only_wake_is_ready(
-        self,
-        mock_runtime,
-        mock_wake_assets,
-        mock_trans_assets,
-        mock_wake_self_check,
-        mock_trans_self_check,
-        mock_hybrid_backend,
-    ):
-        hybrid_backend = object()
-        mock_hybrid_backend.return_value = hybrid_backend
-
-        backend, message = voice_backends.build_stt_backend("tiny", "base")
-
-        self.assertIs(backend, hybrid_backend)
-        self.assertEqual(
-            message,
-            "STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=cpu:base)",
-        )
+        self.assertIn("CPU Whisper", message)
+        self.assertIn("Hailo runtime unavailable", message)
 
     @patch("core.voice_backends.HybridWhisperBackend", create=True)
     @patch(
@@ -70,103 +30,68 @@ class BuildSttBackendTests(unittest.TestCase):
         create=True,
     )
     @patch(
-        "core.voice_backends.hailo_wake_self_check",
-        side_effect=RuntimeError("wake self-check failed"),
-        create=True,
-    )
-    @patch(
         "core.voice_backends.hailo_transcription_assets_available",
         return_value=(True, ""),
         create=True,
     )
-    @patch(
-        "core.voice_backends.hailo_wake_assets_available",
-        return_value=(True, ""),
-        create=True,
-    )
     @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_selects_cpu_wake_but_hailo_transcription_when_only_transcription_is_ready(
+    def test_selects_hailo_transcription_when_assets_and_self_check_pass(
         self,
         mock_runtime,
-        mock_wake_assets,
         mock_trans_assets,
-        mock_wake_self_check,
         mock_trans_self_check,
         mock_hybrid_backend,
     ):
         hybrid_backend = object()
         mock_hybrid_backend.return_value = hybrid_backend
 
-        backend, message = voice_backends.build_stt_backend("tiny", "base")
+        backend, message = voice_backends.build_stt_backend("base")
 
         self.assertIs(backend, hybrid_backend)
         self.assertEqual(
             message,
-            "STT backend: Hybrid Whisper (wake=cpu:tiny, transcription=hailo:base)",
+            "STT backend: Hybrid Whisper (transcription=hailo:base)",
         )
 
-    @patch("core.voice_backends.HybridWhisperBackend", create=True)
+    @patch("core.voice_backends.WhisperBackend")
     @patch(
         "core.voice_backends.hailo_transcription_self_check",
-        return_value=None,
+        side_effect=RuntimeError("self-check failed"),
         create=True,
     )
-    @patch("core.voice_backends.hailo_wake_self_check", return_value=None, create=True)
     @patch(
         "core.voice_backends.hailo_transcription_assets_available",
         return_value=(True, ""),
         create=True,
     )
-    @patch(
-        "core.voice_backends.hailo_wake_assets_available",
-        return_value=(True, ""),
-        create=True,
-    )
     @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_selects_hailo_for_both_paths_when_both_are_ready(
+    def test_falls_back_to_cpu_when_self_check_raises(
         self,
         mock_runtime,
-        mock_wake_assets,
         mock_trans_assets,
-        mock_wake_self_check,
         mock_trans_self_check,
-        mock_hybrid_backend,
+        mock_whisper_backend,
     ):
-        hybrid_backend = object()
-        mock_hybrid_backend.return_value = hybrid_backend
+        cpu_backend = object()
+        mock_whisper_backend.return_value = cpu_backend
 
-        backend, message = voice_backends.build_stt_backend("tiny", "base")
+        backend, message = voice_backends.build_stt_backend("base")
 
-        self.assertIs(backend, hybrid_backend)
-        self.assertEqual(
-            message,
-            "STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=hailo:base)",
-        )
+        self.assertIs(backend, cpu_backend)
+        self.assertIn("Hailo self-check failed", message)
 
-    @patch("core.voice_backends.HybridWhisperBackend", create=True)
+    @patch("core.voice_backends.WhisperBackend")
     @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_wake_variant_unsupported_for_hailo_falls_back_only_for_wake(
-        self, mock_runtime, mock_hybrid_backend
+    def test_falls_back_to_cpu_when_model_variant_unsupported_by_hailo(
+        self, mock_runtime, mock_whisper_backend
     ):
-        hybrid_backend = object()
-        mock_hybrid_backend.return_value = hybrid_backend
+        cpu_backend = object()
+        mock_whisper_backend.return_value = cpu_backend
 
-        with patch(
-            "core.voice_backends.hailo_transcription_assets_available",
-            return_value=(True, ""),
-            create=True,
-        ), patch(
-            "core.voice_backends.hailo_transcription_self_check",
-            return_value=None,
-            create=True,
-        ):
-            backend, message = voice_backends.build_stt_backend("small", "base")
+        backend, message = voice_backends.build_stt_backend("small")
 
-        self.assertIs(backend, hybrid_backend)
-        self.assertEqual(
-            message,
-            "STT backend: Hybrid Whisper (wake=cpu:small, transcription=hailo:base)",
-        )
+        self.assertIs(backend, cpu_backend)
+        self.assertIn("model variant unsupported by Hailo", message)
 
     def test_asset_root_is_user_scoped(self):
         self.assertEqual(
@@ -177,52 +102,37 @@ class BuildSttBackendTests(unittest.TestCase):
 
 class HybridWhisperBackendTests(unittest.TestCase):
     @patch("core.voice_backends.HailoTranscriptionRuntime", create=True)
-    @patch("core.voice_backends.HailoWakeRuntime", create=True)
-    @patch("core.voice_backends.whisper.load_model")
-    def test_hailo_wake_runtime_is_used_when_enabled(
-        self, mock_load_model, mock_wake_runtime_cls, mock_trans_runtime_cls
-    ):
-        wake_model = Mock()
-        mock_load_model.return_value = wake_model
-
-        wake_runtime = mock_wake_runtime_cls.return_value
-        wake_runtime.transcribe_wake_audio.return_value = "computer"
+    def test_hailo_transcription_path_used_when_enabled(self, mock_trans_runtime_cls):
+        runtime = mock_trans_runtime_cls.return_value
+        runtime.transcribe_file.return_value = "spoken text"
 
         backend = voice_backends.HybridWhisperBackend(
-            wake_model="tiny",
             transcription_model="base",
-            use_hailo_wake=True,
-            use_hailo_transcription=False,
-        )
-
-        wake_text = backend.transcribe_wake_audio([0.0, 0.1])
-
-        self.assertEqual(wake_text, "computer")
-        wake_runtime.transcribe_wake_audio.assert_called_once()
-        mock_load_model.assert_called_once_with("base")
-
-    @patch("core.voice_backends.HailoTranscriptionRuntime", create=True)
-    @patch("core.voice_backends.HailoWakeRuntime", create=True)
-    @patch("core.voice_backends.whisper.load_model")
-    def test_cpu_wake_path_is_used_when_hailo_wake_disabled(
-        self, mock_load_model, mock_wake_runtime_cls, mock_trans_runtime_cls
-    ):
-        wake_model = Mock()
-        wake_model.transcribe.return_value = {"text": "Computer"}
-        mock_load_model.return_value = wake_model
-
-        backend = voice_backends.HybridWhisperBackend(
-            wake_model="tiny",
-            transcription_model="base",
-            use_hailo_wake=False,
             use_hailo_transcription=True,
         )
+        text = backend.transcribe_file("/tmp/utt.wav")
 
-        wake_text = backend.transcribe_wake_audio([0.0, 0.1])
+        self.assertEqual(text, "spoken text")
+        runtime.transcribe_file.assert_called_once()
 
-        self.assertEqual(wake_text, "computer")
-        wake_model.transcribe.assert_called_once()
-        mock_wake_runtime_cls.assert_not_called()
+    @patch("core.voice_backends.HailoTranscriptionRuntime", create=True)
+    @patch("core.voice_backends.whisper.load_model")
+    def test_cpu_transcription_path_used_when_hailo_disabled(
+        self, mock_load_model, mock_trans_runtime_cls
+    ):
+        cpu_model = MagicMock()
+        cpu_model.transcribe.return_value = {"text": "spoken"}
+        mock_load_model.return_value = cpu_model
+
+        backend = voice_backends.HybridWhisperBackend(
+            transcription_model="base",
+            use_hailo_transcription=False,
+        )
+        text = backend.transcribe_file("/tmp/utt.wav")
+
+        self.assertEqual(text, "spoken")
+        cpu_model.transcribe.assert_called_once()
+        mock_trans_runtime_cls.assert_not_called()
 
 
 class HailoRuntimeAssetTests(unittest.TestCase):
@@ -257,57 +167,6 @@ class HailoRuntimeAssetTests(unittest.TestCase):
                         model_name="base",
                         assets_root=root,
                     )
-
-
-class HailoWakeRuntimeAssetTests(unittest.TestCase):
-    def test_wake_self_check_rejects_missing_model_dir(self):
-        from core.hailo_whisper_runtime import HailoWakeRuntime
-
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(RuntimeError, "wake model asset missing"):
-                HailoWakeRuntime.self_check(
-                    model_name="tiny",
-                    assets_root=Path(tmp),
-                )
-
-
-class WhisperWakeBackendTests(unittest.TestCase):
-    @patch("core.voice_backends.whisper.load_model")
-    def test_detect_returns_true_when_phrase_present(self, mock_load):
-        model = MagicMock()
-        model.transcribe.return_value = {"text": "hello computer hi"}
-        mock_load.return_value = model
-
-        backend = voice_backends.WhisperWakeBackend(
-            model_name="tiny", wake_phrase="computer"
-        )
-        audio = np.zeros(16000, dtype=np.float32)
-
-        self.assertTrue(backend.detect(audio))
-
-    @patch("core.voice_backends.whisper.load_model")
-    def test_detect_returns_false_when_phrase_absent(self, mock_load):
-        model = MagicMock()
-        model.transcribe.return_value = {"text": "hello world"}
-        mock_load.return_value = model
-
-        backend = voice_backends.WhisperWakeBackend(
-            model_name="tiny", wake_phrase="computer"
-        )
-        audio = np.zeros(16000, dtype=np.float32)
-
-        self.assertFalse(backend.detect(audio))
-
-    @patch("core.voice_backends.whisper.load_model")
-    def test_detect_normalises_case_and_whitespace(self, mock_load):
-        model = MagicMock()
-        model.transcribe.return_value = {"text": "  Computer.  "}
-        mock_load.return_value = model
-
-        backend = voice_backends.WhisperWakeBackend(
-            model_name="tiny", wake_phrase="computer"
-        )
-        self.assertTrue(backend.detect(np.zeros(16000, dtype=np.float32)))
 
 
 class OpenWakeWordBackendTests(unittest.TestCase):
@@ -398,69 +257,31 @@ class OpenWakeWordBackendTests(unittest.TestCase):
 
 class BuildWakeBackendTests(unittest.TestCase):
     @patch("core.voice_backends.OpenWakeWordBackend")
-    def test_returns_openwakeword_when_backend_is_openwakeword(self, mock_owww):
+    def test_builds_openwakeword(self, mock_owww):
         instance = object()
         mock_owww.return_value = instance
 
         backend, message = voice_backends.build_wake_backend(
-            backend_name="openwakeword",
             model_name="hey_jarvis",
             threshold=0.5,
-            wake_phrase="computer",
-            whisper_model="tiny",
         )
 
         self.assertIs(backend, instance)
         self.assertIn("openwakeword", message)
         self.assertIn("hey_jarvis", message)
 
-    @patch("core.voice_backends.WhisperWakeBackend")
-    def test_returns_whisper_when_backend_is_whisper(self, mock_whisper):
-        instance = object()
-        mock_whisper.return_value = instance
-
-        backend, message = voice_backends.build_wake_backend(
-            backend_name="whisper",
-            model_name="hey_jarvis",
-            threshold=0.5,
-            wake_phrase="computer",
-            whisper_model="tiny",
-        )
-
-        self.assertIs(backend, instance)
-        self.assertIn("whisper", message)
-        self.assertIn("computer", message)
-
-    @patch("core.voice_backends.WhisperWakeBackend")
     @patch(
         "core.voice_backends.OpenWakeWordBackend",
         side_effect=ImportError("openwakeword not installed"),
     )
-    def test_falls_back_to_whisper_on_openwakeword_failure(
-        self, mock_owww, mock_whisper
-    ):
-        instance = object()
-        mock_whisper.return_value = instance
-
-        backend, message = voice_backends.build_wake_backend(
-            backend_name="openwakeword",
-            model_name="hey_jarvis",
-            threshold=0.5,
-            wake_phrase="computer",
-            whisper_model="tiny",
-        )
-
-        self.assertIs(backend, instance)
-        self.assertIn("fallback", message.lower())
-
-    def test_raises_for_unknown_backend_name(self):
-        with self.assertRaises(ValueError):
+    def test_raises_when_openwakeword_unavailable(self, mock_owww):
+        # No fallback path: openWakeWord is the only supported wake backend.
+        # Failing loud beats silently routing to a known-bad whisper-substring
+        # path that hallucinates wake events.
+        with self.assertRaises(ImportError):
             voice_backends.build_wake_backend(
-                backend_name="oepnwakeword",  # typo
                 model_name="hey_jarvis",
                 threshold=0.5,
-                wake_phrase="computer",
-                whisper_model="tiny",
             )
 
 

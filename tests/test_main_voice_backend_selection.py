@@ -7,15 +7,17 @@ import main
 
 class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
     @patch("core.voice.VoiceInterface")
+    @patch("main.build_wake_backend")
     @patch("main.build_stt_backend")
     def test_build_voice_interface_passes_selected_backend(
-        self, mock_build_stt_backend, mock_voice_interface
+        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface
     ):
         fake_backend = object()
         mock_build_stt_backend.return_value = (
             fake_backend,
-            "STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=hailo:base)",
+            "STT backend: Hybrid Whisper (transcription=hailo:base)",
         )
+        mock_build_wake_backend.return_value = (object(), "Wake backend: openwakeword (hey_jarvis, threshold=0.5)")
 
         main.build_voice_interface()
 
@@ -24,16 +26,17 @@ class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
 
     @patch("builtins.print")
     @patch("core.voice.VoiceInterface")
+    @patch("main.build_wake_backend")
     @patch("main.build_stt_backend")
     def test_build_voice_interface_prints_backend_status_once(
-        self, mock_build_stt_backend, mock_voice_interface, mock_print
+        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface, mock_print
     ):
         fake_backend = object()
         message = (
-            "STT backend: CPU Whisper fallback "
-            "(wake=cpu:tiny, transcription=cpu:base) — Hailo runtime unavailable"
+            "STT backend: CPU Whisper (transcription=cpu:base) — Hailo runtime unavailable"
         )
         mock_build_stt_backend.return_value = (fake_backend, message)
+        mock_build_wake_backend.return_value = (object(), "Wake backend: openwakeword (hey_jarvis, threshold=0.5)")
 
         main.build_voice_interface()
 
@@ -75,9 +78,6 @@ class VoiceWakeBackendIntegrationTests(unittest.TestCase):
         self.assertTrue(result)
         # Some number of calls before True; at least one
         self.assertGreaterEqual(wake_backend.detect.call_count, 1)
-        # Critically: stt_backend.transcribe_wake_audio is never called
-        # when wake_backend is provided.
-        stt_backend.transcribe_wake_audio.assert_not_called()
 
 
 class VadBackendIntegrationTests(unittest.TestCase):
@@ -106,6 +106,7 @@ class VadBackendIntegrationTests(unittest.TestCase):
         voice = VoiceInterface(
             stt_backend=unittest.mock.MagicMock(),
             tts_backend=unittest.mock.MagicMock(),
+            wake_backend=unittest.mock.MagicMock(),
             vad_backend=vad_backend,
             vad_min_silence_ms=200,
             enable_tts=False,

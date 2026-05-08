@@ -4,7 +4,7 @@ Per-turn stage timing for the voice pipeline.
 Gated by MINICLAW_PROFILE=true. When disabled, both context managers are
 true no-ops. When enabled, each turn emits a single INFO log line:
 
-    [TIMING-SUMMARY] stt=412 tier=3 llm_ollama=3540 tool_weather=1280 total=7625
+    [TIMING-SUMMARY] stt=412 tier=3 llm_claude=3540 tool_weather=1280 total=7625
 """
 
 import logging

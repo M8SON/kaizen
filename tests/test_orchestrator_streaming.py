@@ -165,7 +165,7 @@ class TestOrchestratorProcessMessageStream(unittest.TestCase):
         orch._startup_context = ""
         orch.system_prompt = "system prompt"
         orch._tier_router = None
-        orch._ollama_tool_loop = None
+        orch._micro_loop = None
         orch.archive = None
         orch._current_session_id = None
         return orch
@@ -205,7 +205,7 @@ class TestOrchestratorProcessMessageStream(unittest.TestCase):
             tier="claude", action=None, skill=None, args={}
         )
         orch.tool_loop.run.return_value = "Claude says hi."
-        orch._ollama_tool_loop = MagicMock()  # exists but shouldn't be called
+        orch._micro_loop = MagicMock()  # exists but shouldn't be called
 
         chunks = []
         result = orch.process_message("complex", on_chunk=chunks.append)
@@ -213,7 +213,7 @@ class TestOrchestratorProcessMessageStream(unittest.TestCase):
         self.assertEqual(result, "Claude says hi.")
         kwargs = orch.tool_loop.run.call_args.kwargs
         self.assertEqual(kwargs["on_chunk"], chunks.append)
-        orch._ollama_tool_loop.run.assert_not_called()
+        orch._micro_loop.run.assert_not_called()
 
 
 if __name__ == "__main__":

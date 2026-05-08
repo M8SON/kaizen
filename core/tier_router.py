@@ -1,13 +1,18 @@
 """
 TierRouter - Fast pre-LLM routing for MiniClaw's tiered intelligence system.
 
-Classifies each STT transcript as direct | ollama | claude in <5ms before
+Classifies each STT transcript as direct | micro | claude in <5ms before
 any LLM is invoked. Checked in order:
 
   1. Dispatch patterns  → direct skill call or session action (no LLM)
-  2. Escalate patterns  → Claude immediately (skip Ollama)
-  3. Skill prediction   → claude_only set → Claude, else Ollama
-  4. Default            → Ollama
+  2. Escalate patterns  → Claude (Sonnet) immediately, skip the micro tier
+  3. Skill prediction   → claude_only set → Claude, else micro tier
+  4. Default            → micro tier (Claude Haiku, slim prompt)
+
+The micro tier replaced the Ollama tier on 2026-05-08: phi4-mini on Pi 5
+generates at 3-5 tok/s, so any response over ~70 tokens timed out at 25s
+and escalated to Sonnet anyway. Claude Haiku at slim prompt is sub-second
+and predictable, at a few cents per turn.
 """
 
 import logging
@@ -22,7 +27,7 @@ from core import profiling
 
 logger = logging.getLogger(__name__)
 
-Tier = Literal["direct", "ollama", "claude"]
+Tier = Literal["direct", "micro", "claude"]
 
 
 @dataclass
@@ -82,7 +87,7 @@ class TierRouter:
         )
 
     def route(self, transcript: str) -> RouteResult:
-        """Classify a transcript into direct | ollama | claude."""
+        """Classify a transcript into direct | micro | claude."""
         with profiling.stage("tier_route"):
             text = transcript.strip()
 
@@ -116,6 +121,6 @@ class TierRouter:
                     )
                     return RouteResult(tier="claude")
 
-            # 4. Default — Ollama handles it
-            logger.debug("TierRouter: no match → ollama")
-            return RouteResult(tier="ollama")
+            # 4. Default — micro tier handles it
+            logger.debug("TierRouter: no match → micro")
+            return RouteResult(tier="micro")

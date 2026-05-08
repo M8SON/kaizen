@@ -86,11 +86,11 @@ class PromptBuilder:
         "to recall in a future session.\n"
     )
 
-    OLLAMA_BASE_PROMPT = (
-        "You are a brief voice assistant. Plain spoken sentences. No markdown "
-        "or asterisks. When the user's request matches a provided tool, use it. "
-        "If a request is garbled or doesn't make sense as spoken language, "
-        "repeat back what you heard and ask for clarification before acting."
+    MICRO_TIER_TEMPLATE = (
+        "You are {persona}, Mason's voice assistant. "
+        "Reply briefly in plain spoken sentences. Use tools when the request matches one. "
+        "If a request seems garbled, ask for clarification before acting. "
+        "No markdown or asterisks."
     )
 
     def __init__(
@@ -121,15 +121,15 @@ class PromptBuilder:
             prompt += f"\n--- Current Context ---\n{startup_context}\n"
         return prompt
 
-    def build_for_ollama(self) -> str:
-        """Return the slim system prompt used for Ollama-tier requests.
+    def build_for_micro_tier(self) -> str:
+        """Slim system prompt for the Haiku micro-tier.
 
-        Deliberately excludes memory, skill markdown bodies, and persona
-        scaffolding. Ollama receives tool schemas via the OpenAI tools
-        parameter; duplicating skill bodies is pure prompt-eval overhead
-        on a Pi-class CPU.
-        """
-        return self.OLLAMA_BASE_PROMPT
+        Excludes memory, skill markdown bodies, and the heavy persona
+        scaffolding. Tools are delivered via the API's tools parameter
+        (already top-K filtered by the caller); duplicating skill bodies
+        in the prompt is pure overhead. Includes the persona name so the
+        voice still says "I'm Jarvis" when needed."""
+        return self.MICRO_TIER_TEMPLATE.format(persona=self.persona_name)
 
     def build(
         self,

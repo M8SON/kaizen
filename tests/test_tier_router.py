@@ -65,10 +65,10 @@ class TestDispatchPatterns(unittest.TestCase):
         self.assertEqual(result.tier, "direct")
         self.assertEqual(result.action, "close_session")
 
-    def test_unmatched_routes_ollama(self):
+    def test_unmatched_routes_micro(self):
         router = _make_router()
         result = router.route("play some jazz")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
     def test_missing_patterns_file_does_not_crash(self):
         from core.tier_router import TierRouter
@@ -77,8 +77,8 @@ class TestDispatchPatterns(unittest.TestCase):
             skill_selector=None,
         )
         result = router.route("stop")
-        # No patterns loaded — falls through to ollama
-        self.assertEqual(result.tier, "ollama")
+        # No patterns loaded — falls through to micro tier
+        self.assertEqual(result.tier, "micro")
 
 
 class TestEscalatePatterns(unittest.TestCase):
@@ -106,8 +106,8 @@ class TestEscalatePatterns(unittest.TestCase):
     def test_short_explain_does_not_escalate(self):
         router = _make_router()
         result = router.route("explain this")
-        # Short — no escalate, goes to ollama
-        self.assertEqual(result.tier, "ollama")
+        # Short — no escalate, goes to micro tier
+        self.assertEqual(result.tier, "micro")
 
 
 class TestSkillPrediction(unittest.TestCase):
@@ -125,39 +125,39 @@ class TestSkillPrediction(unittest.TestCase):
         result = router.route("make me a new skill")
         self.assertEqual(result.tier, "claude")
 
-    def test_non_claude_only_skill_routes_to_ollama(self):
+    def test_non_claude_only_skill_routes_to_micro(self):
         sel = self._make_selector_predicting("weather")
         router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("what is the weather in London")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
-    def test_no_skill_selector_defaults_to_ollama(self):
+    def test_no_skill_selector_defaults_to_micro(self):
         router = _make_router(skill_selector=None)
         result = router.route("some unknown request")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
-    def test_unavailable_selector_defaults_to_ollama(self):
+    def test_unavailable_selector_defaults_to_micro(self):
         sel = MagicMock()
         sel.available = False
         router = _make_router(skill_selector=sel)
         result = router.route("some unknown request")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
-    def test_selector_returning_none_defaults_to_ollama(self):
+    def test_selector_returning_none_defaults_to_micro(self):
         sel = MagicMock()
         sel.available = True
         sel.select.return_value = None
         router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("do something")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
-    def test_selector_raising_defaults_to_ollama(self):
+    def test_selector_raising_defaults_to_micro(self):
         sel = MagicMock()
         sel.available = True
         sel.select.side_effect = RuntimeError("model error")
         router = _make_router(claude_only={"install-skill"}, skill_selector=sel)
         result = router.route("do something")
-        self.assertEqual(result.tier, "ollama")
+        self.assertEqual(result.tier, "micro")
 
     def test_escalate_pattern_skips_skill_selector(self):
         sel = MagicMock()

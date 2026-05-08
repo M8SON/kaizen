@@ -42,6 +42,8 @@ class ToolLoop:
         conversation_state,
         memory_provider=None,
         max_rounds: int = 10,
+        skill_selector=None,
+        max_tokens: int = 4096,
     ):
         self.client = client
         self.model = model
@@ -50,6 +52,11 @@ class ToolLoop:
         self.conversation_state = conversation_state
         self.memory_provider = memory_provider
         self.max_rounds = max_rounds
+        # When set, only the top-K semantically-relevant tool defs are sent
+        # to the model per turn — a meaningful prompt-size win on the
+        # micro-tier (Haiku) where we want minimum input tokens.
+        self.skill_selector = skill_selector
+        self.max_tokens = max_tokens
 
     def run(
         self,
@@ -81,7 +88,7 @@ class ToolLoop:
             user_message=user_message,
         )
 
-        tool_definitions = self.skill_loader.get_tool_definitions()
+        tool_definitions = self._build_tool_definitions(user_message)
         tool_activity: list[dict] = []
         rounds = 0
         last_nudged_at = 0
@@ -111,7 +118,7 @@ class ToolLoop:
                 if on_chunk is None:
                     response = self.client.messages.create(
                         model=self.model,
-                        max_tokens=4096,
+                        max_tokens=self.max_tokens,
                         system=round_system,
                         messages=self.conversation_state.select_messages_for_prompt(),
                         tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
@@ -122,7 +129,7 @@ class ToolLoop:
                     # via get_final_message so the rest of the loop is unchanged.
                     with self.client.messages.stream(
                         model=self.model,
-                        max_tokens=4096,
+                        max_tokens=self.max_tokens,
                         system=round_system,
                         messages=self.conversation_state.select_messages_for_prompt(),
                         tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
@@ -172,6 +179,39 @@ class ToolLoop:
                 logger.exception("archive_callback failed")
         self.conversation_state.prune()
         return "I ran into an issue processing that request. Could you try again?"
+
+    def _build_tool_definitions(self, user_message: str) -> list:
+        """Return the tool defs to send to the model this turn.
+
+        With no skill_selector: returns the full list (default behaviour).
+        With a selector: returns only the top-K semantically-relevant defs
+        for the current user message — used by the micro-tier to keep the
+        prompt as small as possible. Falls back to the full list when the
+        selector is unavailable, returns nothing usable, or matches none
+        of the loaded tools.
+        """
+        all_defs = self.skill_loader.get_tool_definitions()
+        if not (
+            user_message
+            and self.skill_selector is not None
+            and self.skill_selector.available
+        ):
+            return all_defs
+        try:
+            selected = self.skill_selector.select(user_message)
+        except Exception as exc:
+            logger.warning("ToolLoop: skill_selector raised %s — using all tools", exc)
+            return all_defs
+        if not selected:
+            return all_defs
+        filtered = [td for td in all_defs if td["name"] in selected]
+        if not filtered:
+            return all_defs
+        logger.debug(
+            "ToolLoop: filtered %d → %d tool defs via selector",
+            len(all_defs), len(filtered),
+        )
+        return filtered
 
     def _any_opted_in_skill(self) -> bool:
         for s in self.skill_loader.skills.values():

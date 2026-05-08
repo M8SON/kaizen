@@ -123,13 +123,15 @@ class Orchestrator:
         # have no user_message to drive semantic selection.
         self.system_prompt = self._build_system_prompt()
 
-        # Tiered intelligence — optional, gated by OLLAMA_ENABLED env var.
-        # When disabled, all requests go through Claude's ToolLoop unchanged.
+        # Tiered intelligence — optional, gated by MICRO_TIER_ENABLED env var.
+        # When disabled, all requests go through the full ToolLoop unchanged.
+        # When enabled, trivial requests route to a Haiku micro-tier with a
+        # slim prompt and top-K filtered tools (~few hundred input tokens,
+        # sub-second on cloud); Sonnet handles complex / ambiguous turns.
         self._tier_router = None
-        self._ollama_tool_loop = None
-        if os.getenv("OLLAMA_ENABLED", "false").lower() == "true":
+        self._micro_loop = None
+        if os.getenv("MICRO_TIER_ENABLED", "false").lower() == "true":
             from core.tier_router import TierRouter
-            from core.ollama_tool_loop import OllamaToolLoop
             _patterns_path = Path(__file__).parent.parent / "config" / "intent_patterns.yaml"
             _claude_only = {
                 s.strip() for s in os.getenv("CLAUDE_ONLY_SKILLS", "install-skill").split(",")
@@ -139,21 +141,21 @@ class Orchestrator:
                 skill_selector=self.skill_selector,
                 claude_only_skills=_claude_only,
             )
-            self._ollama_tool_loop = OllamaToolLoop(
-                host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-                model=os.getenv("OLLAMA_MODEL", "phi4-mini"),
+            micro_model = os.getenv("MICRO_TIER_MODEL", "claude-haiku-4-5")
+            self._micro_loop = ToolLoop(
+                client=self.client,
+                model=micro_model,
                 skill_loader=self.skill_loader,
                 container_manager=self.container_manager,
                 conversation_state=self.conversation_state,
                 memory_provider=self.memory_provider,
-                timeout_seconds=_parse_float(os.getenv("OLLAMA_TIMEOUT_SECONDS"), default=8.0),
-                skill_selector=self.skill_selector,
+                skill_selector=self.skill_selector,  # top-K filter
+                max_tokens=512,                       # micro tier — keep it tight
+                max_rounds=5,                         # tools should resolve fast
             )
-            self._ollama_tool_loop.warmup_async()
             logger.info(
-                "Tiered routing enabled: ollama_model=%s, claude_only=%s",
-                os.getenv("OLLAMA_MODEL", "phi4-mini"),
-                _claude_only,
+                "Tiered routing enabled: micro_model=%s, claude_only=%s",
+                micro_model, _claude_only,
             )
 
         logger.info(
@@ -326,106 +328,27 @@ class Orchestrator:
                 on_chunk=on_chunk,
             )
 
-        # Ollama tier — slim prompt, lazy Claude prompt build only on escalation.
-        from core.ollama_tool_loop import EscalateSignal, EscalateWithContext
-
-        ollama_system_prompt = self.prompt_builder.build_for_ollama()
-        result = self._ollama_tool_loop.run(
-            user_message=user_message, system_prompt=ollama_system_prompt
-        )
-        if result is EscalateSignal:
-            logger.info("OllamaToolLoop escalated → Claude (no tools ran)")
+        # Micro tier — Haiku with a slim system prompt and top-K filtered tools.
+        # Reuses the same ToolLoop machinery as the full Claude path, so
+        # streaming, conversation state, archive, and tool execution all work
+        # identically. On error / unexpected response, fall through to Sonnet.
+        micro_system_prompt = self.prompt_builder.build_for_micro_tier()
+        try:
+            return self._micro_loop.run(
+                user_message=user_message,
+                system_prompt=micro_system_prompt,
+                archive_callback=self._archive_callback,
+                on_chunk=on_chunk,
+            )
+        except Exception:
+            logger.exception("Micro tier failed → escalating to Claude")
             system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=system_prompt,
+                archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
             )
-        if isinstance(result, EscalateWithContext):
-            logger.info(
-                "OllamaToolLoop escalated with %d tool(s) → Claude finalize",
-                len(result.tool_activity),
-            )
-            system_prompt = self._build_system_prompt(user_message=user_message)
-            return self._claude_finalize_ollama_turn(
-                user_message, result.tool_activity, system_prompt
-            )
-        if on_chunk is not None and result:
-            # Ollama returned the full response in one shot; deliver it as a
-            # single delta so callers using the streaming path get something
-            # to feed to TTS without a second code path.
-            on_chunk(result)
-        return result
-
-    def _claude_finalize_ollama_turn(
-        self,
-        user_message: str,
-        tool_activity: list[dict],
-        system_prompt: str,
-    ) -> str:
-        """
-        Finalize a turn where Ollama ran tools but couldn't produce a response.
-
-        Commits the user message and tool activity to ConversationState in
-        Anthropic format, then asks Claude to summarize the results without
-        re-executing any tools.
-        """
-        if not tool_activity:
-            logger.warning(
-                "_claude_finalize_ollama_turn: called with empty tool_activity — falling back to Claude"
-            )
-            return self.tool_loop.run(user_message=user_message, system_prompt=system_prompt)
-
-        # OllamaToolLoop does NOT write to ConversationState on escalation paths,
-        # so we are responsible for the full turn: user message → tool_use → tool_result.
-        # Commit the user message
-        self.conversation_state.append_user_text(user_message)
-
-        # Commit the tool_use assistant turn (synthetic Anthropic format)
-        tool_use_blocks = [
-            {
-                "type": "tool_use",
-                "id": f"ollama_{i}",
-                "name": activity["name"],
-                "input": activity["args"],
-            }
-            for i, activity in enumerate(tool_activity)
-        ]
-        self.conversation_state.append_assistant_content(tool_use_blocks)
-
-        # Commit the tool_result user turn
-        tool_result_blocks = [
-            {
-                "type": "tool_result",
-                "tool_use_id": f"ollama_{i}",
-                "content": activity["result"],
-            }
-            for i, activity in enumerate(tool_activity)
-        ]
-        self.conversation_state.append_tool_results(tool_result_blocks)
-
-        # Ask Claude to produce a final spoken response — no tools offered
-        with profiling.stage("llm_claude"):
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=self.conversation_state.select_messages_for_prompt(),
-            )
-
-        response_text = " ".join(
-            block.text for block in response.content if block.type == "text"
-        )
-        if response_text:
-            self.conversation_state.append_assistant_content(
-                [{"type": "text", "text": response_text}]
-            )
-        self.conversation_state.prune()
-
-        logger.info(
-            "_claude_finalize_ollama_turn: finalized with %d tool(s)", len(tool_activity)
-        )
-        return response_text or "Done."
 
     def _execute_direct(self, route, user_message: str) -> str:
         """Execute a dispatch-pattern route without any LLM involvement."""

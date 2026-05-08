@@ -301,42 +301,58 @@ def hailo_transcription_self_check(transcription_model: str) -> None:
     )
 
 
-def build_stt_backend(transcription_model: str) -> tuple[SttBackend, str]:
-    """Build the speech-to-text backend, preferring Hailo transcription when present."""
+def build_stt_backend(
+    transcription_model_cpu: str,
+    transcription_model_hailo: str,
+) -> tuple[SttBackend, str]:
+    """Select STT backend with separate model variants per execution path.
+
+    Hailo and CPU paths benefit from different Whisper variants: Hailo only
+    has tiny/base HEFs published, while CPU on Pi 5 can comfortably run
+    Whisper-small via faster-whisper for materially better accuracy.
+
+    The CPU path prefers FasterWhisperBackend (CTranslate2 int8) and falls
+    back to the openai-whisper reference impl if faster-whisper isn't
+    available.
+    """
+
+    def _build_cpu(reason: str) -> tuple[SttBackend, str]:
+        try:
+            return (
+                FasterWhisperBackend(model_name=transcription_model_cpu),
+                f"STT backend: cpu:{transcription_model_cpu} (faster-whisper) — {reason}",
+            )
+        except (ImportError, Exception) as exc:
+            logger.warning(
+                "faster-whisper unavailable (%s) — using openai-whisper", exc
+            )
+            return (
+                WhisperBackend(transcription_model=transcription_model_cpu),
+                f"STT backend: cpu:{transcription_model_cpu} (openai-whisper fallback) — {reason}",
+            )
+
     if not hailo_runtime_available():
-        return (
-            WhisperBackend(transcription_model=transcription_model),
-            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — Hailo runtime unavailable",
-        )
+        return _build_cpu("Hailo runtime unavailable")
 
-    if transcription_model not in SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS:
-        return (
-            WhisperBackend(transcription_model=transcription_model),
-            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — model variant unsupported by Hailo",
-        )
+    if transcription_model_hailo not in SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS:
+        return _build_cpu("Hailo transcription model variant unsupported")
 
-    assets_ok, reason = hailo_transcription_assets_available(transcription_model)
+    assets_ok, reason = hailo_transcription_assets_available(transcription_model_hailo)
     if not assets_ok:
-        return (
-            WhisperBackend(transcription_model=transcription_model),
-            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — {reason}",
-        )
+        return _build_cpu(reason)
 
     try:
-        hailo_transcription_self_check(transcription_model)
+        hailo_transcription_self_check(transcription_model_hailo)
     except Exception as exc:
-        return (
-            WhisperBackend(transcription_model=transcription_model),
-            f"STT backend: CPU Whisper (transcription=cpu:{transcription_model}) — Hailo self-check failed: {exc}",
-        )
+        return _build_cpu(f"Hailo self-check failed: {exc}")
 
     backend = HybridWhisperBackend(
-        transcription_model=transcription_model,
+        transcription_model=transcription_model_hailo,
         use_hailo_transcription=True,
     )
     return (
         backend,
-        f"STT backend: Hybrid Whisper (transcription=hailo:{transcription_model})",
+        f"STT backend: Hybrid Whisper (transcription=hailo:{transcription_model_hailo})",
     )
 
 

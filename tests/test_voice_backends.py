@@ -9,51 +9,7 @@ from core import voice_backends
 
 
 class BuildSttBackendTests(unittest.TestCase):
-    @patch("core.voice_backends.WhisperBackend")
-    @patch("core.voice_backends.hailo_runtime_available", return_value=False)
-    def test_falls_back_to_cpu_whisper_when_hailo_runtime_unavailable(
-        self, mock_runtime, mock_whisper_backend
-    ):
-        cpu_backend = object()
-        mock_whisper_backend.return_value = cpu_backend
-
-        backend, message = voice_backends.build_stt_backend("base")
-
-        self.assertIs(backend, cpu_backend)
-        self.assertIn("CPU Whisper", message)
-        self.assertIn("Hailo runtime unavailable", message)
-
-    @patch("core.voice_backends.HybridWhisperBackend", create=True)
-    @patch(
-        "core.voice_backends.hailo_transcription_self_check",
-        return_value=None,
-        create=True,
-    )
-    @patch(
-        "core.voice_backends.hailo_transcription_assets_available",
-        return_value=(True, ""),
-        create=True,
-    )
-    @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_selects_hailo_transcription_when_assets_and_self_check_pass(
-        self,
-        mock_runtime,
-        mock_trans_assets,
-        mock_trans_self_check,
-        mock_hybrid_backend,
-    ):
-        hybrid_backend = object()
-        mock_hybrid_backend.return_value = hybrid_backend
-
-        backend, message = voice_backends.build_stt_backend("base")
-
-        self.assertIs(backend, hybrid_backend)
-        self.assertEqual(
-            message,
-            "STT backend: Hybrid Whisper (transcription=hailo:base)",
-        )
-
-    @patch("core.voice_backends.WhisperBackend")
+    @patch("core.voice_backends.FasterWhisperBackend")
     @patch(
         "core.voice_backends.hailo_transcription_self_check",
         side_effect=RuntimeError("self-check failed"),
@@ -65,33 +21,44 @@ class BuildSttBackendTests(unittest.TestCase):
         create=True,
     )
     @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_falls_back_to_cpu_when_self_check_raises(
+    def test_falls_back_to_cpu_when_hailo_self_check_raises(
         self,
         mock_runtime,
         mock_trans_assets,
         mock_trans_self_check,
-        mock_whisper_backend,
+        mock_fw,
     ):
         cpu_backend = object()
-        mock_whisper_backend.return_value = cpu_backend
+        mock_fw.return_value = cpu_backend
 
-        backend, message = voice_backends.build_stt_backend("base")
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="base",
+        )
 
         self.assertIs(backend, cpu_backend)
         self.assertIn("Hailo self-check failed", message)
 
-    @patch("core.voice_backends.WhisperBackend")
+    @patch("core.voice_backends.FasterWhisperBackend")
+    @patch(
+        "core.voice_backends.hailo_transcription_assets_available",
+        return_value=(False, "transcription model asset missing"),
+        create=True,
+    )
     @patch("core.voice_backends.hailo_runtime_available", return_value=True)
-    def test_falls_back_to_cpu_when_model_variant_unsupported_by_hailo(
-        self, mock_runtime, mock_whisper_backend
+    def test_falls_back_to_cpu_when_hailo_assets_missing(
+        self, mock_runtime, mock_assets, mock_fw
     ):
         cpu_backend = object()
-        mock_whisper_backend.return_value = cpu_backend
+        mock_fw.return_value = cpu_backend
 
-        backend, message = voice_backends.build_stt_backend("small")
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="base",
+        )
 
         self.assertIs(backend, cpu_backend)
-        self.assertIn("model variant unsupported by Hailo", message)
+        self.assertIn("transcription model asset missing", message)
 
     def test_asset_root_is_user_scoped(self):
         self.assertEqual(
@@ -376,6 +343,100 @@ class SileroVadBackendTests(unittest.TestCase):
 
         backend = voice_backends.SileroVadBackend(threshold=0.5)
         self.assertTrue(backend.is_speech(np.zeros(512, dtype=np.float32)))
+
+
+class BuildSttBackendCpuPathTests(unittest.TestCase):
+    @patch("core.voice_backends.FasterWhisperBackend")
+    @patch("core.voice_backends.hailo_runtime_available", return_value=False)
+    def test_uses_faster_whisper_with_cpu_model_when_no_hailo(
+        self, mock_runtime, mock_fw
+    ):
+        instance = object()
+        mock_fw.return_value = instance
+
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="base",
+        )
+
+        self.assertIs(backend, instance)
+        mock_fw.assert_called_once_with(model_name="small")
+        self.assertIn("cpu:small", message)
+        self.assertIn("faster-whisper", message)
+
+    @patch("core.voice_backends.WhisperBackend")
+    @patch(
+        "core.voice_backends.FasterWhisperBackend",
+        side_effect=ImportError("faster-whisper missing"),
+    )
+    @patch("core.voice_backends.hailo_runtime_available", return_value=False)
+    def test_falls_back_to_openai_whisper_when_faster_whisper_missing(
+        self, mock_runtime, mock_fw, mock_whisper
+    ):
+        instance = object()
+        mock_whisper.return_value = instance
+
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="base",
+        )
+
+        self.assertIs(backend, instance)
+        mock_whisper.assert_called_once_with(transcription_model="small")
+        self.assertIn("openai-whisper fallback", message.lower())
+
+    @patch("core.voice_backends.HybridWhisperBackend", create=True)
+    @patch(
+        "core.voice_backends.hailo_transcription_self_check",
+        return_value=None,
+        create=True,
+    )
+    @patch(
+        "core.voice_backends.hailo_transcription_assets_available",
+        return_value=(True, ""),
+        create=True,
+    )
+    @patch("core.voice_backends.hailo_runtime_available", return_value=True)
+    def test_hailo_path_uses_hailo_model_variant_not_cpu_variant(
+        self,
+        mock_runtime,
+        mock_assets,
+        mock_check,
+        mock_hybrid,
+    ):
+        instance = object()
+        mock_hybrid.return_value = instance
+
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="base",
+        )
+
+        self.assertIs(backend, instance)
+        # Hybrid is built with the Hailo variant — small is unsupported by Hailo
+        # and would always fall back if accidentally passed instead.
+        mock_hybrid.assert_called_once_with(
+            transcription_model="base",
+            use_hailo_transcription=True,
+        )
+        self.assertIn("hailo:base", message)
+
+    @patch("core.voice_backends.FasterWhisperBackend")
+    @patch("core.voice_backends.hailo_runtime_available", return_value=True)
+    def test_hailo_unsupported_variant_falls_back_to_cpu(
+        self, mock_runtime, mock_fw
+    ):
+        instance = object()
+        mock_fw.return_value = instance
+
+        backend, message = voice_backends.build_stt_backend(
+            transcription_model_cpu="small",
+            transcription_model_hailo="medium",  # not in SUPPORTED_HAILO_*
+        )
+
+        self.assertIs(backend, instance)
+        mock_fw.assert_called_once_with(model_name="small")
+        self.assertIn("cpu:small", message)
 
 
 class FasterWhisperBackendTests(unittest.TestCase):

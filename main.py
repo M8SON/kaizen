@@ -88,8 +88,19 @@ def build_voice_interface():
     """Construct the default production voice interface from environment config."""
     from core.voice import VoiceInterface
 
+    # WHISPER_MODEL is the legacy single-model knob; CPU and Hailo paths now
+    # take separate variants because Hailo only has tiny/base HEFs while CPU
+    # via faster-whisper happily runs Whisper-small.
+    legacy_whisper = os.getenv("WHISPER_MODEL", "base")
+    transcription_model_cpu = os.getenv(
+        "WHISPER_MODEL_CPU",
+        legacy_whisper if legacy_whisper != "base" else "small",
+    )
+    transcription_model_hailo = os.getenv("WHISPER_MODEL_HAILO", legacy_whisper)
+
     stt_backend, stt_status = build_stt_backend(
-        transcription_model=os.getenv("WHISPER_MODEL", "base"),
+        transcription_model_cpu=transcription_model_cpu,
+        transcription_model_hailo=transcription_model_hailo,
     )
     print(stt_status)
 
@@ -115,7 +126,7 @@ def build_voice_interface():
     logger.info(vad_msg)
 
     return VoiceInterface(
-        transcription_model=os.getenv("WHISPER_MODEL", "base"),
+        transcription_model=transcription_model_cpu,
         display_wake_word=_display_wake_word(),
         enable_tts=os.getenv("ENABLE_TTS", "true").lower() == "true",
         tts_voice=os.getenv("TTS_VOICE", "af_heart"),

@@ -433,15 +433,30 @@ class Orchestrator:
         logger.info("Skills reloaded: %d skills active", len(self.skills))
 
     def greet(self) -> str:
-        """Generate a contextual opening greeting based on startup context and memory."""
-        return self.tool_loop.run(
-            user_message=(
-                "You have just started up. Based on the current time, day, and anything "
-                "you know about Mason from memory, say a brief natural greeting. "
-                "One or two sentences. Do not end with a question."
-            ),
-            system_prompt=self.system_prompt,
+        """Generate a contextual opening greeting based on startup context.
+
+        Calls Claude directly with a slim system prompt — no skill bodies,
+        no persisted memories, no tools — since the greeting only needs
+        persona + date/time/weather to produce one warm sentence. Going
+        through tool_loop with the full prompt cost ~6k input tokens per
+        cold start for ~20 tokens of output."""
+        system_prompt = self.prompt_builder.build_for_greeting(self._startup_context)
+        user_message = (
+            "You have just started up. Based on the current time and day, "
+            "say a brief natural greeting. One or two sentences. "
+            "Do not end with a question."
         )
+        with profiling.stage("llm_claude"):
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=200,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+        text = " ".join(
+            block.text for block in response.content if block.type == "text"
+        ).strip()
+        return text or "Hello."
 
     def inject_startup_context(self, context: str) -> None:
         """Append date/time/weather context to the system prompt before the first turn."""

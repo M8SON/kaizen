@@ -111,6 +111,21 @@ class PromptBuilder:
         self.persona_name = persona_name or persona_name_from_env()
         self.BASE_PROMPT = self.BASE_PROMPT_TEMPLATE.format(persona=self.persona_name)
 
+    def build_for_greeting(self, startup_context: str = "") -> str:
+        """Slim system prompt for the cold-start greeting.
+
+        The greeting only needs persona + date/time/weather (~10 tokens of
+        the user's day) to produce one warm sentence. Adding skill bodies,
+        memories, and self-update guidance for that turn was burning ~6k
+        input tokens per startup with no impact on the output. Excludes
+        every section the greeting doesn't use; callers pick a low
+        max_tokens at the API layer.
+        """
+        prompt = self.BASE_PROMPT
+        if startup_context.strip():
+            prompt += f"\n--- Current Context ---\n{startup_context}\n"
+        return prompt
+
     def build_for_ollama(self) -> str:
         """Return the slim system prompt used for Ollama-tier requests.
 

@@ -85,5 +85,70 @@ class TestPromptBuilderPersona(unittest.TestCase):
         self.assertIn("Your name is Computer.", prompt)
 
 
+class TestBuildForGreeting(unittest.TestCase):
+    """The greeting path skips memories, skills, and self-update guidance."""
+
+    def test_includes_persona(self):
+        with _WakeEnv(WAKE_BACKEND="openwakeword", WAKE_WORD_MODEL="hey_jarvis"):
+            pb = PromptBuilder()
+        prompt = pb.build_for_greeting()
+        self.assertIn("Your name is Jarvis.", prompt)
+
+    def test_appends_startup_context(self):
+        with _WakeEnv():
+            pb = PromptBuilder()
+        prompt = pb.build_for_greeting("It is Friday afternoon. 70F sunny.")
+        self.assertIn("Friday afternoon", prompt)
+        self.assertIn("--- Current Context ---", prompt)
+
+    def test_omits_startup_context_when_blank(self):
+        with _WakeEnv():
+            pb = PromptBuilder()
+        prompt = pb.build_for_greeting("")
+        self.assertNotIn("--- Current Context ---", prompt)
+
+    def test_omits_skill_section(self):
+        from unittest.mock import MagicMock
+        skill = MagicMock()
+        skill.name = "weather"
+        skill.description = "Get the weather"
+        skill.instructions = "DETAILED SKILL BODY ABOUT WEATHER LOOKUPS"
+        skill.frontmatter = {}
+        with _WakeEnv():
+            pb = PromptBuilder()
+        # Even after building a full prompt with skills, the greeting path is
+        # untouched — it never references the loaded skill set.
+        pb.build(skills={"weather": skill}, skipped_skills={})
+        prompt = pb.build_for_greeting()
+        self.assertNotIn("DETAILED SKILL BODY", prompt)
+        self.assertNotIn("Available Skills", prompt)
+
+    def test_omits_memory_section(self):
+        from unittest.mock import MagicMock
+        memory = MagicMock()
+        memory.load_for_prompt.return_value = "MASON LIKES TURBO TEA AT 3PM"
+        with _WakeEnv():
+            pb = PromptBuilder(memory_provider=memory)
+        prompt = pb.build_for_greeting()
+        self.assertNotIn("MASON LIKES TURBO TEA", prompt)
+        self.assertNotIn("Remembered from past conversations", prompt)
+
+    def test_meaningfully_smaller_than_full_prompt(self):
+        # The whole point of the greeting path is to drop input tokens.
+        from unittest.mock import MagicMock
+        skill = MagicMock()
+        skill.name = "weather"
+        skill.description = "Get the weather"
+        skill.instructions = "X" * 4000
+        skill.frontmatter = {}
+        memory = MagicMock()
+        memory.load_for_prompt.return_value = "Y" * 1000
+        with _WakeEnv():
+            pb = PromptBuilder(memory_provider=memory)
+        full = pb.build(skills={"weather": skill}, skipped_skills={})
+        lean = pb.build_for_greeting("It is Friday.")
+        self.assertLess(len(lean), len(full) // 4)
+
+
 if __name__ == "__main__":
     unittest.main()

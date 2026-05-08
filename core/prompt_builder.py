@@ -6,8 +6,30 @@ and skill instructions.
 """
 
 import json
+import os
 
 from core.memory_provider import MemoryProvider
+
+
+def persona_name_from_env() -> str:
+    """Derive the assistant's persona name from the active wake word.
+
+    Mirrors main._display_wake_word so the banner the user sees and the
+    persona Claude introduces itself as stay in sync. Examples:
+      WAKE_BACKEND=openwakeword, WAKE_WORD_MODEL=hey_jarvis  -> "Jarvis"
+      WAKE_BACKEND=openwakeword, WAKE_WORD_MODEL=alexa       -> "Alexa"
+      WAKE_BACKEND=whisper,      WAKE_PHRASE=computer        -> "Computer"
+      WAKE_BACKEND=whisper,      WAKE_PHRASE="hey computer"  -> "Computer"
+    """
+    backend = os.getenv("WAKE_BACKEND", "openwakeword")
+    if backend == "openwakeword":
+        raw = os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
+    else:
+        raw = os.getenv("WAKE_PHRASE", "computer")
+    tokens = raw.strip().split()
+    if not tokens:
+        return "Computer"
+    return tokens[-1].capitalize()
 
 
 SELF_UPDATE_GUIDANCE = """
@@ -43,8 +65,8 @@ class PromptBuilder:
 
     ALWAYS_FULL_SKILLS = {"set_env_var", "save_memory", "install_skill"}
 
-    BASE_PROMPT = (
-        "Your name is Computer. You are Mason's personal voice assistant, running on a Raspberry Pi. "
+    BASE_PROMPT_TEMPLATE = (
+        "Your name is {persona}. You are Mason's personal voice assistant, running on a Raspberry Pi. "
         "You have a warm and direct personality. You value truth above everything else — never flatter, "
         "never soften a hard answer just to be agreeable, and never tell Mason what he wants to hear "
         "at the expense of what is actually true. If something is wrong, say so plainly. "
@@ -81,10 +103,13 @@ class PromptBuilder:
         memory_provider: MemoryProvider | None = None,
         max_skill_tokens: int | None = 4000,
         skill_selector=None,
+        persona_name: str | None = None,
     ):
         self.memory_provider = memory_provider or MemoryProvider()
         self.max_skill_tokens = max_skill_tokens
         self._skill_selector = skill_selector
+        self.persona_name = persona_name or persona_name_from_env()
+        self.BASE_PROMPT = self.BASE_PROMPT_TEMPLATE.format(persona=self.persona_name)
 
     def build_for_ollama(self) -> str:
         """Return the slim system prompt used for Ollama-tier requests.

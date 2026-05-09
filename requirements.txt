@@ -34,3 +34,6 @@ faster-whisper>=1.0
 # enough to push synth-vs-realtime ratio below 1.0, eliminating the
 # between-sentence gaps that the parallel pipeline alone can't close.
 kokoro-onnx>=0.5.0
+
+# Spotify Web API client (used by core/spotify_auth.py + skills/spotify/)
+spotipy>=2.24

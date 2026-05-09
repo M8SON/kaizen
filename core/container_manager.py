@@ -1007,14 +1007,26 @@ class ContainerManager:
         return f"Playing your {matched_name} playlist"
 
     def _spotify_device_id(self, sp) -> str | None:
-        """Return the first available Spotify Connect device id, preferring active."""
+        """Return the Spotify Connect device id to play on.
+
+        When SPOTIFY_DEVICE_NAME is set, pins playback to the named device
+        (case-insensitive) and returns None if it isn't online. Otherwise
+        falls back to the historical 'first active, else first available'.
+        """
         try:
             devices = (sp.devices() or {}).get("devices") or []
         except Exception:
             return None
         if not devices:
             return None
-        # Prefer an already-active device, fall back to first available.
+
+        pin = (os.environ.get("SPOTIFY_DEVICE_NAME") or "").strip().lower()
+        if pin:
+            for d in devices:
+                if (d.get("name") or "").strip().lower() == pin:
+                    return d.get("id")
+            return None
+
         active = [d for d in devices if d.get("is_active")]
         if active:
             return active[0].get("id")

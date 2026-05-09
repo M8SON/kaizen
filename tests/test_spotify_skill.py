@@ -216,5 +216,67 @@ class SpotifySkillRegistration(unittest.TestCase):
         self.assertIn("SPOTIFY_CLIENT_ID", " ".join(info.get("missing_env_vars", [])))
 
 
+class SpotifyDeviceIdSelection(unittest.TestCase):
+    """SPOTIFY_DEVICE_NAME, when set, must pin playback to the named device
+    even when another device (e.g. FireTV) is currently active. When unset,
+    fall back to the historical 'first active, then first available' policy.
+    """
+
+    def _devices(self, *items):
+        return {"devices": list(items)}
+
+    def _dev(self, name, did, active=False):
+        return {"name": name, "id": did, "is_active": active}
+
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    def test_pinned_device_chosen_over_active_other(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.devices.return_value = self._devices(
+            self._dev("Amazon FireTV Cube Gen 2", "fire-id", active=True),
+            self._dev("MiniClaw", "mini-id", active=False),
+        )
+        self.assertEqual(m._spotify_device_id(sp), "mini-id")
+
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    def test_pinned_device_match_is_case_insensitive(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.devices.return_value = self._devices(
+            self._dev("MINICLAW", "mini-id", active=True),
+        )
+        self.assertEqual(m._spotify_device_id(sp), "mini-id")
+
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    def test_pinned_device_missing_returns_none_not_fallback(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.devices.return_value = self._devices(
+            self._dev("Amazon FireTV Cube Gen 2", "fire-id", active=True),
+        )
+        # User asked for MiniClaw only — must NOT silently fall back to FireTV.
+        self.assertIsNone(m._spotify_device_id(sp))
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_no_pin_falls_back_to_active_first(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.devices.return_value = self._devices(
+            self._dev("Other", "other-id", active=False),
+            self._dev("Active", "active-id", active=True),
+        )
+        self.assertEqual(m._spotify_device_id(sp), "active-id")
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_no_pin_no_active_returns_first_available(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.devices.return_value = self._devices(
+            self._dev("First", "first-id", active=False),
+            self._dev("Second", "second-id", active=False),
+        )
+        self.assertEqual(m._spotify_device_id(sp), "first-id")
+
+
 if __name__ == "__main__":
     unittest.main()

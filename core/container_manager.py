@@ -820,6 +820,81 @@ class ContainerManager:
         """Stub — filled in by Task 11 once the Spotify backend exists."""
         return "Spotify isn't set up yet"
 
+    def _execute_spotify(self, tool_input: dict) -> str:
+        """Native handler for the spotify skill. Two actions: play and play_playlist."""
+        from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
+
+        action = str(tool_input.get("action") or "play").strip().lower()
+
+        if action == "play":
+            query = str(tool_input.get("query", "")).strip()
+            if not query:
+                return "No search query provided for Spotify."
+            try:
+                sp = get_spotify_client()
+            except SpotifyAuthMissing as exc:
+                return f"Spotify isn't set up: {exc}"
+            return self._spotify_play_track(sp, query)
+
+        if action == "play_playlist":
+            name = str(tool_input.get("name", "")).strip()
+            if not name:
+                return "No playlist name provided."
+            try:
+                sp = get_spotify_client()
+            except SpotifyAuthMissing as exc:
+                return f"Spotify isn't set up: {exc}"
+            return self._spotify_play_playlist(sp, name)
+
+        return f"Unknown spotify action: {action!r}"
+
+    def _spotify_play_track(self, sp, query: str) -> str:
+        try:
+            results = sp.search(q=query, type="track", limit=10)
+        except Exception as exc:
+            return f"Couldn't reach Spotify right now: {exc}"
+        items = (results.get("tracks") or {}).get("items") or []
+        if not items:
+            return f"Couldn't find anything matching {query!r} on Spotify."
+
+        track = items[0]
+        track_uri = track["uri"]
+        title = track.get("name", "track")
+        artists = track.get("artists") or []
+        artist = artists[0]["name"] if artists else "unknown"
+
+        device_id = self._spotify_device_id(sp)
+        if device_id is None:
+            return ("Spotify is set up but no Connect device is available. "
+                    "Check that librespot is running on the Pi.")
+
+        self._stop_all_music()
+        try:
+            sp.start_playback(device_id=device_id, uris=[track_uri])
+        except Exception as exc:
+            return f"Couldn't start Spotify playback: {exc}"
+
+        self._active_music_source = "spotify"
+        return f"Now playing: {title} by {artist}"
+
+    def _spotify_play_playlist(self, sp, name: str) -> str:
+        # Filled in by Task 10
+        return "play_playlist not implemented yet"
+
+    def _spotify_device_id(self, sp) -> str | None:
+        """Return the first available Spotify Connect device id, preferring active."""
+        try:
+            devices = (sp.devices() or {}).get("devices") or []
+        except Exception:
+            return None
+        if not devices:
+            return None
+        # Prefer an already-active device, fall back to first available.
+        active = [d for d in devices if d.get("is_active")]
+        if active:
+            return active[0].get("id")
+        return devices[0].get("id")
+
     def _execute_recall_session(self, tool_input: dict) -> str:
         """Native handler for the recall_session skill."""
         if self._archive is None:

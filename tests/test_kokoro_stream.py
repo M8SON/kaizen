@@ -113,7 +113,9 @@ class KokoroONNXBackendTests(unittest.TestCase):
 
         fake_impl = MagicMock()
         with patch.object(voice_backends, "_KokoroONNXImpl", fake_impl), \
-             patch.object(voice_backends, "_KOKORO_ONNX_AVAILABLE", True):
+             patch.object(voice_backends, "_KOKORO_ONNX_AVAILABLE", True), \
+             patch("onnxruntime.InferenceSession") as mock_session_cls:
+            mock_session_cls.return_value = MagicMock()
             backend = voice_backends.KokoroONNXBackend(voice="af_heart")
             backend.kokoro = MagicMock()
             backend.kokoro.create.return_value = (np.zeros(1024, dtype=np.float32), 24000)
@@ -124,6 +126,42 @@ class KokoroONNXBackendTests(unittest.TestCase):
         backend.kokoro.create.assert_called_once_with(
             "hello", voice="af_heart", speed=1.0, lang="en-us"
         )
+
+    @patch("core.voice_backends.Path.exists", return_value=True)
+    def test_init_uses_all_cpus_for_intra_op_threads_by_default(self, _mock_exists):
+        from core import voice_backends
+
+        fake_impl = MagicMock()
+        with patch.object(voice_backends, "_KokoroONNXImpl", fake_impl), \
+             patch.object(voice_backends, "_KOKORO_ONNX_AVAILABLE", True), \
+             patch("onnxruntime.InferenceSession") as mock_session_cls, \
+             patch("onnxruntime.SessionOptions") as mock_opts_cls, \
+             patch.object(voice_backends.os, "cpu_count", return_value=4):
+            opts = MagicMock()
+            mock_opts_cls.return_value = opts
+            mock_session_cls.return_value = MagicMock()
+            backend = voice_backends.KokoroONNXBackend(voice="af_heart")
+
+        self.assertEqual(backend.intra_op_threads, 4)
+        self.assertEqual(opts.intra_op_num_threads, 4)
+        self.assertEqual(opts.inter_op_num_threads, 1)
+
+    @patch("core.voice_backends.Path.exists", return_value=True)
+    def test_init_explicit_thread_count_overrides_default(self, _mock_exists):
+        from core import voice_backends
+
+        fake_impl = MagicMock()
+        with patch.object(voice_backends, "_KokoroONNXImpl", fake_impl), \
+             patch.object(voice_backends, "_KOKORO_ONNX_AVAILABLE", True), \
+             patch("onnxruntime.InferenceSession") as mock_session_cls, \
+             patch("onnxruntime.SessionOptions") as mock_opts_cls:
+            opts = MagicMock()
+            mock_opts_cls.return_value = opts
+            mock_session_cls.return_value = MagicMock()
+            backend = voice_backends.KokoroONNXBackend(voice="af_heart", intra_op_threads=2)
+
+        self.assertEqual(backend.intra_op_threads, 2)
+        self.assertEqual(opts.intra_op_num_threads, 2)
 
     @patch("core.voice_backends._KOKORO_ONNX_AVAILABLE", False)
     def test_init_raises_import_error_when_kokoro_onnx_uninstalled(self):

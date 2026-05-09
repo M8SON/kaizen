@@ -179,13 +179,22 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     if backend_name == "kokoro-onnx":
         try:
             from core.voice_backends import KokoroONNXBackend
+            # Pi 5 has 4 Cortex-A76 cores. ONNX Runtime defaults to 1
+            # intra-op thread on ARM64 — explicitly use all cores unless
+            # overridden by env (lets users dial down for thermals etc.).
+            threads_env = os.getenv("TTS_ONNX_THREADS")
+            intra_op_threads = int(threads_env) if threads_env else None
             backend = KokoroONNXBackend(
                 voice=voice,
                 speed=speed,
                 output_device=output_device,
                 output_samplerate=output_sr,
+                intra_op_threads=intra_op_threads,
             )
-            return backend, f"TTS backend: kokoro-onnx ({voice}, int8 @ {output_sr} Hz)"
+            return backend, (
+                f"TTS backend: kokoro-onnx ({voice}, int8 @ {output_sr} Hz, "
+                f"{backend.intra_op_threads} thread(s))"
+            )
         except (FileNotFoundError, ImportError) as exc:
             return None, (
                 f"TTS backend: kokoro PyTorch fallback ({voice}) — "

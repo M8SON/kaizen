@@ -6,6 +6,7 @@ conversation control logic in VoiceInterface.
 """
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Protocol
@@ -625,6 +626,7 @@ class KokoroONNXBackend(KokoroTTSBackend):
         output_samplerate: int | None = None,
         model_path: Path | None = None,
         voices_path: Path | None = None,
+        intra_op_threads: int | None = None,
     ):
         if not _KOKORO_ONNX_AVAILABLE:
             raise ImportError("kokoro-onnx not installed")
@@ -637,14 +639,34 @@ class KokoroONNXBackend(KokoroTTSBackend):
                 f"{voices_path}. Run scripts/download_kokoro_onnx.py to fetch."
             )
 
+        # Pi 5 voice test 2026-05-09: default kokoro-onnx ran ~2.7x slower
+        # than realtime — twice as slow as the PyTorch path. Cause: ONNX
+        # Runtime defaults to a single intra-op thread on ARM64 builds,
+        # while PyTorch was implicitly using all four Cortex-A76 cores.
+        # Explicitly pin intra_op_num_threads to all available cores.
+        if intra_op_threads is None:
+            intra_op_threads = max(1, (os.cpu_count() or 1))
+
+        import onnxruntime as rt
+        opts = rt.SessionOptions()
+        opts.intra_op_num_threads = intra_op_threads
+        opts.inter_op_num_threads = 1
+        session = rt.InferenceSession(
+            str(model_path),
+            sess_options=opts,
+            providers=["CPUExecutionProvider"],
+        )
+
         logger.info(
-            "Loading Kokoro ONNX (voice: %s, model: %s)", voice, model_path.name,
+            "Loading Kokoro ONNX (voice: %s, model: %s, intra_op_threads=%d)",
+            voice, model_path.name, intra_op_threads,
         )
         self.voice = voice
         self.speed = speed
         self.output_device = output_device
         self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
-        self.kokoro = _KokoroONNXImpl(str(model_path), str(voices_path))
+        self.intra_op_threads = intra_op_threads
+        self.kokoro = _KokoroONNXImpl.from_session(session, str(voices_path))
 
     def _synth_audio(self, text: str):
         # kokoro.create returns (audio_array, sample_rate). Returns a single

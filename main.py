@@ -128,7 +128,8 @@ def build_voice_interface():
     enable_tts = os.getenv("ENABLE_TTS", "true").lower() == "true"
     tts_voice = os.getenv("TTS_VOICE", "af_heart")
     tts_speed = float(os.getenv("TTS_SPEED", "1.2"))
-    tts_backend = _build_tts_backend(enable_tts, tts_voice, tts_speed)
+    tts_backend, tts_status = _build_tts_backend(enable_tts, tts_voice, tts_speed)
+    print(tts_status)
 
     return VoiceInterface(
         transcription_model=transcription_model_cpu,
@@ -147,7 +148,7 @@ def build_voice_interface():
 
 
 def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
-    """Pick a TTS backend by env var, falling back to PyTorch Kokoro on failure.
+    """Pick a TTS backend by env var, returning (backend, status_message).
 
     TTS_BACKEND=kokoro       — kokoro PyTorch package (default; works everywhere)
     TTS_BACKEND=kokoro-onnx  — kokoro-onnx (ONNX Runtime int8); ~2-3x faster
@@ -155,34 +156,34 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
                                ~/.miniclaw/models/kokoro-onnx/ — fetch with
                                scripts/download_kokoro_onnx.py.
 
-    A graceful fallback path keeps Pi voice working even if the ONNX assets
-    are missing — better than a hard crash on startup before the user can
-    download the model.
+    The status message is printed at startup so the active backend is always
+    visible — silent fallbacks were hiding 'still on PyTorch' configurations
+    where the user thought the ONNX backend was active.
     """
     if not enable_tts:
-        return None
+        return None, "TTS backend: disabled (ENABLE_TTS=false)"
 
     backend_name = os.getenv("TTS_BACKEND", "kokoro").strip().lower()
     if backend_name == "kokoro-onnx":
         try:
             from core.voice_backends import KokoroONNXBackend
-            return KokoroONNXBackend(voice=voice, speed=speed)
+            backend = KokoroONNXBackend(voice=voice, speed=speed)
+            return backend, f"TTS backend: kokoro-onnx ({voice}, int8)"
         except (FileNotFoundError, ImportError) as exc:
-            logger.warning(
-                "TTS_BACKEND=kokoro-onnx requested but unavailable (%s); "
-                "falling back to kokoro PyTorch backend",
-                exc,
+            return None, (
+                f"TTS backend: kokoro PyTorch fallback ({voice}) — "
+                f"kokoro-onnx requested but unavailable: {exc}"
             )
-            backend_name = "kokoro"
 
     if backend_name != "kokoro":
-        logger.warning(
-            "Unknown TTS_BACKEND=%r; defaulting to kokoro", backend_name
+        return None, (
+            f"TTS backend: kokoro PyTorch ({voice}) — "
+            f"unknown TTS_BACKEND={backend_name!r}, defaulting to kokoro"
         )
 
     # Returning None lets VoiceInterface lazily construct the default
     # KokoroTTSBackend with the same voice/speed args we already pass.
-    return None
+    return None, f"TTS backend: kokoro PyTorch ({voice})"
 
 
 def _display_wake_word() -> str:

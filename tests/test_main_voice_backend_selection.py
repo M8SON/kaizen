@@ -28,19 +28,26 @@ class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
     @patch("core.voice.VoiceInterface")
     @patch("main.build_wake_backend")
     @patch("main.build_stt_backend")
-    def test_build_voice_interface_prints_backend_status_once(
+    def test_build_voice_interface_prints_backend_status_lines(
         self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface, mock_print
     ):
         fake_backend = object()
-        message = (
+        stt_msg = (
             "STT backend: CPU Whisper (transcription=cpu:base) — Hailo runtime unavailable"
         )
-        mock_build_stt_backend.return_value = (fake_backend, message)
+        mock_build_stt_backend.return_value = (fake_backend, stt_msg)
         mock_build_wake_backend.return_value = (object(), "Wake backend: openwakeword (hey_jarvis, threshold=0.5)")
 
         main.build_voice_interface()
 
-        mock_print.assert_called_once_with(message)
+        # Both backend status lines are printed at startup so the active
+        # backends are visible without spelunking through INFO logs.
+        printed = [c.args[0] for c in mock_print.call_args_list if c.args]
+        self.assertIn(stt_msg, printed)
+        self.assertTrue(
+            any("TTS backend:" in line for line in printed),
+            f"expected a TTS backend status line, got: {printed}",
+        )
 
 
 class VoiceWakeBackendIntegrationTests(unittest.TestCase):

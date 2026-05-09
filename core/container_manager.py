@@ -41,6 +41,9 @@ class ContainerManager:
 
     DEFAULT_TIMEOUT = 30
     DEFAULT_MEMORY_LIMIT = "256m"
+    _MUSIC_CONTROL_ACTIONS = (
+        "stop", "pause", "resume", "skip", "volume_up", "volume_down",
+    )
 
     def __init__(self, memory_limit: str = DEFAULT_MEMORY_LIMIT):
         self.memory_limit = memory_limit
@@ -779,6 +782,42 @@ class ContainerManager:
         keeping each task small and testable on its own.
         """
         return
+
+    def _execute_music_control(self, tool_input: dict) -> str:
+        """Transport router — dispatches to the active music source's backend."""
+        action = str(tool_input.get("action") or "").strip().lower()
+        if action not in self._MUSIC_CONTROL_ACTIONS:
+            return f"Unknown music-control action: {action!r}"
+
+        source = self._active_music_source
+        if source is None:
+            return "Nothing is playing."
+
+        if source == "soundcloud":
+            return self._music_control_soundcloud(action)
+        if source == "spotify":
+            return self._music_control_spotify(action)
+        return f"Unknown active music source: {source!r}"
+
+    def _music_control_soundcloud(self, action: str) -> str:
+        """Reuse the existing soundcloud transport implementations."""
+        if action == "stop":
+            return self._stop_mpv()
+        if action == "pause":
+            return self._mpv_action_or_idle(["set_property", "pause", True], "Paused.")
+        if action == "resume":
+            return self._mpv_action_or_idle(["set_property", "pause", False], "Resumed.")
+        if action == "skip":
+            return self._mpv_action_or_idle(["playlist-next"], "Skipped.")
+        if action == "volume_up":
+            return self._mpv_action_or_idle(["add", "volume", 5], "Volume up.")
+        if action == "volume_down":
+            return self._mpv_action_or_idle(["add", "volume", -5], "Volume down.")
+        return f"Unhandled action: {action}"
+
+    def _music_control_spotify(self, action: str) -> str:
+        """Stub — filled in by Task 11 once the Spotify backend exists."""
+        return "Spotify isn't set up yet"
 
     def _execute_recall_session(self, tool_input: dict) -> str:
         """Native handler for the recall_session skill."""

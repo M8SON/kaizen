@@ -8,27 +8,27 @@
 
 dispatch:
   - pattern: "^(stop|halt)(\\s+(the\\s+)?(music|playing|audio))?[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: stop}
 
   - pattern: "^pause(\\s+(the\\s+)?(music|playing|audio))?[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: pause}
 
   - pattern: "^(resume|continue|unpause)(\\s+(the\\s+)?(music|playing|audio))?[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: resume}
 
   - pattern: "^(skip|next)(\\s+(this\\s+)?(song|track))?[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: skip}
 
   - pattern: "^(volume up|turn it up|louder)[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: volume_up}
 
   - pattern: "^(volume down|turn it down|quieter|lower the volume)[.!?]?$"
-    skill: soundcloud
+    skill: music-control
     args: {action: volume_down}
 
   - pattern: "^(goodbye|bye|good night|stop listening|exit|shut down)[.!?]?$"

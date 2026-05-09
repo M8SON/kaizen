@@ -26,14 +26,14 @@ class TestDispatchPatterns(unittest.TestCase):
         router = _make_router()
         result = router.route("stop")
         self.assertEqual(result.tier, "direct")
-        self.assertEqual(result.skill, "soundcloud")
+        self.assertEqual(result.skill, "music-control")
         self.assertEqual(result.args, {"action": "stop"})
 
     def test_stop_music_routes_direct(self):
         router = _make_router()
         result = router.route("stop music")
         self.assertEqual(result.tier, "direct")
-        self.assertEqual(result.skill, "soundcloud")
+        self.assertEqual(result.skill, "music-control")
 
     def test_pause_routes_direct(self):
         router = _make_router()
@@ -174,19 +174,19 @@ class TestMusicTransportPatterns(unittest.TestCase):
     def test_stop_routes_to_stop(self):
         r = self.router.route("stop the music")
         self.assertEqual(r.tier, "direct")
-        self.assertEqual(r.skill, "soundcloud")
+        self.assertEqual(r.skill, "music-control")
         self.assertEqual(r.args, {"action": "stop"})
 
     def test_halt_routes_to_stop(self):
         r = self.router.route("halt")
         self.assertEqual(r.tier, "direct")
-        self.assertEqual(r.skill, "soundcloud")
+        self.assertEqual(r.skill, "music-control")
         self.assertEqual(r.args, {"action": "stop"})
 
     def test_pause_routes_to_pause(self):
         r = self.router.route("pause the music")
         self.assertEqual(r.tier, "direct")
-        self.assertEqual(r.skill, "soundcloud")
+        self.assertEqual(r.skill, "music-control")
         self.assertEqual(r.args, {"action": "pause"})
 
     def test_pause_does_not_match_stop_pattern(self):
@@ -195,7 +195,7 @@ class TestMusicTransportPatterns(unittest.TestCase):
 
     def test_resume_routes_to_resume(self):
         r = self.router.route("resume")
-        self.assertEqual(r.skill, "soundcloud")
+        self.assertEqual(r.skill, "music-control")
         self.assertEqual(r.args, {"action": "resume"})
 
     def test_continue_routes_to_resume(self):
@@ -204,7 +204,7 @@ class TestMusicTransportPatterns(unittest.TestCase):
 
     def test_skip_routes_to_skip(self):
         r = self.router.route("skip")
-        self.assertEqual(r.skill, "soundcloud")
+        self.assertEqual(r.skill, "music-control")
         self.assertEqual(r.args, {"action": "skip"})
 
     def test_next_song_routes_to_skip(self):

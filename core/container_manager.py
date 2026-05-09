@@ -676,8 +676,11 @@ class ContainerManager:
         if not shutil.which("mpv"):
             return "mpv not found. Install with: sudo apt install mpv"
 
-        # Stop any currently playing track before queueing a new search.
-        self._terminate_mpv_process()
+        # Stop any currently playing music (Spotify or SoundCloud) before
+        # queueing a new search. Using _stop_all_music() instead of just
+        # _terminate_mpv_process keeps the mutual-exclusion invariant —
+        # starting SoundCloud while Spotify is active must stop Spotify too.
+        self._stop_all_music()
         if os.path.exists(self._mpv_socket_path):
             try:
                 os.unlink(self._mpv_socket_path)
@@ -749,6 +752,7 @@ class ContainerManager:
         except OSError:
             pass
 
+        self._active_music_source = "soundcloud"
         return f"Now playing: {first_title}"
 
     def _mpv_action_or_idle(self, command: list, success_msg: str) -> str:

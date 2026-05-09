@@ -391,6 +391,27 @@ class TestPlayQueue(unittest.TestCase):
 
         existing.terminate.assert_called_once()
 
+    def test_play_calls_stop_all_music_first(self):
+        """play must dispatch to the shared mutual-exclusion helper, not just
+        terminate mpv — otherwise starting SoundCloud while Spotify is active
+        leaves Spotify still playing."""
+        def fake_run(cmd, **kwargs):
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = self._yt_dlp_output(1)
+            return mock
+
+        with patch("shutil.which", return_value="/usr/bin/x"), \
+             patch("subprocess.run", side_effect=fake_run), \
+             patch("subprocess.Popen"), \
+             patch("pathlib.Path.write_text"), \
+             patch("pathlib.Path.mkdir"), \
+             patch("pathlib.Path.open", MagicMock()), \
+             patch.object(self.manager, "_stop_all_music") as mock_stop_all:
+            self.manager._execute_soundcloud({"action": "play", "query": "x"})
+
+        mock_stop_all.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

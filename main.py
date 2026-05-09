@@ -178,21 +178,32 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     backend_name = os.getenv("TTS_BACKEND", "kokoro").strip().lower()
     if backend_name == "kokoro-onnx":
         try:
-            from core.voice_backends import KokoroONNXBackend
+            from core.voice_backends import KokoroONNXBackend, KOKORO_ONNX_ASSET_ROOT
             # Pi 5 has 4 Cortex-A76 cores. ONNX Runtime defaults to 1
             # intra-op thread on ARM64 — explicitly use all cores unless
             # overridden by env (lets users dial down for thermals etc.).
             threads_env = os.getenv("TTS_ONNX_THREADS")
             intra_op_threads = int(threads_env) if threads_env else None
+            # int8 quantization theoretically buys speed but on Pi 5 ARM64
+            # it has been measured slower than fp32. KOKORO_ONNX_VARIANT
+            # toggles between the two — fp32 is ~310 MB on disk, int8 is
+            # ~88 MB. fp32 needs the full kokoro-v1.0.onnx download via
+            # scripts/download_kokoro_onnx.py with the variant flag.
+            variant = os.getenv("KOKORO_ONNX_VARIANT", "int8").strip().lower()
+            model_filename = {
+                "int8": "kokoro-v1.0.int8.onnx",
+                "fp32": "kokoro-v1.0.onnx",
+            }.get(variant, "kokoro-v1.0.int8.onnx")
             backend = KokoroONNXBackend(
                 voice=voice,
                 speed=speed,
                 output_device=output_device,
                 output_samplerate=output_sr,
                 intra_op_threads=intra_op_threads,
+                model_path=KOKORO_ONNX_ASSET_ROOT / model_filename,
             )
             return backend, (
-                f"TTS backend: kokoro-onnx ({voice}, int8 @ {output_sr} Hz, "
+                f"TTS backend: kokoro-onnx ({voice}, {variant} @ {output_sr} Hz, "
                 f"{backend.intra_op_threads} thread(s))"
             )
         except (FileNotFoundError, ImportError) as exc:

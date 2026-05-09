@@ -284,13 +284,13 @@ class Orchestrator:
     def process_message(self, user_message: str, on_chunk=None) -> str:
         """Process a user message through the tiered intelligence stack.
 
-        on_chunk: optional Callable[[str], None]. When provided, the Claude
-        path streams text deltas through it as they arrive; the orchestrator
-        still returns the full assembled response. The Ollama path is
-        currently non-streaming — if the request stays on Ollama, on_chunk
-        receives the final response in one delta. (Ollama streaming is a
-        separate followup; the high-impact win is the Claude path because
-        that's where most user-visible TTS time is spent on Pi 5.)
+        on_chunk: optional Callable[[str], None]. When provided, both the
+        full Claude (Sonnet) path and the Haiku micro-tier path stream
+        text deltas through it as they arrive — both reuse ToolLoop and
+        therefore inherit its streaming support. Direct routes (skill
+        dispatches, session-close patterns) deliver the assembled string
+        as a single delta so the caller's TTS feed has a uniform shape
+        regardless of which tier handled the turn.
         """
         # Reuse the outer profiling.turn() if the voice loop already opened
         # one; otherwise own the scope so text-mode turns still produce a

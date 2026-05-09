@@ -43,7 +43,7 @@ class TierRouter:
     Routes a transcript to the appropriate processing tier without invoking any LLM.
 
     Patterns are loaded from a YAML file at startup. A missing file logs a
-    warning and falls back to routing everything to Ollama.
+    warning and falls back to routing everything to the micro tier.
     """
 
     def __init__(
@@ -102,7 +102,7 @@ class TierRouter:
                         args=dict(entry.get("args", {})),
                     )
 
-            # 2. Escalate patterns — route to Claude immediately, skip Ollama latency
+            # 2. Escalate patterns — route to Sonnet immediately, skip the micro tier
             for pattern in self._escalate:
                 if pattern.search(text):
                     logger.debug("TierRouter: escalate pattern matched → claude")

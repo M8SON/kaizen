@@ -457,8 +457,8 @@ class VoiceInterface:
         The Kokoro consumer thread is spawned LAZILY on the first non-empty
         delta — we don't claim the audio device until we have something to
         speak. This lets elevator music keep playing during the LLM wait
-        (which on Pi 5 + Ollama timeout can easily be 25-30 seconds of
-        otherwise-silent dead air).
+        (which on a slow Sonnet round + Pi 5 Kokoro synthesis can easily
+        be 5-10 seconds of otherwise-silent dead air).
 
         on_first_chunk: optional zero-arg callable fired exactly once when the
         first non-empty delta arrives. The voice loop uses this to stop the

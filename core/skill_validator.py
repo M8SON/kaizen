@@ -18,7 +18,6 @@ from core.skill_policy import (
     TIER_BUNDLED,
     TIER_AUTHORED,
     TIER_IMPORTED,
-    TIER_DEV,
     policy_for,
     DEVICE_ALLOWLIST_PATTERNS,
     is_scoped_volume,

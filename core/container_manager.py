@@ -56,6 +56,10 @@ class ContainerManager:
         self._mpv_socket_path: str = "/tmp/miniclaw-mpv.sock"
         self._mpv_log_path: Path = Path.home() / ".miniclaw" / "mpv.log"
         self._mpv_log_fh = None  # opened on play, closed on stop
+        # Mutual-exclusion: only one music backend plays at a time.
+        # Set by play actions, cleared by _stop_all_music. Read by
+        # _execute_music_control to dispatch transport commands.
+        self._active_music_source: str | None = None
         self._self_update_seen: dict[str, str] = {}
         self._current_turn_id: str = ""
         self._native_handlers = {
@@ -749,6 +753,32 @@ class ContainerManager:
         except OSError:
             pass
         return "Stopped."
+
+    def _stop_all_music(self) -> None:
+        """Stop any currently-playing music regardless of source.
+
+        Called by every play action (in any music skill) and the
+        music-control skill's stop action. Idempotent and exception-safe:
+        each backend's stop helper has its own try/except so one failing
+        won't block the other from running.
+        """
+        try:
+            self._stop_mpv()
+        except Exception:
+            logger.exception("_stop_mpv failed during _stop_all_music")
+        try:
+            self._stop_spotify_playback()
+        except Exception:
+            logger.exception("_stop_spotify_playback failed during _stop_all_music")
+        self._active_music_source = None
+
+    def _stop_spotify_playback(self) -> None:
+        """Stub — filled in by Task 11 once the Spotify backend exists.
+
+        Splitting this out lets _stop_all_music ship before _execute_spotify,
+        keeping each task small and testable on its own.
+        """
+        return
 
     def _execute_recall_session(self, tool_input: dict) -> str:
         """Native handler for the recall_session skill."""

@@ -115,5 +115,24 @@ class MusicControlDispatch(unittest.TestCase):
         mock_sp.assert_called_once_with("skip")
 
 
+class MusicControlSkillRegistration(unittest.TestCase):
+    def test_native_handler_registered(self):
+        m = _make_manager()
+        self.assertIn("music-control", m._native_handlers)
+        handler = m._native_handlers["music-control"]
+        # Verify it's the execute_music_control method by calling it
+        result = handler({"action": "skip"})
+        # If nothing is playing, should get "Nothing is playing." (the default case)
+        self.assertEqual(result, "Nothing is playing.")
+
+    def test_skill_loads_via_skill_loader(self):
+        from core.skill_loader import SkillLoader
+        loader = SkillLoader()
+        skills = loader.load_all()
+        self.assertIn("music-control", skills)
+        s = skills["music-control"]
+        self.assertEqual(s.execution_config.get("type"), "native")
+
+
 if __name__ == "__main__":
     unittest.main()

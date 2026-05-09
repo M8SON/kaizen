@@ -189,5 +189,32 @@ class FuzzyMatchPlaylistHelper(unittest.TestCase):
         self.assertIsNone(_fuzzy_match_playlist("anything", []))
 
 
+class SpotifySkillRegistration(unittest.TestCase):
+    def test_native_handler_registered(self):
+        m = _make_manager()
+        self.assertIn("spotify", m._native_handlers)
+        self.assertEqual(m._native_handlers["spotify"], m._execute_spotify)
+
+    @patch.dict("os.environ", {
+        "SPOTIFY_CLIENT_ID": "x", "SPOTIFY_CLIENT_SECRET": "y",
+    }, clear=False)
+    def test_skill_loads_when_env_present(self):
+        from core.skill_loader import SkillLoader
+        loader = SkillLoader()
+        skills = loader.load_all()
+        self.assertIn("spotify", skills)
+        s = skills["spotify"]
+        self.assertEqual(s.execution_config.get("type"), "native")
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_skill_skipped_when_env_missing(self):
+        from core.skill_loader import SkillLoader
+        loader = SkillLoader()
+        loader.load_all()
+        self.assertIn("spotify", loader.skipped_skills)
+        info = loader.skipped_skills["spotify"]
+        self.assertIn("SPOTIFY_CLIENT_ID", " ".join(info.get("missing_env_vars", [])))
+
+
 if __name__ == "__main__":
     unittest.main()

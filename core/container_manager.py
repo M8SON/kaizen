@@ -109,6 +109,7 @@ class ContainerManager:
             "recall-session": self._execute_recall_session,
             "update-skill-hints": self._execute_update_skill_hints,
             "music-control": self._execute_music_control,
+            "spotify": self._execute_spotify,
         }
         self._verify_docker()
 

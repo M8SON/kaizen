@@ -36,6 +36,40 @@ DASHBOARD_PORT = 7860
 DASHBOARD_LOCK = Path.home() / ".miniclaw" / "dashboard.lock"
 
 
+def _fuzzy_match_playlist(query: str, names: list[str]) -> str | None:
+    """Return the best-matching playlist name from `names`, or None.
+
+    Match precedence (per spec):
+      1. Exact (case-insensitive)
+      2. Substring (either direction, case-insensitive)
+      3. difflib close-match with cutoff 0.7 (~30% Levenshtein distance)
+    """
+    if not names:
+        return None
+
+    q_lower = query.lower()
+    name_lower = [n.lower() for n in names]
+
+    # 1. Exact case-insensitive
+    for original, lower in zip(names, name_lower):
+        if lower == q_lower:
+            return original
+
+    # 2. Substring either direction
+    for original, lower in zip(names, name_lower):
+        if q_lower in lower or lower in q_lower:
+            return original
+
+    # 3. difflib close-match (Levenshtein-ish, ratio ≥ 0.7)
+    import difflib
+    best = difflib.get_close_matches(q_lower, name_lower, n=1, cutoff=0.7)
+    if best:
+        idx = name_lower.index(best[0])
+        return names[idx]
+
+    return None
+
+
 class ContainerManager:
     """Manages Docker containers for skill execution."""
 
@@ -878,8 +912,46 @@ class ContainerManager:
         return f"Now playing: {title} by {artist}"
 
     def _spotify_play_playlist(self, sp, name: str) -> str:
-        # Filled in by Task 10
-        return "play_playlist not implemented yet"
+        # Paginate through all of the user's saved playlists. Spotify caps at
+        # 50 per page; users with hundreds of playlists need the loop.
+        playlists: list[dict] = []
+        try:
+            res = sp.current_user_playlists(limit=50)
+        except Exception as exc:
+            return f"Couldn't reach Spotify right now: {exc}"
+        while res:
+            playlists.extend(res.get("items") or [])
+            if res.get("next"):
+                try:
+                    res = sp.next(res)
+                except Exception:
+                    break
+            else:
+                break
+
+        if not playlists:
+            return "You don't have any saved playlists on Spotify."
+
+        names = [p["name"] for p in playlists if p.get("name")]
+        matched_name = _fuzzy_match_playlist(name, names)
+        if matched_name is None:
+            return f"Couldn't find a playlist named {name!r} in your library."
+
+        playlist = next(p for p in playlists if p.get("name") == matched_name)
+
+        device_id = self._spotify_device_id(sp)
+        if device_id is None:
+            return ("Spotify is set up but no Connect device is available. "
+                    "Check that librespot is running on the Pi.")
+
+        self._stop_all_music()
+        try:
+            sp.start_playback(device_id=device_id, context_uri=playlist["uri"])
+        except Exception as exc:
+            return f"Couldn't start playlist: {exc}"
+
+        self._active_music_source = "spotify"
+        return f"Playing your {matched_name} playlist"
 
     def _spotify_device_id(self, sp) -> str | None:
         """Return the first available Spotify Connect device id, preferring active."""

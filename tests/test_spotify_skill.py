@@ -83,5 +83,111 @@ class SpotifyPlayAction(unittest.TestCase):
         sp.start_playback.assert_not_called()
 
 
+class SpotifyPlayPlaylist(unittest.TestCase):
+    def test_no_name_returns_friendly_error(self):
+        m = _make_manager()
+        result = m._execute_spotify({"action": "play_playlist", "name": ""})
+        self.assertIn("no playlist name", result.lower())
+
+    def test_play_playlist_exact_match(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.current_user_playlists.return_value = {
+            "items": [
+                {"name": "COUNTRY", "uri": "spotify:playlist:c1"},
+                {"name": "HIPHOP", "uri": "spotify:playlist:h1"},
+            ],
+            "next": None,
+        }
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_stop_all_music") as mock_stop:
+            result = m._execute_spotify({"action": "play_playlist", "name": "COUNTRY"})
+
+        sp.start_playback.assert_called_once_with(
+            device_id="dev1", context_uri="spotify:playlist:c1"
+        )
+        mock_stop.assert_called_once()
+        self.assertEqual(m._active_music_source, "spotify")
+        self.assertIn("COUNTRY", result)
+
+    def test_play_playlist_case_insensitive(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.current_user_playlists.return_value = {
+            "items": [{"name": "COUNTRY", "uri": "spotify:playlist:c1"}],
+            "next": None,
+        }
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_spotify({"action": "play_playlist", "name": "country"})
+
+        sp.start_playback.assert_called_once_with(
+            device_id="dev1", context_uri="spotify:playlist:c1"
+        )
+
+    def test_play_playlist_substring_match(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.current_user_playlists.return_value = {
+            "items": [
+                {"name": "Workout 2026", "uri": "spotify:playlist:w1"},
+                {"name": "Dinner Vibes", "uri": "spotify:playlist:d1"},
+            ],
+            "next": None,
+        }
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_spotify({"action": "play_playlist", "name": "workout"})
+
+        sp.start_playback.assert_called_once_with(
+            device_id="dev1", context_uri="spotify:playlist:w1"
+        )
+
+    def test_play_playlist_no_match_returns_message(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.current_user_playlists.return_value = {
+            "items": [{"name": "JAZZ", "uri": "spotify:playlist:j1"}],
+            "next": None,
+        }
+
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_spotify({"action": "play_playlist", "name": "metal"})
+
+        self.assertIn("Couldn't find", result)
+        sp.start_playback.assert_not_called()
+        self.assertIsNone(m._active_music_source)
+
+
+class FuzzyMatchPlaylistHelper(unittest.TestCase):
+    def test_exact_case_insensitive(self):
+        from core.container_manager import _fuzzy_match_playlist
+        self.assertEqual(_fuzzy_match_playlist("country", ["COUNTRY", "JAZZ"]), "COUNTRY")
+
+    def test_substring_either_direction(self):
+        from core.container_manager import _fuzzy_match_playlist
+        self.assertEqual(
+            _fuzzy_match_playlist("workout", ["Workout 2026", "Dinner"]),
+            "Workout 2026",
+        )
+
+    def test_levenshtein_fallback(self):
+        from core.container_manager import _fuzzy_match_playlist
+        # "countrie" -> "COUNTRY" via difflib close-match
+        self.assertEqual(_fuzzy_match_playlist("countrie", ["COUNTRY", "POP"]), "COUNTRY")
+
+    def test_no_match_returns_none(self):
+        from core.container_manager import _fuzzy_match_playlist
+        self.assertIsNone(_fuzzy_match_playlist("metal", ["COUNTRY", "POP"]))
+
+    def test_empty_names_returns_none(self):
+        from core.container_manager import _fuzzy_match_playlist
+        self.assertIsNone(_fuzzy_match_playlist("anything", []))
+
+
 if __name__ == "__main__":
     unittest.main()

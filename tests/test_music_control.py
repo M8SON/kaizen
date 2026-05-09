@@ -134,5 +134,104 @@ class MusicControlSkillRegistration(unittest.TestCase):
         self.assertEqual(s.execution_config.get("type"), "native")
 
 
+class StopSpotifyPlayback(unittest.TestCase):
+    def test_no_op_when_active_source_is_not_spotify(self):
+        m = _make_manager()
+        m._active_music_source = "soundcloud"
+        # Should not even try to call get_spotify_client
+        with patch("core.spotify_auth.get_spotify_client") as mock_get:
+            m._stop_spotify_playback()
+        mock_get.assert_not_called()
+
+    def test_pauses_active_device_when_spotify_is_source(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            m._stop_spotify_playback()
+        sp.pause_playback.assert_called_once_with(device_id="dev1")
+
+    def test_swallows_auth_missing_silently(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        from core.spotify_auth import SpotifyAuthMissing
+        with patch("core.spotify_auth.get_spotify_client",
+                   side_effect=SpotifyAuthMissing("missing")):
+            m._stop_spotify_playback()  # must not raise
+
+    def test_swallows_pause_errors_silently(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1"}]}
+        sp.pause_playback.side_effect = RuntimeError("network")
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            m._stop_spotify_playback()  # must not raise
+
+
+class MusicControlSpotifyBranch(unittest.TestCase):
+    def test_skip_calls_spotify_next_track(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "skip"})
+        sp.next_track.assert_called_once_with(device_id="dev1")
+        self.assertEqual(result, "Skipped.")
+
+    def test_pause_calls_spotify_pause_playback(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "pause"})
+        sp.pause_playback.assert_called_once_with(device_id="dev1")
+        self.assertEqual(result, "Paused.")
+
+    def test_resume_calls_spotify_start_playback_no_uris(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "resume"})
+        sp.start_playback.assert_called_once_with(device_id="dev1")
+        self.assertEqual(result, "Resumed.")
+
+    def test_volume_up_clamps_to_100(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True, "volume_percent": 98}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "volume_up"})
+        sp.volume.assert_called_once_with(volume_percent=100, device_id="dev1")
+        self.assertEqual(result, "Volume up.")
+
+    def test_volume_down_clamps_to_0(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True, "volume_percent": 2}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "volume_down"})
+        sp.volume.assert_called_once_with(volume_percent=0, device_id="dev1")
+        self.assertEqual(result, "Volume down.")
+
+    def test_stop_uses_pause_then_clears_active_source(self):
+        m = _make_manager()
+        m._active_music_source = "spotify"
+        sp = MagicMock()
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "stop"})
+        sp.pause_playback.assert_called_once_with(device_id="dev1")
+        self.assertIsNone(m._active_music_source)
+        self.assertEqual(result, "Stopped.")
+
+
 if __name__ == "__main__":
     unittest.main()

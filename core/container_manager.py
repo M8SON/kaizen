@@ -811,12 +811,23 @@ class ContainerManager:
         self._active_music_source = None
 
     def _stop_spotify_playback(self) -> None:
-        """Stub — filled in by Task 11 once the Spotify backend exists.
-
-        Splitting this out lets _stop_all_music ship before _execute_spotify,
-        keeping each task small and testable on its own.
-        """
-        return
+        """Pause Spotify if it's the active source. Best-effort, exception-safe."""
+        if self._active_music_source != "spotify":
+            return
+        try:
+            from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
+            try:
+                sp = get_spotify_client()
+            except SpotifyAuthMissing:
+                return  # nothing usable to stop
+            device_id = self._spotify_device_id(sp)
+            if device_id:
+                try:
+                    sp.pause_playback(device_id=device_id)
+                except Exception:
+                    logger.exception("Spotify pause_playback failed")
+        except Exception:
+            logger.exception("_stop_spotify_playback failed")
 
     def _execute_music_control(self, tool_input: dict) -> str:
         """Transport router — dispatches to the active music source's backend."""
@@ -851,8 +862,45 @@ class ContainerManager:
         return f"Unhandled action: {action}"
 
     def _music_control_spotify(self, action: str) -> str:
-        """Stub — filled in by Task 11 once the Spotify backend exists."""
-        return "Spotify isn't set up yet"
+        """Spotify-side of music-control transport dispatch."""
+        from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
+        try:
+            sp = get_spotify_client()
+        except SpotifyAuthMissing as exc:
+            return f"Spotify isn't set up: {exc}"
+
+        device_id = self._spotify_device_id(sp)
+        if device_id is None:
+            return "Spotify Connect device unavailable."
+
+        try:
+            if action == "stop":
+                sp.pause_playback(device_id=device_id)
+                self._active_music_source = None
+                return "Stopped."
+            if action == "pause":
+                sp.pause_playback(device_id=device_id)
+                return "Paused."
+            if action == "resume":
+                sp.start_playback(device_id=device_id)
+                return "Resumed."
+            if action == "skip":
+                sp.next_track(device_id=device_id)
+                return "Skipped."
+            if action in ("volume_up", "volume_down"):
+                # Read current volume from device list; clamp 0-100.
+                devices = (sp.devices() or {}).get("devices") or []
+                this_dev = next(
+                    (d for d in devices if d.get("id") == device_id), None
+                )
+                current = int((this_dev or {}).get("volume_percent") or 50)
+                step = 5 if action == "volume_up" else -5
+                new_vol = max(0, min(100, current + step))
+                sp.volume(volume_percent=new_vol, device_id=device_id)
+                return "Volume up." if action == "volume_up" else "Volume down."
+        except Exception as exc:
+            return f"Couldn't reach Spotify: {exc}"
+        return f"Unhandled action: {action}"
 
     def _execute_spotify(self, tool_input: dict) -> str:
         """Native handler for the spotify skill. Two actions: play and play_playlist."""

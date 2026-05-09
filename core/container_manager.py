@@ -829,8 +829,11 @@ class ContainerManager:
             if device_id:
                 try:
                     sp.pause_playback(device_id=device_id)
-                except Exception:
-                    logger.exception("Spotify pause_playback failed")
+                except Exception as exc:
+                    # 403 "Restriction violated" is expected when the previous
+                    # track ended naturally or playback isn't on a device this
+                    # app token controls — not worth a stack trace.
+                    logger.warning("Spotify pause_playback skipped: %s", exc)
         except Exception:
             logger.exception("_stop_spotify_playback failed")
 

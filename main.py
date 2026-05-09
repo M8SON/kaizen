@@ -184,16 +184,19 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
             # overridden by env (lets users dial down for thermals etc.).
             threads_env = os.getenv("TTS_ONNX_THREADS")
             intra_op_threads = int(threads_env) if threads_env else None
-            # int8 quantization theoretically buys speed but on Pi 5 ARM64
-            # it has been measured slower than fp32. KOKORO_ONNX_VARIANT
-            # toggles between the two — fp32 is ~310 MB on disk, int8 is
-            # ~88 MB. fp32 needs the full kokoro-v1.0.onnx download via
-            # scripts/download_kokoro_onnx.py with the variant flag.
-            variant = os.getenv("KOKORO_ONNX_VARIANT", "int8").strip().lower()
+            # int8 vs fp32 — fp32 is the default despite being larger
+            # (~310 MB vs ~88 MB) because ONNX Runtime's int8 kernels for
+            # ARMv8.2 are not optimised for Cortex-A76 DOTPROD: measured
+            # 2026-05-09 on Pi 5, int8 ran ~2x slower than fp32 with
+            # identical config. fp32 also beats the PyTorch backend on
+            # the same hardware. On x86_64 the situation is reversed —
+            # int8 is faster there — so override KOKORO_ONNX_VARIANT
+            # accordingly when running on a non-Pi machine.
+            variant = os.getenv("KOKORO_ONNX_VARIANT", "fp32").strip().lower()
             model_filename = {
                 "int8": "kokoro-v1.0.int8.onnx",
                 "fp32": "kokoro-v1.0.onnx",
-            }.get(variant, "kokoro-v1.0.int8.onnx")
+            }.get(variant, "kokoro-v1.0.onnx")
             backend = KokoroONNXBackend(
                 voice=voice,
                 speed=speed,

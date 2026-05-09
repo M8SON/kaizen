@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """Download Kokoro ONNX model + voices into ~/.miniclaw/models/kokoro-onnx/.
 
-The kokoro-onnx package needs two files at runtime:
-  - kokoro-v1.0.int8.onnx (~30 MB, int8 quantized)
-  - voices-v1.0.bin       (~10 MB, voice embeddings)
+The kokoro-onnx package needs the ONNX model and voices files at runtime:
+  - kokoro-v1.0.onnx      (~310 MB, fp32 — the new default)
+  - voices-v1.0.bin       (~28 MB, voice embeddings)
 
-Both are published on the kokoro-onnx GitHub releases page. This script
-fetches them once into the user's miniclaw data dir so KokoroONNXBackend
-finds them at startup.
+fp32 is now the default after Pi 5 testing 2026-05-09 showed it ran
+~2x faster than int8 on Cortex-A76 — ONNX Runtime's int8 kernels for
+ARM64 aren't tuned for the ARMv8.2 DOTPROD instructions, while the
+fp32 path uses well-tuned NEON code. The int8 variant
+(kokoro-v1.0.int8.onnx, ~88 MB) is still available with `--int8` for
+x86_64 hosts where int8 IS faster.
 
-Re-run is idempotent — files that already exist with the right size are
-skipped.
+Both are published on the kokoro-onnx GitHub releases page. Re-runs
+are idempotent — files that already exist with non-zero size are skipped.
 
 Usage:
-    python3 scripts/download_kokoro_onnx.py
+    python3 scripts/download_kokoro_onnx.py          # fp32 (default)
+    python3 scripts/download_kokoro_onnx.py --int8   # smaller, slower on Pi
 """
 
 from __future__ import annotations
@@ -29,19 +33,20 @@ ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "kokoro-onnx"
 # https://github.com/thewh1teagle/kokoro-onnx/releases
 _RELEASE_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 
-ASSETS = [
-    {
-        "name": "kokoro-v1.0.int8.onnx",
-        "url": f"{_RELEASE_BASE}/kokoro-v1.0.int8.onnx",
-        # int8 quantized variant — ~30 MB, fastest on Pi 5 ARM64. Full-
-        # precision kokoro-v1.0.onnx (~80 MB) is also available if you
-        # want max quality and have the CPU headroom.
-    },
-    {
-        "name": "voices-v1.0.bin",
-        "url": f"{_RELEASE_BASE}/voices-v1.0.bin",
-    },
-]
+VOICES_ASSET = {
+    "name": "voices-v1.0.bin",
+    "url": f"{_RELEASE_BASE}/voices-v1.0.bin",
+}
+
+MODEL_FP32 = {
+    "name": "kokoro-v1.0.onnx",
+    "url": f"{_RELEASE_BASE}/kokoro-v1.0.onnx",
+}
+
+MODEL_INT8 = {
+    "name": "kokoro-v1.0.int8.onnx",
+    "url": f"{_RELEASE_BASE}/kokoro-v1.0.int8.onnx",
+}
 
 
 def _download(url: str, dest: Path) -> None:
@@ -72,14 +77,22 @@ def _download(url: str, dest: Path) -> None:
 
 
 def main() -> int:
+    int8 = "--int8" in sys.argv
+    model = MODEL_INT8 if int8 else MODEL_FP32
+    assets = [model, VOICES_ASSET]
+
     ASSET_ROOT.mkdir(parents=True, exist_ok=True)
-    for asset in ASSETS:
+    for asset in assets:
         dest = ASSET_ROOT / asset["name"]
         if dest.exists() and dest.stat().st_size > 0:
             print(f"{dest.name} already present ({dest.stat().st_size / 1e6:.1f} MB) — skipping")
             continue
         _download(asset["url"], dest)
-    print(f"\nDone. Set TTS_BACKEND=kokoro-onnx in .env to use the ONNX backend.")
+    variant = "int8" if int8 else "fp32"
+    print(
+        f"\nDone. Set TTS_BACKEND=kokoro-onnx (and KOKORO_ONNX_VARIANT={variant} "
+        f"if not the default fp32) in .env to use the ONNX backend."
+    )
     return 0
 
 

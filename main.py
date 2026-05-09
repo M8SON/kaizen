@@ -156,19 +156,36 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
                                ~/.miniclaw/models/kokoro-onnx/ — fetch with
                                scripts/download_kokoro_onnx.py.
 
-    The status message is printed at startup so the active backend is always
-    visible — silent fallbacks were hiding 'still on PyTorch' configurations
-    where the user thought the ONNX backend was active.
+    Resolves the output device and its native sample rate up front so the
+    backend opens its OutputStream against the device the rest of the voice
+    pipeline will use. Kokoro generates 24 kHz audio; many USB DACs (incl.
+    the KT USB DAC bundled with this rig) reject 24 kHz outright and only
+    accept 48-96 kHz. Without this resolution the backend would default to
+    its 24 kHz native rate and fail with PortAudio Invalid sample rate.
+
+    The status message is printed at startup so the active backend is
+    always visible — silent fallbacks were hiding 'still on PyTorch'
+    configurations where the user thought the ONNX backend was active.
     """
     if not enable_tts:
         return None, "TTS backend: disabled (ENABLE_TTS=false)"
+
+    from core.audio_devices import output_samplerate, resolve_output_device
+
+    output_device = resolve_output_device()
+    output_sr = output_samplerate(output_device)
 
     backend_name = os.getenv("TTS_BACKEND", "kokoro").strip().lower()
     if backend_name == "kokoro-onnx":
         try:
             from core.voice_backends import KokoroONNXBackend
-            backend = KokoroONNXBackend(voice=voice, speed=speed)
-            return backend, f"TTS backend: kokoro-onnx ({voice}, int8)"
+            backend = KokoroONNXBackend(
+                voice=voice,
+                speed=speed,
+                output_device=output_device,
+                output_samplerate=output_sr,
+            )
+            return backend, f"TTS backend: kokoro-onnx ({voice}, int8 @ {output_sr} Hz)"
         except (FileNotFoundError, ImportError) as exc:
             return None, (
                 f"TTS backend: kokoro PyTorch fallback ({voice}) — "
@@ -182,7 +199,9 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
         )
 
     # Returning None lets VoiceInterface lazily construct the default
-    # KokoroTTSBackend with the same voice/speed args we already pass.
+    # KokoroTTSBackend with the same voice/speed args we already pass —
+    # VoiceInterface resolves output_device and output_samplerate itself
+    # for the PyTorch path.
     return None, f"TTS backend: kokoro PyTorch ({voice})"
 
 

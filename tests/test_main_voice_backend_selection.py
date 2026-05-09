@@ -6,11 +6,14 @@ import main
 
 
 class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
+    @patch("core.audio_devices.output_samplerate", return_value=48000)
+    @patch("core.audio_devices.resolve_output_device", return_value=0)
     @patch("core.voice.VoiceInterface")
     @patch("main.build_wake_backend")
     @patch("main.build_stt_backend")
     def test_build_voice_interface_passes_selected_backend(
-        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface
+        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface,
+        _mock_resolve, _mock_sr,
     ):
         fake_backend = object()
         mock_build_stt_backend.return_value = (
@@ -24,12 +27,15 @@ class BuildVoiceInterfaceSelectionTests(unittest.TestCase):
         _, kwargs = mock_voice_interface.call_args
         self.assertIs(kwargs["stt_backend"], fake_backend)
 
+    @patch("core.audio_devices.output_samplerate", return_value=48000)
+    @patch("core.audio_devices.resolve_output_device", return_value=0)
     @patch("builtins.print")
     @patch("core.voice.VoiceInterface")
     @patch("main.build_wake_backend")
     @patch("main.build_stt_backend")
     def test_build_voice_interface_prints_backend_status_lines(
-        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface, mock_print
+        self, mock_build_stt_backend, mock_build_wake_backend, mock_voice_interface,
+        mock_print, _mock_resolve, _mock_sr,
     ):
         fake_backend = object()
         stt_msg = (

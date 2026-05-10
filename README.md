@@ -8,14 +8,14 @@ Built around a skill-based architecture where capabilities are defined as lightw
 
 ```
 Microphone → Whisper (speech-to-text) → TierRouter (<5ms, no LLM)
-    ├─ deterministic → skill called directly   (stop, volume, goodbye)
-    ├─ ollama        → Ollama LLM → skill → Ollama response
-    │                  (escalates to Claude if Ollama can't handle it)
-    └─ claude        → Claude → skill → Claude response
+    ├─ deterministic → skill called directly        (stop, volume, goodbye)
+    ├─ micro         → Claude Haiku → skill → Haiku response
+    │                  (whole turn escalates to Sonnet on error)
+    └─ claude        → Claude Sonnet → skill → Sonnet response
          → Kokoro TTS (text-to-speech) → Speaker
 ```
 
-**Tiered intelligence** keeps Claude as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine commands go to a local Ollama model or bypass LLMs entirely. See [Intelligence Tiers](#intelligence-tiers) for details.
+**Tiered intelligence** keeps Claude Sonnet as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine tool calls route to Claude Haiku (the "micro" tier) with a slimmer prompt, and the most common commands bypass LLMs entirely. See [Intelligence Tiers](#intelligence-tiers) for details.
 
 The system uses two layers for extensibility:
 
@@ -25,18 +25,23 @@ The system uses two layers for extensibility:
 
 ## Features
 
-- Tiered intelligence — deterministic dispatch for instant commands, Ollama for routine requests, Claude only for complex reasoning
-- Wake word detection (`"computer"`) using a sliding Whisper window — any phrase works, no training required
-- Optional Hailo-backed full transcription on Raspberry Pi AI HAT+ 2 hardware (wake detection remains CPU Whisper for now)
+- Tiered intelligence — deterministic dispatch for instant commands, Claude Haiku for routine tool calls, Claude Sonnet for complex reasoning
+- Wake word detection using a sliding Whisper window — any phrase works, no training required (default `"computer"`)
+- Optional Hailo-backed full transcription on Raspberry Pi AI HAT+ 2 (wake detection remains CPU Whisper)
 - Conversation session mode — stays active between follow-ups until idle timeout
-- Streaming TTS — Kokoro chunks play as they're generated, first words spoken immediately
+- Streaming TTS — Kokoro chunks play as they're generated; ONNX backend ships fp32 + int8 variants (~2–3× faster than the PyTorch baseline on Pi 5)
 - Voice skill installation — say "add a skill that does X" and Claude Code writes, builds, and loads it
+- Self-improving skills — bundled skills can autonomously refine their own routing hints based on usage
 - Persistent memory — plain markdown notes for transparency, with MemPalace preferred by default when installed
-- Modular skill system — add capabilities without touching core code
+- FTS5 session archive — every conversation turn is searchable via the `recall-session` skill
+- Cron-style scheduler — yaml-backed recurring tasks fire natural-language prompts through the orchestrator
+- Music: Spotify Connect (raspotify), SoundCloud (yt-dlp + mpv), unified `music-control` voice transport
+- Modular skill system — agentskills.io-compatible (single-directory, kebab-case)
 - OpenClaw skill compatibility — use existing community skills
-- Docker-sandboxed execution — security by default, resource-capped containers
+- Docker-sandboxed execution — security by default, resource-capped containers; native execution path for host-integration skills
 - Visual dashboard skill — voice-triggered monitor display with news/OSINT, weather, stocks, and music
 - R2-D2 style audio feedback — startup chime and thinking sound
+- Run on boot via systemd — installer ships in-tree (see [Run on boot](#run-on-boot-raspberry-pi))
 - Text mode for development and testing without a microphone
 
 ## Requirements
@@ -105,8 +110,8 @@ Running costs are negligible — the hardware pays for itself in utility long be
 ## Quick Start
 
 ```bash
-git clone https://github.com/M8SON/MiniClaw.git
-cd MiniClaw
+git clone https://github.com/M8SON/miniclaw.git
+cd miniclaw
 ./run.sh --install-system-deps  # Debian/Ubuntu only: installs Docker + audio system deps
 cp .env.example .env
 # Edit .env with your API keys
@@ -119,11 +124,11 @@ cp .env.example .env
 
 ## Optional: Hailo Whisper Offload
 
-MiniClaw can offload **wake detection and full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. The current implementation is hybrid:
+MiniClaw can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection currently stays on CPU Whisper (the published Hailo wake encoder needs a 10s window, the wake loop buffers 2s — silence padding produced hallucinations, so wake-on-Hailo was reverted).
 
-- wake detection can run on Hailo Whisper (`WAKE_MODEL`, usually `tiny`)
-- full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL`, currently `base`/`tiny` variants)
-- each path falls back independently, so you can run `wake=hailo` with `transcription=cpu` or the reverse if only one side is ready
+- wake detection runs on CPU Whisper (`WAKE_MODEL`, default `tiny`)
+- full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL_HAILO`, `base` or `tiny`)
+- the transcription path falls back to CPU automatically if the Hailo runtime or assets are missing
 
 ### Pi prerequisites
 
@@ -177,30 +182,23 @@ Run MiniClaw in voice mode:
 ./run.sh --voice
 ```
 
-Expected startup line when both Hailo paths are active:
-
-```text
-STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=hailo:base)
-```
-
-Expected fallback line if something is missing:
-
-```text
-STT backend: CPU Whisper fallback (wake=cpu:tiny, transcription=cpu:base) — <reason>
-```
-
-You may also see partial fallback combinations such as:
+Expected startup line when transcription is on Hailo:
 
 ```text
 STT backend: Hybrid Whisper (wake=cpu:tiny, transcription=hailo:base)
-STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=cpu:base)
 ```
 
-If you still see CPU fallback, the likely causes are:
+Full CPU fallback line if Hailo is unavailable:
 
-- `hailo_platform` is not visible inside `.venv`
+```text
+STT backend: CPU Whisper fallback (wake=cpu:tiny, transcription=cpu:small) — <reason>
+```
+
+If you see CPU fallback when expecting Hailo, the likely causes are:
+
+- `hailo_platform` is not visible inside `.venv` (recreate with `--system-site-packages`)
 - `~/.miniclaw/models/hailo-whisper/base` is missing assets
-- the selected `WHISPER_MODEL` variant is unsupported by the Hailo path
+- the selected `WHISPER_MODEL_HAILO` variant has no published HEF (only `tiny` and `base` exist today)
 
 Current limitation: Hailo currently accelerates Whisper only. TierRouter and Kokoro are unchanged, and Kokoro offload is still future work.
 
@@ -272,7 +270,7 @@ Just ask:
 
 > *"computer, add a skill that tells me a random joke"*
 
-Claude Code writes the skill files, validates them, and walks you through three confirmation steps before building and loading the skill. No coding required. See `skills/skill_tells_random/` for an example of a skill created this way.
+Claude Code writes the skill files, validates them, and walks you through three confirmation steps before building and loading the skill. No coding required. See `skills/skill-tells-random/` for an example of a skill created this way.
 
 To port a community [OpenClaw](https://github.com/openclaw/openclaw) skill:
 
@@ -325,29 +323,28 @@ Leave `MEMORY_BACKEND=auto` to get the default behavior: use MemPalace when inst
 
 MiniClaw routes each voice command through a three-tier gate before any LLM runs:
 
-| Tier | Latency | Examples |
-|---|---|---|
-| **Deterministic** | <5ms | "stop", "volume up", "goodbye" |
-| **Ollama** | ~1–3s | "play some jazz", "what's the weather" |
-| **Claude** | ~2–5s | "make a skill that...", "remember that...", complex queries |
+| Tier | Model | Latency | Examples |
+|---|---|---|---|
+| **Deterministic** | — (regex) | <5ms | "stop", "volume up", "goodbye" |
+| **Micro** | Claude Haiku | ~1–2s | "play some jazz", "what's the weather" |
+| **Claude** | Claude Sonnet | ~2–5s | "make a skill that...", "remember that...", ambiguous or multi-step requests |
 
-The router classifies each transcript using:
+The router classifies each transcript (`core/tier_router.py`) using:
 1. **Dispatch patterns** — regex table (`config/intent_patterns.yaml`). Match → skill called directly, no LLM.
-2. **Escalate patterns** — phrases Ollama handles poorly (skill installation, memory, long explanations) → routed straight to Claude, skipping Ollama entirely to avoid double latency.
-3. **Skill prediction** — reuses the existing `SkillSelector`. Skills in `CLAUDE_ONLY_SKILLS` go to Claude; everything else goes to Ollama.
+2. **Escalate patterns** — phrases Haiku handles poorly (skill installation, memory edits, long explanations) → routed straight to Sonnet, skipping Haiku to avoid double latency.
+3. **Skill prediction** — reuses the existing `SkillSelector`. Skills in `CLAUDE_ONLY_SKILLS` go to Sonnet; everything else goes to Haiku.
 
-When Ollama can't complete a request (unknown tool, malformed response, timeout, or explicit `ESCALATE` signal), it hands off to Claude with the full conversation context intact — no history is lost.
+When Haiku errors (network blip, malformed response), the whole turn escalates to Sonnet via try/except — no history is lost.
 
-**Enabling Ollama routing** (requires a local [Ollama](https://ollama.com) installation):
+**Enabling the micro tier:**
 
 ```bash
 # In .env
-OLLAMA_ENABLED=true
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=phi4-mini
+MICRO_TIER_ENABLED=true
+MICRO_TIER_MODEL=claude-haiku-4-5
 ```
 
-Leave `OLLAMA_ENABLED` unset or `false` to use Claude for everything — the existing behaviour is completely unchanged.
+Leave `MICRO_TIER_ENABLED` unset or `false` to send every request to Sonnet.
 
 ## Configuration
 
@@ -357,8 +354,12 @@ Key environment variables in `.env`:
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required |
 | `WAKE_PHRASE` | `computer` | Any word or phrase |
-| `WHISPER_MODEL` | `base` | STT model size |
+| `WHISPER_MODEL_CPU` | `small` | faster-whisper model on CPU path (tiny/base/small/medium/large) |
+| `WHISPER_MODEL_HAILO` | `base` | Hailo HEF variant (only `tiny` and `base` are published) |
+| `WHISPER_MODEL` | — | Legacy single-model knob; overrides the above when set |
 | `ENABLE_TTS` | `true` | Set `false` to disable speech |
+| `TTS_BACKEND` | `kokoro` | `kokoro` (PyTorch) or `kokoro-onnx` (ONNX, ~2–3× faster on Pi 5) |
+| `KOKORO_ONNX_VARIANT` | `fp32` | `fp32` or `int8`; fp32 is faster on ARM, int8 on x86_64 |
 | `TTS_VOICE` | `af_heart` | Kokoro voice (`af_heart`, `am_adam`, `bm_george`, etc.) |
 | `TTS_SPEED` | `1.2` | Speech rate (1.0 = normal, 1.3 = faster) |
 | `SILENCE_THRESHOLD` | `1000` | Mic amplitude to count as speech |
@@ -379,24 +380,25 @@ Key environment variables in `.env`:
 | `MEMPALACE_MEMORY_WING` | `wing_miniclaw` | Target wing when mirroring saved memories |
 | `MEMPALACE_MEMORY_ROOM` | `assistant-memory` | Target room when mirroring saved memories |
 | `BRAVE_API_KEY` | — | Required for web search skill |
-| `WEATHER_LOCATION` | `New York,NY` | Default city for the dashboard weather panel |
-| `OLLAMA_ENABLED` | `false` | Enable tiered intelligence (requires local Ollama) |
-| `OLLAMA_HOST` | `http://localhost:11434` | Local Ollama instance URL |
-| `OLLAMA_MODEL` | `phi4-mini` | Ollama model to use for routine commands |
-| `OLLAMA_TIMEOUT_SECONDS` | `8` | Escalate to Claude if Ollama exceeds this |
-| `CLAUDE_ONLY_SKILLS` | `install_skill` | Comma-separated skills always routed to Claude |
+| `SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | — | Spotify Web API auth; redirect must use `127.0.0.1` (Spotify deprecated `localhost` in 2025) |
+| `SPOTIFY_DEVICE_NAME` | — | Pin playback to one Spotify Connect device (e.g. `MiniClaw`) so multi-device accounts don't spill onto phone/TV |
+| `MIC_DEVICE` | `Array` | Case-insensitive substring match against the ALSA/PortAudio device name |
+| `SPEAKER_DEVICE` | `KT USB` | Same — set to `pipewire` on Pi 5 if running raspotify alongside MiniClaw |
+| `MICRO_TIER_ENABLED` | `false` | Enable Haiku micro-tier routing |
+| `MICRO_TIER_MODEL` | `claude-haiku-4-5` | Model used for the micro tier |
+| `CLAUDE_ONLY_SKILLS` | `install-skill` | Comma-separated skills always routed to Sonnet |
 
 ## Power Consumption
 
 MiniClaw is designed to run 24/7, so wake detection power draw is worth considering.
 
-Wake word detection currently runs whisper-tiny every 2 seconds on a 2-second audio window **on CPU**. The current Hailo integration accelerates full post-wake transcription, not the always-on wake loop.
+Wake word detection runs a tiny Whisper model every 2 seconds on a 2-second audio window **on CPU** (via `faster-whisper`). The Hailo integration accelerates full post-wake transcription, not the always-on wake loop.
 
 | Mode | Avg system draw | Est. annual usage | US (~$0.13/kWh) | UK (~$0.28/kWh) |
 |---|---|---|---|---|
 | Current wake loop (CPU inference) | ~7W | ~61 kWh | ~$8/yr | ~$17/yr |
 
-**CPU mode:** whisper-tiny inference on Pi 5's Cortex-A76 takes roughly 0.3–0.8s per 2-second clip, putting wake detection at 15–40% CPU utilization continuously.
+**CPU mode:** `faster-whisper` tiny inference on Pi 5's Cortex-A76 takes roughly 0.3–0.8s per 2-second clip, putting wake detection at 15–40% CPU utilization continuously.
 
 **Current Hailo mode:** the Hailo-backed path helps the heavier full-transcription step after wake, reducing post-wake CPU load and latency, but it does not yet change the always-listening wake-loop power profile.
 
@@ -435,67 +437,89 @@ journalctl --user -u miniclaw -p err --since '1 hour ago'   # crashes only
 ## Project Structure
 
 ```
-MiniClaw/
+miniclaw/
 ├── main.py                        # Entry point (voice, text, or list mode)
 ├── run.sh                         # Setup + launch script (auto-discovers containers)
 ├── config/
-│   └── intent_patterns.yaml       # Dispatch + escalate patterns for TierRouter
+│   ├── intent_patterns.yaml       # Dispatch + escalate patterns for TierRouter
+│   └── systemd/miniclaw.service   # User-level unit for boot auto-start
 ├── core/
-│   ├── orchestrator.py            # Routing gate + Claude API + conversation history
-│   ├── tier_router.py             # TierRouter: deterministic/ollama/claude classification
-│   ├── ollama_tool_loop.py        # Ollama tool loop with EscalateSignal fallback
-│   ├── skill_loader.py            # Parses SKILL.md files, checks eligibility
-│   ├── container_manager.py       # Docker lifecycle: spin up, execute, tear down
-│   ├── voice.py                   # Whisper STT + Kokoro TTS + R2-D2 sounds
+│   ├── orchestrator.py            # Tiered routing gate + Claude API + conversation history
+│   ├── tier_router.py             # TierRouter: deterministic/micro/claude classification
+│   ├── tool_loop.py               # Shared tool loop (serves both Haiku micro and Sonnet)
+│   ├── prompt_builder.py          # Token-budgeted prompt assembly (full + slim micro variant)
+│   ├── skill_loader.py            # Parses SKILL.md files, enforces three-tier policy
+│   ├── container_manager.py       # Docker + native skill execution
+│   ├── voice.py                   # STT + Kokoro TTS + R2-D2 sounds + streaming pipeline
+│   ├── voice_backends.py          # FasterWhisper / Hailo Whisper backend selection
+│   ├── session_archive.py         # FTS5 sqlite archive of every conversation turn
 │   ├── meta_skill.py              # Voice skill installation executor
 │   └── dockerfile_validator.py    # Security allowlist for voice-installed skills
 ├── scripts/
-│   ├── port-skill.py              # Scaffold a container from an OpenClaw skill
+│   ├── install_systemd_service.sh # Idempotent systemd installer (boot auto-start)
+│   ├── uninstall_systemd_service.sh
+│   ├── download_hailo_whisper_assets.py
+│   ├── download_kokoro_onnx.py    # Fetch Kokoro ONNX models for the fast TTS backend
+│   ├── spotify_login.py           # One-time Spotify OAuth bootstrap
+│   ├── port-openclaw-skill.py     # Scaffold a skill from an OpenClaw definition
 │   └── build_new_skill.sh         # Host-side Docker build for voice-installed skills
-├── skills/                        # Skill definitions (SKILL.md + config.yaml)
-│   ├── weather/
-│   ├── web_search/
-│   ├── soundcloud/
-│   ├── playwright_scraper/
-│   ├── dashboard/                 # Visual dashboard on connected monitor (native, no container)
-│   ├── install_skill/             # Voice skill installation (native, no container)
-│   ├── save_memory/               # Persistent memory (native, writes markdown and can mirror to MemPalace)
-│   └── skill_tells_random/        # Example voice-installed skill
-├── containers/                    # Docker containers for skill execution
-│   ├── base/                      # Shared base image (python:3.11-slim + requests)
-│   ├── weather/
-│   ├── web_search/
-│   ├── soundcloud/
-│   ├── playwright_scraper/
-│   ├── dashboard/                 # Flask server + Jinja2 template (runs detached, host Chromium points here)
-│   └── skill_tells_random/        # Example voice-installed skill
+├── skills/                        # agentskills.io layout: SKILL.md + config.yaml + scripts/
+│   ├── dashboard/                 # Visual dashboard (native)
+│   ├── homebridge/                # Smart home control via Homebridge UI X (Docker)
+│   ├── install-skill/             # Voice skill installation (native)
+│   ├── music-control/             # Unified pause/resume/skip/volume across active source (native)
+│   ├── playwright-scraper/        # Headless Chromium scraper (Docker)
+│   ├── recall-session/            # FTS5 search over past conversations (native)
+│   ├── save-memory/               # Persistent memory, mirrors to MemPalace when present (native)
+│   ├── schedule/                  # Cron-style yaml-backed recurring tasks (native)
+│   ├── set-env-var/               # Voice-driven .env edit + skill reload (native)
+│   ├── skill-tells-random/        # Example voice-installed skill (Docker)
+│   ├── soundcloud/                # SoundCloud playback via yt-dlp + mpv, narrowed to remix scope (native)
+│   ├── spotify/                   # Spotify Connect playback via raspotify (native)
+│   ├── update-skill-hints/        # Self-improving skill routing hints (native)
+│   ├── weather/                   # OpenWeatherMap (Docker)
+│   └── web-search/                # Brave Search (Docker)
+├── containers/
+│   └── base/                      # Shared Docker base (python:3.11-slim + requests)
+├── tests/                         # pytest suite — fast suite + scheduler harness in CI
 ├── requirements.txt
 ├── .env.example
 └── .gitignore
 ```
 
+Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + app.py). The standalone `containers/<name>/` layout was retired during the agentskills.io migration.
+
 ## Roadmap
 
 - [x] Core orchestrator + skill loader
-- [x] Docker container execution
-- [x] OpenClaw skill compatibility layer
-- [x] Wake word detection (whisper-tiny sliding window)
+- [x] Docker container execution + native execution path for host-integration skills
+- [x] OpenClaw skill compatibility layer + agentskills.io single-directory layout
+- [x] Wake word detection (Whisper sliding window) + faster-whisper CPU backend
 - [x] Conversation session mode (stay active between follow-ups)
 - [x] Kokoro TTS with streaming playback (chunks play as generated)
+- [x] Kokoro ONNX backend (fp32/int8, ~2–3× faster than PyTorch on Pi 5)
 - [x] R2-D2 style audio feedback (startup chime + thinking sound)
 - [x] Voice skill installation via Claude Code
+- [x] Self-improving skills (additive routing-hint refinement, git-tracked)
 - [x] Playwright web scraper skill (handles JS-rendered + bot-protected sites)
 - [x] Persistent memory with Obsidian integration
 - [x] MemPalace-backed wake-up memory and live semantic recall
+- [x] FTS5 session archive + `recall-session` skill
+- [x] Cron-style scheduler skill
+- [x] SoundCloud transport (pause/resume/skip/volume via mpv IPC)
+- [x] Spotify Connect playback via raspotify + unified `music-control` skill
 - [x] Visual dashboard skill (news/OSINT, weather, stocks, music — voice-triggered, auto-closes)
-- [x] Tiered intelligence — deterministic dispatch + Ollama routing + Claude fallback (feature-flagged, enable with `OLLAMA_ENABLED=true`)
-- [ ] TTS interruption — stop speaking when user talks over the assistant
+- [x] EONET hazard ranking in dashboard news flow
+- [x] Tiered intelligence — deterministic dispatch + Haiku micro-tier + Sonnet (feature-flagged, enable with `MICRO_TIER_ENABLED=true`)
 - [x] AI HAT+ 2 accelerated full transcription (Hailo-backed post-wake STT)
-- [ ] AI HAT+ 2 accelerated wake detection (offload whisper-tiny sliding window)
+- [x] Run on boot via systemd (user-level unit with linger)
+- [ ] TTS interruption — stop speaking when user talks over the assistant
 - [ ] AI HAT+ 2 accelerated Kokoro TTS (offload synthesis to Hailo-8L NPU)
 - [ ] GPIO / hardware module skills (lights, sensors, displays)
 - [ ] Camera + vision skills via AI HAT+ 2
 - [ ] Community skill registry
+
+> Hailo wake offload was implemented and reverted: the published wake encoder needs a 10s window, but the wake loop only buffers 2s of audio, so silence padding produced hallucinations. To re-enable, the wake loop would need to accumulate 10s before invoking the Hailo transcriber, or Hailo would need to publish a shorter-window wake HEF.
 
 ## Contributing
 

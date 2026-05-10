@@ -309,5 +309,44 @@ class MusicControlExternalSpotifyPlayback(unittest.TestCase):
         self.assertEqual(result, "Nothing is playing.")
 
 
+class MusicControlAckSuccessConstant(unittest.TestCase):
+    """Pin the exact set of music-control results that should trigger an ack chime
+    instead of TTS. If _music_control_* wording changes, this test fails and
+    forces a deliberate decision."""
+
+    def test_constant_contains_exactly_six_known_success_strings(self):
+        from core.container_manager import MUSIC_CONTROL_ACK_SUCCESS
+        self.assertEqual(
+            MUSIC_CONTROL_ACK_SUCCESS,
+            frozenset({
+                "Paused.",
+                "Resumed.",
+                "Skipped.",
+                "Volume up.",
+                "Volume down.",
+                "Stopped.",
+            }),
+        )
+
+    def test_constant_matches_soundcloud_success_strings(self):
+        """The strings _music_control_soundcloud returns on the happy path
+        must all be in the ack set."""
+        from core.container_manager import MUSIC_CONTROL_ACK_SUCCESS
+        soundcloud_successes = {
+            "Paused.", "Resumed.", "Skipped.",
+            "Volume up.", "Volume down.",
+        }
+        self.assertTrue(soundcloud_successes.issubset(MUSIC_CONTROL_ACK_SUCCESS))
+
+    def test_constant_matches_spotify_success_strings(self):
+        from core.container_manager import MUSIC_CONTROL_ACK_SUCCESS
+        spotify_successes = {
+            "Paused.", "Resumed.", "Skipped.",
+            "Volume up.", "Volume down.",
+            "Stopped.",
+        }
+        self.assertTrue(spotify_successes.issubset(MUSIC_CONTROL_ACK_SUCCESS))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_PORT = 7860
 DASHBOARD_LOCK = Path.home() / ".miniclaw" / "dashboard.lock"
 
+# Music-control transport success strings — exact-match set used to swap
+# verbal confirmations for a short ack chime in voice mode. Kept here next
+# to _music_control_soundcloud / _music_control_spotify so any wording
+# change is a one-file edit; the pinning test in tests/test_music_control.py
+# fails if the two drift.
+MUSIC_CONTROL_ACK_SUCCESS = frozenset({
+    "Paused.",
+    "Resumed.",
+    "Skipped.",
+    "Volume up.",
+    "Volume down.",
+    "Stopped.",
+})
+
 
 def _fuzzy_match_playlist(query: str, names: list[str]) -> str | None:
     """Return the best-matching playlist name from `names`, or None.

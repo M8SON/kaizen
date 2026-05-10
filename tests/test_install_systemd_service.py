@@ -41,5 +41,32 @@ class InstallSystemdServiceTests(unittest.TestCase):
         self.assertTrue(INSTALL_SH.stat().st_mode & 0o111, "install script not executable")
 
 
+UNINSTALL_SH = REPO_ROOT / "scripts" / "uninstall_systemd_service.sh"
+
+
+class UninstallSystemdServiceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.text = UNINSTALL_SH.read_text(encoding="utf-8")
+
+    def test_disables_unit(self):
+        self.assertIn("systemctl --user disable --now miniclaw.service", self.text)
+
+    def test_removes_unit_file(self):
+        self.assertIn(".config/systemd/user/miniclaw.service", self.text)
+        self.assertIn("rm -f", self.text)
+
+    def test_runs_daemon_reload(self):
+        self.assertIn("systemctl --user daemon-reload", self.text)
+
+    def test_prompts_before_disabling_linger(self):
+        # linger may be load-bearing for other user services; do not auto-disable
+        self.assertIn("loginctl disable-linger", self.text)
+        self.assertIn("read", self.text)
+
+    def test_is_executable(self):
+        self.assertTrue(UNINSTALL_SH.stat().st_mode & 0o111, "uninstall script not executable")
+
+
 if __name__ == "__main__":
     unittest.main()

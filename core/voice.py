@@ -353,6 +353,29 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("Response-ready sound error: %s", e)
 
+    def play_ack_sound(self):
+        """Short R2-D2-style acknowledgement chime — replaces verbal
+        confirmations for music-control transport commands ("Paused.",
+        "Resumed.", etc.). Plays non-blocking so the user gets near-instant
+        audio feedback. Errors are logged and swallowed so a missing
+        speaker can't crash the voice loop."""
+        if not self.enable_tts:
+            return
+        try:
+            sound = np.concatenate([
+                # Quick rising chirp ~80ms with gentle vibrato — "got it".
+                self._r2_chirp(1100, 1700, 0.08, vibrato_hz=10, vibrato_depth=40),
+                self._r2_tail(0.04),
+            ])
+            sd.play(
+                resample(sound, KOKORO_SAMPLE_RATE, self._output_samplerate),
+                samplerate=self._output_samplerate,
+                device=self._output_device_index,
+            )
+            # Intentionally no sd.wait — non-blocking ack.
+        except Exception as e:
+            logger.warning("Ack sound error: %s", e)
+
     def speak(self, text: str):
         """Speak text aloud using Kokoro TTS with streaming playback.
 

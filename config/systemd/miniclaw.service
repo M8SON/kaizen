@@ -1,0 +1,14 @@
+[Unit]
+Description=MiniClaw voice assistant
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/miniclaw
+ExecStart=%h/miniclaw/run.sh --voice
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

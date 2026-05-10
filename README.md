@@ -419,6 +419,7 @@ The installer is idempotent — re-run it any time the unit file changes. It wil
 
 ```bash
 systemctl --user status miniclaw      # is it running?
+systemctl --user start miniclaw       # start after a manual stop
 systemctl --user restart miniclaw     # restart after a config change
 systemctl --user stop miniclaw        # stop until next boot or manual start
 journalctl --user -u miniclaw -f      # tail live logs

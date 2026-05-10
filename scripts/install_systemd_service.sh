@@ -73,5 +73,6 @@ echo ""
 systemctl --user --no-pager status miniclaw.service || true
 echo ""
 echo "Live logs: journalctl --user -u miniclaw -f"
+echo "Start:     systemctl --user start miniclaw"
 echo "Stop:      systemctl --user stop miniclaw"
 echo "Disable:   ./scripts/uninstall_systemd_service.sh"

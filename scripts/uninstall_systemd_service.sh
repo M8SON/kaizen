@@ -4,6 +4,9 @@
 # Symmetric to install_systemd_service.sh. Safe to run if the service was
 # never installed (errors are tolerated).
 
+# `-e` intentionally omitted: this script tolerates errors from systemctl when
+# the unit was never installed (disable on a missing unit, daemon-reload when
+# the user manager isn't running). `-uo pipefail` still catches typos.
 set -uo pipefail
 
 GREEN='\033[0;32m'
@@ -15,13 +18,9 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 
 UNIT_DEST="$HOME/.config/systemd/user/miniclaw.service"
 
-# 1. Disable + stop (tolerate missing)
-if systemctl --user list-unit-files miniclaw.service &>/dev/null; then
-    systemctl --user disable --now miniclaw.service 2>/dev/null || true
-    ok "miniclaw.service disabled and stopped"
-else
-    warn "miniclaw.service not loaded — nothing to disable"
-fi
+# 1. Disable + stop (tolerate missing — `|| true` swallows the "not loaded" error)
+systemctl --user disable --now miniclaw.service 2>/dev/null || true
+ok "miniclaw.service disabled and stopped (or already absent)"
 
 # 2. Remove unit file
 if [ -f "$UNIT_DEST" ]; then

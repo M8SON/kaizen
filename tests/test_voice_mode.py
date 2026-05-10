@@ -35,7 +35,7 @@ class FakeOrchestrator:
     def list_skills(self):
         return [{"name": "skill_tells_random", "description": "Tell a random joke"}]
 
-    def process_message(self, transcription, on_chunk=None):
+    def process_message(self, transcription, on_chunk=None, on_ack_success=None):
         self.processed.append(transcription)
         response = self.responses.pop(0)
         if on_chunk is not None:
@@ -115,6 +115,9 @@ class FakeVoice:
 
     def play_response_ready_sound(self):
         self.response_ready_sounds += 1
+
+    def play_ack_sound(self):
+        pass
 
 
 class VoiceModeTests(unittest.TestCase):

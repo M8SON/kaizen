@@ -346,23 +346,29 @@ def run_voice_mode(orchestrator, voice=None):
                         )
                         try:
                             response = orchestrator.process_message(
-                                transcription, on_chunk=push_raw
+                                transcription,
+                                on_chunk=push_raw,
+                                on_ack_success=voice.play_ack_sound,
                             )
-                            # Print the assistant text the moment the LLM is
-                            # done — don't gate the CLI display on Kokoro
-                            # finishing playback (which can take 30+s on Pi).
-                            print(f"Assistant: {response}\n")
+                            # Empty response = direct-tier ack chime was played
+                            # in lieu of TTS; nothing to speak or print.
+                            if response:
+                                print(f"Assistant: {response}\n")
                             with profiling.stage("tts"):
                                 finalize()
                         except Exception:
                             finalize()
                             raise
                     else:
-                        response = orchestrator.process_message(transcription)
-                        print(f"Assistant: {response}\n")
-                        voice.play_response_ready_sound()
-                        with profiling.stage("tts"):
-                            voice.speak(response)
+                        response = orchestrator.process_message(
+                            transcription,
+                            on_ack_success=voice.play_ack_sound,
+                        )
+                        if response:
+                            print(f"Assistant: {response}\n")
+                            voice.play_response_ready_sound()
+                            with profiling.stage("tts"):
+                                voice.speak(response)
 
                 print("Listening...")
 

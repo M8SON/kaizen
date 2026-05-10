@@ -281,7 +281,7 @@ class Orchestrator:
             logger.warning("unknown delivery mode %r for schedule %s", delivery, entry.id)
         return None
 
-    def process_message(self, user_message: str, on_chunk=None) -> str:
+    def process_message(self, user_message: str, on_chunk=None, on_ack_success=None) -> str:
         """Process a user message through the tiered intelligence stack.
 
         on_chunk: optional Callable[[str], None]. When provided, both the
@@ -298,9 +298,9 @@ class Orchestrator:
         outer = profiling._current_turn.get()
         ctx = contextlib.nullcontext() if outer is not None else profiling.turn()
         with ctx:
-            return self._process_message(user_message, on_chunk=on_chunk)
+            return self._process_message(user_message, on_chunk=on_chunk, on_ack_success=on_ack_success)
 
-    def _process_message(self, user_message: str, on_chunk=None) -> str:
+    def _process_message(self, user_message: str, on_chunk=None, on_ack_success=None) -> str:
         if self._tier_router is None:
             system_prompt = self._build_system_prompt(user_message=user_message)
             return self.tool_loop.run(
@@ -314,7 +314,7 @@ class Orchestrator:
         logger.info("TierRouter: %s → tier=%s", user_message[:60], route.tier)
 
         if route.tier == "direct":
-            result = self._execute_direct(route, user_message)
+            result = self._execute_direct(route, user_message, on_ack_success=on_ack_success)
             if on_chunk is not None and result:
                 on_chunk(result)
             return result
@@ -350,8 +350,13 @@ class Orchestrator:
                 on_chunk=on_chunk,
             )
 
-    def _execute_direct(self, route, user_message: str) -> str:
-        """Execute a dispatch-pattern route without any LLM involvement."""
+    def _execute_direct(self, route, user_message: str, on_ack_success=None) -> str:
+        """Execute a dispatch-pattern route without any LLM involvement.
+
+        If `on_ack_success` is provided and the skill returns a string in
+        MUSIC_CONTROL_ACK_SUCCESS, the callback is invoked (the voice layer
+        plays an ack chime) and `""` is returned to signal "TTS handled by
+        side channel, don't speak."""
         if route.action == "close_session":
             return self.close_session()
 
@@ -359,6 +364,10 @@ class Orchestrator:
             skill = self.skills.get(route.skill)
             if skill:
                 result = self.container_manager.execute_skill(skill, route.args)
+                from core.container_manager import MUSIC_CONTROL_ACK_SUCCESS
+                if result in MUSIC_CONTROL_ACK_SUCCESS and on_ack_success is not None:
+                    on_ack_success()
+                    return ""
                 return result or "Done."
 
         # Dispatch resolution failed — build prompt lazily and fall back to Claude

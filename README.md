@@ -400,6 +400,37 @@ Wake word detection currently runs whisper-tiny every 2 seconds on a 2-second au
 
 **Current Hailo mode:** the Hailo-backed path helps the heavier full-transcription step after wake, reducing post-wake CPU load and latency, but it does not yet change the always-listening wake-loop power profile.
 
+## Run on boot (Raspberry Pi)
+
+To make MiniClaw start automatically when the Pi powers on:
+
+```bash
+./scripts/install_systemd_service.sh
+```
+
+The installer is idempotent — re-run it any time the unit file changes. It will:
+
+- Copy `config/systemd/miniclaw.service` to `~/.config/systemd/user/`.
+- Enable `loginctl enable-linger` so user services start at boot (asks for sudo).
+- Ensure `/var/log/journal` exists so logs survive reboot (asks for sudo).
+- Enable + start the service.
+
+### Day-to-day
+
+```bash
+systemctl --user status miniclaw      # is it running?
+systemctl --user restart miniclaw     # restart after a config change
+systemctl --user stop miniclaw        # stop until next boot or manual start
+journalctl --user -u miniclaw -f      # tail live logs
+journalctl --user -u miniclaw -p err --since '1 hour ago'   # crashes only
+```
+
+### Uninstall
+
+```bash
+./scripts/uninstall_systemd_service.sh
+```
+
 ## Project Structure
 
 ```

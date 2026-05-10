@@ -837,13 +837,38 @@ class ContainerManager:
         except Exception:
             logger.exception("_stop_spotify_playback failed")
 
+    def _detect_external_spotify_playback(self) -> str | None:
+        """Probe Spotify for active playback on the pinned MiniClaw device.
+
+        Returns "spotify" if the user has phone-initiated Spotify Connect
+        playback running on the device this MiniClaw owns. Returns None if
+        Spotify isn't set up, no playback is active, playback is paused, or
+        playback is on a different device.
+        """
+        from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
+        try:
+            sp = get_spotify_client()
+        except SpotifyAuthMissing:
+            return None
+        try:
+            playback = sp.current_playback()
+            if not playback or not playback.get("is_playing"):
+                return None
+            playback_device_id = (playback.get("device") or {}).get("id")
+            pinned_device_id = self._spotify_device_id(sp)
+            if playback_device_id and playback_device_id == pinned_device_id:
+                return "spotify"
+        except Exception:
+            logger.exception("_detect_external_spotify_playback failed")
+        return None
+
     def _execute_music_control(self, tool_input: dict) -> str:
         """Transport router — dispatches to the active music source's backend."""
         action = str(tool_input.get("action") or "").strip().lower()
         if action not in self._MUSIC_CONTROL_ACTIONS:
             return f"Unknown music-control action: {action!r}"
 
-        source = self._active_music_source
+        source = self._active_music_source or self._detect_external_spotify_playback()
         if source is None:
             return "Nothing is playing."
 

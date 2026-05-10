@@ -233,5 +233,77 @@ class MusicControlSpotifyBranch(unittest.TestCase):
         self.assertEqual(result, "Stopped.")
 
 
+class MusicControlExternalSpotifyPlayback(unittest.TestCase):
+    """Phone-initiated Spotify Connect playback should route via _execute_music_control."""
+
+    def _sp_with_playback(self, device_id, is_playing=True):
+        """Build a mock spotify client whose current_playback() reports the given device."""
+        sp = MagicMock()
+        sp.current_playback.return_value = {
+            "is_playing": is_playing,
+            "device": {"id": device_id},
+        }
+        sp.devices.return_value = {
+            "devices": [{"id": device_id, "is_active": True, "volume_percent": 50}]
+        }
+        return sp
+
+    def test_phone_initiated_playback_on_pinned_device_routes_to_spotify(self):
+        m = _make_manager()
+        m._active_music_source = None  # phone started it, MiniClaw didn't track it
+        sp = self._sp_with_playback("dev1")
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_spotify_device_id", return_value="dev1"):
+            result = m._execute_music_control({"action": "volume_down"})
+        sp.volume.assert_called_once_with(volume_percent=45, device_id="dev1")
+        self.assertEqual(result, "Volume down.")
+
+    def test_playback_on_different_device_returns_nothing_playing(self):
+        m = _make_manager()
+        m._active_music_source = None
+        sp = self._sp_with_playback("phone-speaker-id")
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_spotify_device_id", return_value="dev1"):
+            result = m._execute_music_control({"action": "pause"})
+        self.assertEqual(result, "Nothing is playing.")
+        sp.pause_playback.assert_not_called()
+
+    def test_no_playback_returns_nothing_playing(self):
+        m = _make_manager()
+        m._active_music_source = None
+        sp = MagicMock()
+        sp.current_playback.return_value = None
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "skip"})
+        self.assertEqual(result, "Nothing is playing.")
+
+    def test_paused_playback_returns_nothing_playing(self):
+        m = _make_manager()
+        m._active_music_source = None
+        sp = self._sp_with_playback("dev1", is_playing=False)
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_spotify_device_id", return_value="dev1"):
+            result = m._execute_music_control({"action": "skip"})
+        self.assertEqual(result, "Nothing is playing.")
+
+    def test_spotify_auth_missing_returns_nothing_playing(self):
+        m = _make_manager()
+        m._active_music_source = None
+        from core.spotify_auth import SpotifyAuthMissing
+        with patch("core.spotify_auth.get_spotify_client",
+                   side_effect=SpotifyAuthMissing("missing")):
+            result = m._execute_music_control({"action": "pause"})
+        self.assertEqual(result, "Nothing is playing.")
+
+    def test_spotify_api_exception_returns_nothing_playing(self):
+        m = _make_manager()
+        m._active_music_source = None
+        sp = MagicMock()
+        sp.current_playback.side_effect = RuntimeError("network blip")
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp):
+            result = m._execute_music_control({"action": "skip"})
+        self.assertEqual(result, "Nothing is playing.")
+
+
 if __name__ == "__main__":
     unittest.main()

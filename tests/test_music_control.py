@@ -277,14 +277,18 @@ class MusicControlExternalSpotifyPlayback(unittest.TestCase):
             result = m._execute_music_control({"action": "skip"})
         self.assertEqual(result, "Nothing is playing.")
 
-    def test_paused_playback_returns_nothing_playing(self):
+    def test_paused_playback_on_pinned_device_routes_to_spotify_for_resume(self):
+        # When phone playback is paused but the track is still loaded on the
+        # pinned device, sp.current_playback() returns the context with
+        # is_playing=False. We must still route to spotify so resume works.
         m = _make_manager()
         m._active_music_source = None
         sp = self._sp_with_playback("dev1", is_playing=False)
         with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
              patch.object(m, "_spotify_device_id", return_value="dev1"):
-            result = m._execute_music_control({"action": "skip"})
-        self.assertEqual(result, "Nothing is playing.")
+            result = m._execute_music_control({"action": "resume"})
+        sp.start_playback.assert_called_once_with(device_id="dev1")
+        self.assertEqual(result, "Resumed.")
 
     def test_spotify_auth_missing_returns_nothing_playing(self):
         m = _make_manager()

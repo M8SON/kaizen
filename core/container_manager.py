@@ -838,12 +838,13 @@ class ContainerManager:
             logger.exception("_stop_spotify_playback failed")
 
     def _detect_external_spotify_playback(self) -> str | None:
-        """Probe Spotify for active playback on the pinned MiniClaw device.
+        """Probe Spotify for an active or paused-but-loaded session on the pinned device.
 
-        Returns "spotify" if the user has phone-initiated Spotify Connect
-        playback running on the device this MiniClaw owns. Returns None if
-        Spotify isn't set up, no playback is active, playback is paused, or
-        playback is on a different device.
+        Returns "spotify" if Spotify has a playback context (playing or paused)
+        on the device this MiniClaw owns — so "resume" works after the user
+        paused from their phone with a track still loaded. Returns None if
+        Spotify isn't set up, no playback context exists, or the context is
+        on a different device.
         """
         from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
         try:
@@ -852,7 +853,7 @@ class ContainerManager:
             return None
         try:
             playback = sp.current_playback()
-            if not playback or not playback.get("is_playing"):
+            if not playback:
                 return None
             playback_device_id = (playback.get("device") or {}).get("id")
             pinned_device_id = self._spotify_device_id(sp)

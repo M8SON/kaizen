@@ -11,8 +11,6 @@ import os
 import wave
 import tempfile
 import logging
-import threading
-from pathlib import Path
 
 import numpy as np
 import pyaudio
@@ -28,8 +26,6 @@ from core.audio_devices import (
 from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBackend
 
 logger = logging.getLogger(__name__)
-
-_MUSIC_ASSET_PATH = Path(__file__).resolve().parent.parent / "assets" / "elevator.wav"
 
 
 class VoiceInterface:
@@ -110,115 +106,6 @@ class VoiceInterface:
 
         logger.info("Models loaded — wake word: '%s'", self.display_wake_word)
 
-        # Elevator-music feature state
-        self._music_playing = False
-        self._music_thread: threading.Thread | None = None
-        self._music_enabled = (
-            os.environ.get("MINICLAW_ELEVATOR_MUSIC", "true").strip().lower() != "false"
-        )
-        if self._music_enabled and self.enable_tts:
-            self._music_buffer = self._load_music_buffer()
-        else:
-            self._music_buffer = None
-
-    def _load_music_buffer(self) -> "np.ndarray | None":
-        """Load and prepare assets/elevator.wav for looped playback.
-
-        Returns a float32 mono numpy array at the output device's sample
-        rate, or None if the file is missing / unreadable / unsupported.
-        Failures are non-fatal: the elevator-music feature silently
-        disables itself for the session.
-        """
-        path = _MUSIC_ASSET_PATH
-        try:
-            with wave.open(str(path), "rb") as wf:
-                n_channels = wf.getnchannels()
-                sample_rate = wf.getframerate()
-                sample_width = wf.getsampwidth()
-                n_frames = wf.getnframes()
-                raw = wf.readframes(n_frames)
-        except (FileNotFoundError, wave.Error, OSError) as exc:
-            logger.warning("Elevator music disabled — could not load %s: %s", path, exc)
-            return None
-
-        if sample_width != 2:
-            logger.warning(
-                "Elevator music disabled — %s must be 16-bit PCM (got %d-bit)",
-                path,
-                sample_width * 8,
-            )
-            return None
-
-        data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        if n_channels == 2:
-            data = data.reshape(-1, 2).mean(axis=1)
-        elif n_channels != 1:
-            logger.warning(
-                "Elevator music disabled — %s has %d channels (need 1 or 2)",
-                path,
-                n_channels,
-            )
-            return None
-
-        if sample_rate != self._output_samplerate:
-            data = resample(data, sample_rate, self._output_samplerate)
-        return data.astype(np.float32, copy=False)
-
-    def start_thinking_music(self) -> None:
-        """Start looping elevator music in a background daemon thread.
-
-        No-op when TTS is disabled, the asset failed to load, or a
-        music thread is already alive.
-        """
-        if not self.enable_tts or self._music_buffer is None:
-            return
-        if self._music_thread is not None and self._music_thread.is_alive():
-            return
-        self._music_playing = True
-        self._music_thread = threading.Thread(
-            target=self._music_loop, daemon=True, name="elevator-music"
-        )
-        self._music_thread.start()
-
-    def _music_loop(self) -> None:
-        # One persistent OutputStream for the whole music session — the
-        # earlier sd.play/sd.wait pattern reused PortAudio's default
-        # stream, and the rapid open/close churn against ALSA + USB audio
-        # triggered snd_async_del_handler asserts that aborted the process
-        # after a few turns.
-        chunk = 1024
-        buf = self._music_buffer
-        pos = 0
-        try:
-            with sd.OutputStream(
-                samplerate=self._output_samplerate,
-                device=self._output_device_index,
-                channels=1,
-                dtype="float32",
-            ) as stream:
-                while self._music_playing:
-                    end = pos + chunk
-                    if end <= len(buf):
-                        stream.write(buf[pos:end])
-                        pos = end
-                    else:
-                        head = buf[pos:]
-                        tail = buf[: chunk - len(head)]
-                        stream.write(np.concatenate([head, tail]))
-                        pos = len(tail)
-        except Exception as exc:
-            logger.warning("Elevator music error: %s", exc, exc_info=True)
-            self._music_playing = False
-
-    def stop_thinking_music(self) -> None:
-        """Hard-stop the music loop. Idempotent."""
-        if not self._music_playing:
-            return
-        self._music_playing = False
-        if self._music_thread is not None:
-            self._music_thread.join(timeout=1.0)
-            self._music_thread = None
-
     @staticmethod
     def _close_pyaudio(audio, stream) -> None:
         """Best-effort PyAudio teardown that swallows late-stage errors.
@@ -243,13 +130,11 @@ class VoiceInterface:
         """Release every audio resource this VoiceInterface owns.
 
         Idempotent and exception-safe so it can run from a signal handler
-        or a finally block. Closes the elevator-music stream, the shared
-        wake→listen handoff stream, and any stream currently being read
-        by wait_for_wake_word / _record_until_silence (PyAudio's C-level
-        stream.read can pin /dev/snd until the device is explicitly
-        terminated, which strands the next ./run.sh --voice with
-        Errno -9996 on the XVF3800)."""
-        self.stop_thinking_music()
+        or a finally block. Closes the shared wake→listen handoff stream
+        and any stream currently being read by wait_for_wake_word /
+        _record_until_silence (PyAudio's C-level stream.read can pin
+        /dev/snd until the device is explicitly terminated, which strands
+        the next ./run.sh --voice with Errno -9996 on the XVF3800)."""
         self._close_pyaudio(self._shared_audio, self._shared_stream)
         self._shared_audio = None
         self._shared_stream = None
@@ -324,9 +209,9 @@ class VoiceInterface:
         seconds (0 = wait forever). Used for conversation idle timeout.
 
         on_speech_done: optional zero-arg callable fired the moment speech-then-
-        silence is detected, before transcription. Used to start audio feedback
-        (e.g. elevator music) over the STT wait so the user doesn't hear silence.
-        Not called when max_wait_seconds elapses without any speech.
+        silence is detected, before transcription. Used to overlap an audio
+        cue with the STT wait. Not called when max_wait_seconds elapses
+        without any speech.
         """
         audio_file = self._record_until_silence(
             max_wait_seconds=max_wait_seconds,
@@ -359,7 +244,7 @@ class VoiceInterface:
             freq = freq + vibrato_depth * np.sin(2 * np.pi * vibrato_hz * t)
         phase = np.cumsum(2 * np.pi * freq / KOKORO_SAMPLE_RATE)
         env = np.ones(n)
-        a, d = max(1, int(n * 0.08)), max(1, int(n * 0.25))
+        a, d = max(1, int(n * 0.08)), max(1, int(n * 0.35))
         env[:a] = np.linspace(0, 1, a)
         env[-d:] = np.linspace(1, 0, d)
         return (np.sin(phase) * env * volume).astype(np.float32)
@@ -369,10 +254,15 @@ class VoiceInterface:
         n = int(KOKORO_SAMPLE_RATE * duration)
         t = np.linspace(0, duration, n, False)
         env = np.ones(n)
-        a, d = max(1, int(n * 0.05)), max(1, int(n * 0.35))
+        a, d = max(1, int(n * 0.05)), max(1, int(n * 0.50))
         env[:a] = np.linspace(0, 1, a)
         env[-d:] = np.linspace(1, 0, d)
         return (np.sin(2 * np.pi * freq * t) * env * volume).astype(np.float32)
+
+    def _r2_tail(self, duration: float = 0.10) -> "np.ndarray":
+        """Trailing zero buffer — gives PortAudio time to drain before stream
+        close so the last beep doesn't get clipped by the device teardown."""
+        return np.zeros(int(KOKORO_SAMPLE_RATE * duration), dtype=np.float32)
 
     def play_startup_sound(self):
         """Play an R2-D2-style happy greeting sequence on startup."""
@@ -397,6 +287,7 @@ class VoiceInterface:
                 # Rising two-note finish — happy affirmation
                 self._r2_beep(1500, 0.06), gs,
                 self._r2_beep(2200, 0.10, volume=0.5),
+                self._r2_tail(),
             ])
             sd.play(
                 resample(sound, KOKORO_SAMPLE_RATE, self._output_samplerate),
@@ -426,6 +317,7 @@ class VoiceInterface:
                 self._r2_chirp(1600, 900, 0.11, vibrato_hz=11, vibrato_depth=90),
                 g,
                 self._r2_beep(1650, 0.07),
+                self._r2_tail(),
             ])
             sd.play(
                 resample(sound, KOKORO_SAMPLE_RATE, self._output_samplerate),
@@ -435,6 +327,31 @@ class VoiceInterface:
             sd.wait()
         except Exception as e:
             logger.warning("Thinking sound error: %s", e)
+
+    def play_response_ready_sound(self):
+        """Short R2-D2-style 'response ready' cue — fires the moment the LLM
+        starts streaming text, before Kokoro's first audio. Plays
+        non-blocking (no sd.wait) so Kokoro synthesis runs in parallel and
+        no extra latency is added; PipeWire mixes if any overlap occurs.
+        """
+        if not self.enable_tts:
+            return
+        try:
+            gs = np.zeros(int(KOKORO_SAMPLE_RATE * 0.02), dtype=np.float32)
+            sound = np.concatenate([
+                self._r2_chirp(900, 1900, 0.10, vibrato_hz=12, vibrato_depth=70),
+                gs,
+                self._r2_beep(2100, 0.06, volume=0.45),
+                self._r2_tail(0.05),
+            ])
+            sd.play(
+                resample(sound, KOKORO_SAMPLE_RATE, self._output_samplerate),
+                samplerate=self._output_samplerate,
+                device=self._output_device_index,
+            )
+            # Intentionally no sd.wait — caller continues to Kokoro synth.
+        except Exception as e:
+            logger.warning("Response-ready sound error: %s", e)
 
     def speak(self, text: str):
         """Speak text aloud using Kokoro TTS with streaming playback.
@@ -456,14 +373,11 @@ class VoiceInterface:
 
         The Kokoro consumer thread is spawned LAZILY on the first non-empty
         delta — we don't claim the audio device until we have something to
-        speak. This lets elevator music keep playing during the LLM wait
-        (which on a slow Sonnet round + Pi 5 Kokoro synthesis can easily
-        be 5-10 seconds of otherwise-silent dead air).
+        speak.
 
         on_first_chunk: optional zero-arg callable fired exactly once when the
-        first non-empty delta arrives. The voice loop uses this to stop the
-        elevator-music stream immediately before Kokoro's OutputStream opens
-        on the same USB DAC.
+        first non-empty delta arrives. The voice loop uses this to play a
+        short R2-D2 'response ready' cue right before Kokoro starts.
 
         When TTS is disabled or no backend is configured, push is a no-op
         and finalize returns immediately — callers get a uniform interface
@@ -526,14 +440,8 @@ class VoiceInterface:
                 return
             q.put(SENTINEL)
             # Pi 5 Kokoro can spend 30-60s synthesising a multi-sentence
-            # response. The previous 30s timeout fired during normal
-            # operation, after which main.py opened the mic for the next
-            # turn while Kokoro was still using the speaker — assistant's
-            # tail-end audio leaked back into the mic and ALSA threw
-            # 'Device unavailable -9985' when elevator-music tried to claim
-            # the same speaker. 300s is large enough for any reasonable
-            # response; anything longer is a real deadlock and recovery
-            # must be manual.
+            # response. 300s is large enough for any reasonable response;
+            # anything longer is a real deadlock and recovery must be manual.
             thread_holder[0].join(timeout=300)
             if thread_holder[0].is_alive():
                 logger.warning(

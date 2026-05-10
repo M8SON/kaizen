@@ -315,16 +315,11 @@ def run_voice_mode(orchestrator, voice=None):
             while True:
                 with profiling.turn():
                     with profiling.stage("listen_record"):
-                        # start_thinking_music fires the moment silence is
-                        # detected (before STT), so the user hears music
-                        # during STT instead of the silent gap.
                         transcription = voice.listen(
                             max_wait_seconds=conversation_idle_timeout,
-                            on_speech_done=voice.start_thinking_music,
                         )
 
                     if not transcription:
-                        voice.stop_thinking_music()
                         print("Session ended.")
                         active_flag[0] = False
                         orchestrator.end_session()
@@ -335,7 +330,6 @@ def run_voice_mode(orchestrator, voice=None):
                     # Check for exit
                     exit_words = ["goodbye", "exit", "quit", "stop"]
                     if any(word in transcription.lower() for word in exit_words):
-                        voice.stop_thinking_music()
                         response = orchestrator.close_session()
                         print(f"\nAssistant: {response}")
                         voice.speak(response)
@@ -343,12 +337,12 @@ def run_voice_mode(orchestrator, voice=None):
                         return
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
-                        # Keep elevator music running until the FIRST delta
-                        # arrives, then stop it and let Kokoro take the device.
-                        # If we stop music up-front the user hears 25-30s of
-                        # silence while the LLM is responding.
+                        # Fire the R2-D2 'response ready' cue when the first
+                        # delta arrives; it plays in parallel with Kokoro
+                        # synth so it covers the synth latency without
+                        # adding any.
                         push_raw, finalize = voice.speak_stream_feeder(
-                            on_first_chunk=voice.stop_thinking_music,
+                            on_first_chunk=voice.play_response_ready_sound,
                         )
                         try:
                             response = orchestrator.process_message(
@@ -361,15 +355,12 @@ def run_voice_mode(orchestrator, voice=None):
                             with profiling.stage("tts"):
                                 finalize()
                         except Exception:
-                            voice.stop_thinking_music()
                             finalize()
                             raise
                     else:
-                        try:
-                            response = orchestrator.process_message(transcription)
-                        finally:
-                            voice.stop_thinking_music()
+                        response = orchestrator.process_message(transcription)
                         print(f"Assistant: {response}\n")
+                        voice.play_response_ready_sound()
                         with profiling.stage("tts"):
                             voice.speak(response)
 

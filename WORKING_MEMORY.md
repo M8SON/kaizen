@@ -56,6 +56,18 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-05-13: Anthropic prompt caching wired into the Sonnet tool_loop.
+  `PromptBuilder.build_cacheable_parts()` returns `(stable, dynamic)`; stable
+  carries BASE_PROMPT + vault memory + skipped/invalid + self-update +
+  startup context, dynamic carries the selector-driven skill context.
+  `ToolLoop.run` accepts `system_prompt_dynamic`; when non-empty, `system=`
+  is a 2-block list with `cache_control: ephemeral` on the stable block.
+  All three Sonnet paths in `_process_message` plus close_session use the
+  cached split. Micro tier intentionally excluded — top-K tool filter +
+  slim system prompt make caching infeasible there. Verified on Pi:
+  ~2,525-token cache reads per Sonnet turn within the 5-min TTL.
+  `save-memory` is an intentional within-session invalidator. Commits
+  `a825a7b` + `4c5593b`.
 - 2026-05-05: voice-pipeline Wave 1 shipped — openWakeWord-based wake detection
   replaces Whisper-tiny continuous-transcription wake stream; `WakeBackend` Protocol
   with `OpenWakeWordBackend` (primary) + `WhisperWakeBackend` (fallback) gated by

@@ -26,8 +26,8 @@ The system uses two layers for extensibility:
 ## Features
 
 - Tiered intelligence — deterministic dispatch for instant commands, Claude Haiku for routine tool calls, Claude Sonnet for complex reasoning
-- Wake word detection using a sliding Whisper window — any phrase works, no training required (default `"computer"`)
-- Optional Hailo-backed full transcription on Raspberry Pi AI HAT+ 2 (wake detection remains CPU Whisper)
+- Wake word detection via openWakeWord — lightweight bundled ONNX models (default `hey_jarvis`); ~order-of-magnitude lower CPU than the previous Whisper-window approach
+- Optional Hailo-backed full transcription on Raspberry Pi AI HAT+ 2 (wake detection is openWakeWord on CPU — Hailo doesn't run the wake loop)
 - Conversation session mode — stays active between follow-ups until idle timeout
 - Streaming TTS — Kokoro chunks play as they're generated; ONNX backend ships fp32 + int8 variants (~2–3× faster than the PyTorch baseline on Pi 5)
 - Voice skill installation — say "add a skill that does X" and Claude Code writes, builds, and loads it
@@ -95,7 +95,7 @@ Two practical build tiers:
 | Case | ~$10 |
 | **Total** | **~$297** |
 
-Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but strongly recommended for always-on deployments — Kaizen currently uses it for Hailo-backed wake detection and full transcription, with Kokoro acceleration still remaining on the roadmap.
+Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but recommended for always-on deployments — Kaizen uses it for Hailo-backed full transcription, with Kokoro acceleration still on the roadmap. Wake detection runs on CPU via openWakeWord; the Hailo wake offload was reverted (see Optional Hailo Whisper Offload below).
 
 ### Yearly Electricity
 
@@ -103,8 +103,8 @@ See [Power Consumption](#power-consumption) below for the full breakdown. Summar
 
 | Build | Avg draw | Annual cost (US) | Annual cost (UK) |
 |---|---|---|---|
-| Budget (CPU inference) | ~7W | ~$8/yr | ~$17/yr |
-| Recommended (target with broader NPU offload) | ~4–5W | ~$5/yr | ~$11/yr |
+| Current (openWakeWord CPU loop + Hailo transcription) | ~4–5W | ~$5/yr | ~$11/yr |
+| Pre-openWakeWord (Whisper-tiny CPU wake loop) | ~7W | ~$8/yr | ~$17/yr |
 
 Running costs are negligible — the hardware pays for itself in utility long before electricity becomes a concern.
 
@@ -125,9 +125,9 @@ cp .env.example .env
 
 ## Optional: Hailo Whisper Offload
 
-Kaizen can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection currently stays on CPU Whisper (the published Hailo wake encoder needs a 10s window, the wake loop buffers 2s — silence padding produced hallucinations, so wake-on-Hailo was reverted).
+Kaizen can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection runs on CPU via openWakeWord and stays there — the earlier Hailo Whisper wake offload was reverted (the published Hailo wake encoder needs a 10s window, the wake loop buffers ~80ms, and silence padding produced hallucinations).
 
-- wake detection runs on CPU Whisper (`WAKE_MODEL`, default `tiny`)
+- wake detection runs on openWakeWord (`WAKE_WORD_MODEL`, default `hey_jarvis`; `WAKE_WORD_THRESHOLD`, default `0.5`)
 - full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL_HAILO`, `base` or `tiny`)
 - the transcription path falls back to CPU automatically if the Hailo runtime or assets are missing
 
@@ -183,16 +183,17 @@ Run Kaizen in voice mode:
 ./run.sh --voice
 ```
 
-Expected startup line when transcription is on Hailo:
+Expected startup lines when transcription is on Hailo:
 
 ```text
-STT backend: Hybrid Whisper (wake=cpu:tiny, transcription=hailo:base)
+Wake backend: openwakeword (hey_jarvis, threshold=0.5)
+STT backend: Hybrid Whisper (transcription=hailo:base)
 ```
 
 Full CPU fallback line if Hailo is unavailable:
 
 ```text
-STT backend: CPU Whisper fallback (wake=cpu:tiny, transcription=cpu:small) — <reason>
+STT backend: cpu:small (faster-whisper) — <reason>
 ```
 
 If you see CPU fallback when expecting Hailo, the likely causes are:
@@ -354,7 +355,6 @@ Key environment variables in `.env`:
 | Variable | Default | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required |
-| `WAKE_PHRASE` | `computer` | Any word or phrase |
 | `WHISPER_MODEL_CPU` | `small` | faster-whisper model on CPU path (tiny/base/small/medium/large) |
 | `WHISPER_MODEL_HAILO` | `base` | Hailo HEF variant (only `tiny` and `base` are published) |
 | `WHISPER_MODEL` | — | Legacy single-model knob; overrides the above when set |
@@ -372,7 +372,8 @@ Key environment variables in `.env`:
 | `MEMORY_MAX_TOKENS` | `2000` | Approximate token budget for persisted memory injected into the system prompt |
 | `MEMORY_RECALL_MAX_TOKENS` | `600` | Approximate token budget for live memory recall added per user turn |
 | `SKILL_PROMPT_MAX_TOKENS` | `4000` | Approximate token budget for skill instructions in the system prompt |
-| `WAKE_MODEL` | `tiny` | Wake word detection model size |
+| `WAKE_WORD_MODEL` | `hey_jarvis` | openWakeWord bundled model (`hey_jarvis`, `alexa`, `hey_mycroft`, `timer`, `weather`) |
+| `WAKE_WORD_THRESHOLD` | `0.5` | Activation confidence (0.0–1.0); raise to reduce false fires |
 | `CONTAINER_MEMORY` | `256m` | Default Docker memory limit per skill |
 | `MEMORY_VAULT_PATH` | `~/.kaizen/memory` | Directory for memory notes (point Obsidian here) |
 | `MEMPALACE_PALACE_PATH` | `~/.mempalace/palace` | Override MemPalace data directory |
@@ -393,15 +394,18 @@ Key environment variables in `.env`:
 
 Kaizen is designed to run 24/7, so wake detection power draw is worth considering.
 
-Wake word detection runs a tiny Whisper model every 2 seconds on a 2-second audio window **on CPU** (via `faster-whisper`). The Hailo integration accelerates full post-wake transcription, not the always-on wake loop.
+Wake word detection runs **openWakeWord** — a lightweight melspectrogram → embedding → classifier ONNX pipeline (the `hey_jarvis_v0.1` model by default). It scores roughly every ~80 ms on a small audio frame, and full post-wake transcription only fires after a positive detection. The Hailo integration accelerates that post-wake transcription, not the always-on wake loop.
 
 | Mode | Avg system draw | Est. annual usage | US (~$0.13/kWh) | UK (~$0.28/kWh) |
 |---|---|---|---|---|
-| Current wake loop (CPU inference) | ~7W | ~61 kWh | ~$8/yr | ~$17/yr |
+| Current — openWakeWord wake loop + Hailo transcription | ~4–5W | ~35–44 kWh | ~$5/yr | ~$10–12/yr |
+| Previous — Whisper-tiny wake loop on CPU | ~7W | ~61 kWh | ~$8/yr | ~$17/yr |
 
-**CPU mode:** `faster-whisper` tiny inference on Pi 5's Cortex-A76 takes roughly 0.3–0.8s per 2-second clip, putting wake detection at 15–40% CPU utilization continuously.
+All numbers are approximate — actual draw depends on USB DAC, mic, network activity, and Pi 5 board revision. Measure on your own hardware if it matters.
 
-**Current Hailo mode:** the Hailo-backed path helps the heavier full-transcription step after wake, reducing post-wake CPU load and latency, but it does not yet change the always-listening wake-loop power profile.
+**Wake-loop CPU:** openWakeWord on Pi 5 (Cortex-A76) typically runs at ~1–3% utilization of a single core in the always-listening state, an order of magnitude below the previous Whisper-tiny window which sat at 15–40% continuously. The drop is the dominant factor in the ~2W lower average draw.
+
+**Hailo mode:** the Hailo-backed path accelerates the heavier full-transcription step after wake, reducing post-wake CPU load and latency. It doesn't touch the wake loop — openWakeWord stays on CPU.
 
 ## Run on boot (Raspberry Pi)
 
@@ -495,7 +499,8 @@ Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + 
 - [x] Core orchestrator + skill loader
 - [x] Docker container execution + native execution path for host-integration skills
 - [x] OpenClaw skill compatibility layer + agentskills.io single-directory layout
-- [x] Wake word detection (Whisper sliding window) + faster-whisper CPU backend
+- [x] Wake word detection via openWakeWord (replaced the earlier Whisper sliding-window approach)
+- [x] faster-whisper CPU backend for post-wake transcription
 - [x] Conversation session mode (stay active between follow-ups)
 - [x] Kokoro TTS with streaming playback (chunks play as generated)
 - [x] Kokoro ONNX backend (fp32/int8, ~2–3× faster than PyTorch on Pi 5)

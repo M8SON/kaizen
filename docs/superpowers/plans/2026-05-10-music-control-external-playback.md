@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** When the user starts Spotify Connect playback from their phone on the pinned MiniClaw device, voice transport commands ("turn it down", "pause") should route to Spotify instead of returning "Nothing is playing."
+**Goal:** When the user starts Spotify Connect playback from their phone on the pinned Kaizen device, voice transport commands ("turn it down", "pause") should route to Spotify instead of returning "Nothing is playing."
 
 **Architecture:** Add a `_detect_external_spotify_playback()` helper to `ContainerManager` that probes Spotify's `current_playback()` API and returns `"spotify"` if the active playback's device.id matches the pinned device. Update the gate in `_execute_music_control` to fall back to this probe when `_active_music_source` is None. Re-probe per call (no persistence). Transport-only.
 
@@ -51,7 +51,7 @@ class MusicControlExternalSpotifyPlayback(unittest.TestCase):
 
     def test_phone_initiated_playback_on_pinned_device_routes_to_spotify(self):
         m = _make_manager()
-        m._active_music_source = None  # phone started it, MiniClaw didn't track it
+        m._active_music_source = None  # phone started it, Kaizen didn't track it
         sp = self._sp_with_playback("dev1")
         with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
              patch.object(m, "_spotify_device_id", return_value="dev1"):
@@ -108,7 +108,7 @@ class MusicControlExternalSpotifyPlayback(unittest.TestCase):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_music_control.py::MusicControlExternalSpotifyPlayback -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_music_control.py::MusicControlExternalSpotifyPlayback -v`
 
 Expected: 5 of 6 fail with `AssertionError: 'Nothing is playing.' != 'Volume down.'` (or equivalent), because the current gate returns `"Nothing is playing."` immediately. The test that *expects* "Nothing is playing." (different-device case) may incidentally pass — verify by reading the test names against pytest's output. The success-path test definitely fails.
 
@@ -118,10 +118,10 @@ Open `core/container_manager.py`. Find the `_execute_music_control` method (arou
 
 ```python
     def _detect_external_spotify_playback(self) -> str | None:
-        """Probe Spotify for active playback on the pinned MiniClaw device.
+        """Probe Spotify for active playback on the pinned Kaizen device.
 
         Returns "spotify" if the user has phone-initiated Spotify Connect
-        playback running on the device this MiniClaw owns. Returns None if
+        playback running on the device this Kaizen owns. Returns None if
         Spotify isn't set up, no playback is active, playback is paused, or
         playback is on a different device.
         """
@@ -181,16 +181,16 @@ Expected: all tests pass. (Suite runs ~4–5 minutes.)
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/container_manager.py tests/test_music_control.py
 git commit -m "feat(music-control): route phone-initiated Spotify playback through transport gate
 
 When the user starts Spotify Connect playback from their phone on the
-pinned MiniClaw device, _active_music_source stays None — but voice
+pinned Kaizen device, _active_music_source stays None — but voice
 transport commands should still work. Add _detect_external_spotify_playback()
 that probes sp.current_playback() and returns \"spotify\" if active
-playback's device.id matches the pinned MiniClaw device. Re-probe per
-call so MiniClaw stays accurate when playback ends from the phone side."
+playback's device.id matches the pinned Kaizen device. Re-probe per
+call so Kaizen stays accurate when playback ends from the phone side."
 ```
 
 - [ ] **Step 9: Push**
@@ -210,22 +210,22 @@ This task does not produce code. Each step is a manual action with an explicit s
 - [ ] **Step 1: Pull latest on the Pi**
 
 ```bash
-ssh pi "cd ~/miniclaw && git pull"
+ssh pi "cd ~/kaizen && git pull"
 ```
 
-- [ ] **Step 2: Restart MiniClaw to pick up the change**
+- [ ] **Step 2: Restart Kaizen to pick up the change**
 
 ```bash
-ssh pi "systemctl --user restart miniclaw"
+ssh pi "systemctl --user restart kaizen"
 ```
 
-Wait ~30s for MiniClaw to finish booting (watch via `journalctl --user -u miniclaw -f` until you see the wake-loop ready line).
+Wait ~30s for Kaizen to finish booting (watch via `journalctl --user -u kaizen -f` until you see the wake-loop ready line).
 
 - [ ] **Step 3: Start Spotify playback from the phone**
 
 On your phone:
 1. Open Spotify, start any track playing.
-2. Tap the device-picker icon, select "MiniClaw".
+2. Tap the device-picker icon, select "Kaizen".
 3. Confirm audio is now coming from the Pi's speakers, not the phone.
 
 - [ ] **Step 4: Issue voice transport commands**
@@ -234,23 +234,23 @@ Say each, one at a time, and confirm the response:
 
 | Command | Expected behavior |
 |---------|-------------------|
-| "Jarvis, turn the volume down" | Volume drops by 5%; MiniClaw says "Volume down." |
-| "Jarvis, turn the volume up" | Volume rises by 5%; MiniClaw says "Volume up." |
-| "Jarvis, pause" | Playback pauses; MiniClaw says "Paused." |
-| "Jarvis, resume" | Playback resumes; MiniClaw says "Resumed." |
-| "Jarvis, skip" | Track skips to next; MiniClaw says "Skipped." |
+| "Jarvis, turn the volume down" | Volume drops by 5%; Kaizen says "Volume down." |
+| "Jarvis, turn the volume up" | Volume rises by 5%; Kaizen says "Volume up." |
+| "Jarvis, pause" | Playback pauses; Kaizen says "Paused." |
+| "Jarvis, resume" | Playback resumes; Kaizen says "Resumed." |
+| "Jarvis, skip" | Track skips to next; Kaizen says "Skipped." |
 
 If any command instead returns "Nothing is playing", capture the journal output:
 
 ```bash
-ssh pi "journalctl --user -u miniclaw --since '5 minutes ago' | grep -iE 'music-control|spotify|detect'"
+ssh pi "journalctl --user -u kaizen --since '5 minutes ago' | grep -iE 'music-control|spotify|detect'"
 ```
 
 - [ ] **Step 5: Verify the negative case still works**
 
-Stop playback entirely (pause from your phone, not via MiniClaw). Wait 5s. Then say "Jarvis, turn it up".
+Stop playback entirely (pause from your phone, not via Kaizen). Wait 5s. Then say "Jarvis, turn it up".
 
-Expected: MiniClaw says "Nothing is playing." (because the probe sees `is_playing: false` and returns None).
+Expected: Kaizen says "Nothing is playing." (because the probe sees `is_playing: false` and returns None).
 
 - [ ] **Step 6: Document the result**
 

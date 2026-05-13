@@ -1,5 +1,5 @@
 """
-Conversation state for MiniClaw.
+Conversation state for Kaizen.
 
 Owns the mutable message history sent to Claude during a session.
 """

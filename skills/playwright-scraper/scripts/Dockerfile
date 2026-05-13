@@ -1,4 +1,4 @@
-FROM miniclaw/base:latest
+FROM kaizen/base:latest
 RUN pip install --no-cache-dir playwright
 RUN playwright install --with-deps chromium
 COPY app.py /app/app.py

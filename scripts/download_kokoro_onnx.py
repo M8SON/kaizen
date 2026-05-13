@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download Kokoro ONNX model + voices into ~/.miniclaw/models/kokoro-onnx/.
+"""Download Kokoro ONNX model + voices into ~/.kaizen/models/kokoro-onnx/.
 
 The kokoro-onnx package needs the ONNX model and voices files at runtime:
   - kokoro-v1.0.onnx      (~310 MB, fp32 — the new default)
@@ -27,7 +27,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "kokoro-onnx"
+ASSET_ROOT = Path.home() / ".kaizen" / "models" / "kokoro-onnx"
 
 # kokoro-onnx releases pin model artifacts at this release tag.
 # https://github.com/thewh1teagle/kokoro-onnx/releases

@@ -1,10 +1,10 @@
 """
-Skill eligibility checks for MiniClaw.
+Skill eligibility checks for Kaizen.
 
 Evaluates whether a structurally valid skill can run on the current system
 based on environment variables, binaries, and OS constraints.
 
-The `requires` block lives under `metadata.miniclaw.requires` per the
+The `requires` block lives under `metadata.kaizen.requires` per the
 agentskills.io compat spec. The old top-level `requires:` key is ignored.
 """
 
@@ -27,7 +27,7 @@ class SkillEligibility:
         """
         requires = (
             frontmatter.get("metadata", {})
-            .get("miniclaw", {})
+            .get("kaizen", {})
             .get("requires", {})
         )
         if not requires:

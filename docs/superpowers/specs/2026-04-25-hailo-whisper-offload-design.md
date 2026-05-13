@@ -4,13 +4,13 @@ Date: 2026-04-25
 
 ## Goal
 
-Offload only MiniClaw's full-utterance transcription path to Hailo when available,
+Offload only Kaizen's full-utterance transcription path to Hailo when available,
 while keeping wake-word detection on the existing CPU Whisper path:
 
 - wake-word detection stays on CPU `whisper-tiny`
 - full utterance transcription may use Hailo for `whisper-base`
 
-MiniClaw should auto-detect Hailo support at startup, prefer the Hailo-backed
+Kaizen should auto-detect Hailo support at startup, prefer the Hailo-backed
 transcription path when it is ready, and otherwise fall back to the current CPU
 Whisper backend with a clear one-time startup warning.
 
@@ -21,9 +21,9 @@ Kokoro TTS remains unchanged in this phase.
 In scope:
 
 - backend selection for full transcription at startup
-- MiniClaw-owned Hailo-backed transcription abstraction
+- Kaizen-owned Hailo-backed transcription abstraction
 - startup detection and warning/reporting
-- user-scoped Hailo asset location under `~/.miniclaw/models/hailo-whisper`
+- user-scoped Hailo asset location under `~/.kaizen/models/hailo-whisper`
 - tests for selection and fallback behavior
 
 Out of scope:
@@ -37,7 +37,7 @@ Out of scope:
 
 ## Current State
 
-MiniClaw currently routes all STT through `WhisperBackend` in
+Kaizen currently routes all STT through `WhisperBackend` in
 `core/voice_backends.py`, which loads CPU Whisper models via `openai-whisper`.
 `VoiceInterface` is already backend-injected, so STT can be swapped without
 rewriting the microphone/session loop.
@@ -45,7 +45,7 @@ rewriting the microphone/session loop.
 There is already a draft backend-selection seam in progress in
 `core/voice_backends.py` and `main.py`, but it still assumes Hailo may own both
 the wake and full-transcription paths. This design narrows that seam to
-MiniClaw's actual first-phase needs.
+Kaizen's actual first-phase needs.
 
 ## Proposed Architecture
 
@@ -63,11 +63,11 @@ Keep the existing CPU `WhisperBackend`, but use it in hybrid fashion:
 - `transcribe_wake_audio(audio_float)` remains CPU Whisper
 - `transcribe_file(audio_file)` may route to Hailo when ready
 
-MiniClaw should own a focused runtime helper module for Hailo transcription:
+Kaizen should own a focused runtime helper module for Hailo transcription:
 
 - `core/hailo_whisper_runtime.py` — local wrapper around Hailo inference needs
 - no UDP, no external daemon, no sidecar frontend
-- Seeed's project may inform design, but MiniClaw's module is its own
+- Seeed's project may inform design, but Kaizen's module is its own
   implementation
 
 The injected STT backend still exposes the same methods:
@@ -86,7 +86,7 @@ Either is acceptable as long as `VoiceInterface` stays unaware of the split.
 
 ### Selection model
 
-At startup, MiniClaw runs Hailo Whisper selection logic:
+At startup, Kaizen runs Hailo Whisper selection logic:
 
 1. Check whether Hailo runtime/device access is available.
 2. Check whether the configured transcription model variant is supported by the
@@ -103,17 +103,17 @@ offload the wake loop.
 
 ### Asset model
 
-MiniClaw should treat this user-scoped directory as canonical:
+Kaizen should treat this user-scoped directory as canonical:
 
-- `~/.miniclaw/models/hailo-whisper`
+- `~/.kaizen/models/hailo-whisper`
 
 Within that root, the runtime may organize model-specific assets however it
-needs, but the storage must remain user-owned and local to MiniClaw rather than
+needs, but the storage must remain user-owned and local to Kaizen rather than
 under `/opt`.
 
 ### Startup reporting
 
-MiniClaw should print one startup line describing the selected STT backend.
+Kaizen should print one startup line describing the selected STT backend.
 
 Examples:
 
@@ -140,7 +140,7 @@ Responsibilities:
 
 Responsibilities:
 
-- own MiniClaw's local Hailo transcription integration
+- own Kaizen's local Hailo transcription integration
 - encapsulate Hailo-specific asset lookup, runtime setup, and inference calls
 - present a narrow Python API to `core/voice_backends.py`
 - avoid leaking vendor-demo concepts like UDP hosts, ports, or external
@@ -163,7 +163,7 @@ on CPU or Hailo.
 ## Fallback Rules
 
 - If no Hailo device/runtime is available: use CPU Whisper.
-- If the configured transcription model is unsupported by MiniClaw's Hailo
+- If the configured transcription model is unsupported by Kaizen's Hailo
   path: use CPU Whisper.
 - If Hailo is available but required transcription assets are incomplete: use
   CPU Whisper.
@@ -225,16 +225,16 @@ is required to keep backend choice visible.
 
 ### Vendor-reference drift
 
-Seeed's demo can change independently of MiniClaw. MiniClaw should borrow
+Seeed's demo can change independently of Kaizen. Kaizen should borrow
 ideas, not mirror their runtime shape or depend on their repository layout
 staying stable.
 
 ## Success Criteria
 
-- MiniClaw auto-selects Hailo-backed transcription when fully available
+- Kaizen auto-selects Hailo-backed transcription when fully available
 - wake detection remains on the proven CPU Whisper path
 - full transcription can offload locally on the Pi without UDP or external
   helper services
-- MiniClaw remains usable on non-Hailo systems through CPU fallback
+- Kaizen remains usable on non-Hailo systems through CPU fallback
 - backend choice is obvious from startup output
 - no changes are required to the voice conversation loop semantics

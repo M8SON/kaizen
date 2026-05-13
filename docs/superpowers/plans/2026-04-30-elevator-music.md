@@ -168,7 +168,7 @@ def voice_factory(monkeypatch, fake_wav):
 
 
 def test_disabled_by_env_is_noop(monkeypatch, voice_factory):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "false")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "false")
     sd_play = MagicMock()
     monkeypatch.setattr(sd, "play", sd_play)
     v = voice_factory()
@@ -178,7 +178,7 @@ def test_disabled_by_env_is_noop(monkeypatch, voice_factory):
 
 
 def test_tts_disabled_is_noop(monkeypatch, voice_factory):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "true")
     sd_play = MagicMock()
     monkeypatch.setattr(sd, "play", sd_play)
     v = voice_factory(enable_tts=False)
@@ -188,7 +188,7 @@ def test_tts_disabled_is_noop(monkeypatch, voice_factory):
 
 
 def test_missing_asset_logs_and_disables(monkeypatch, voice_factory, caplog, tmp_path):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "true")
     monkeypatch.setattr(voice_module, "_MUSIC_ASSET_PATH", tmp_path / "nope.wav")
     with caplog.at_level(logging.WARNING, logger="core.voice"):
         v = voice_factory()
@@ -239,7 +239,7 @@ Find `VoiceInterface.__init__` (the class is named `VoiceInterface` in `core/voi
         self._music_playing = False
         self._music_thread: threading.Thread | None = None
         self._music_enabled = (
-            os.environ.get("MINICLAW_ELEVATOR_MUSIC", "true").strip().lower() != "false"
+            os.environ.get("KAIZEN_ELEVATOR_MUSIC", "true").strip().lower() != "false"
         )
         if self._music_enabled and self.enable_tts:
             self._music_buffer = self._load_music_buffer()
@@ -332,7 +332,7 @@ git commit -m "feat(voice): elevator-music asset loader and env gates
 Adds _MUSIC_ASSET_PATH constant, _load_music_buffer helper that
 decodes a 16-bit PCM WAV (mono or stereo, any sample rate) into a
 float32 mono buffer at the output device rate, and the
-MINICLAW_ELEVATOR_MUSIC env gate. Failures are non-fatal: the
+KAIZEN_ELEVATOR_MUSIC env gate. Failures are non-fatal: the
 feature silently disables for the session. start_thinking_music is
 a stub; the real loop lands in the next commit."
 ```
@@ -351,7 +351,7 @@ Add to the bottom of `tests/test_voice_elevator_music.py`:
 
 ```python
 def test_start_then_stop_no_raise(monkeypatch, voice_factory):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "true")
     play_event = threading.Event()
     stop_called = threading.Event()
 
@@ -378,7 +378,7 @@ def test_start_then_stop_no_raise(monkeypatch, voice_factory):
 
 
 def test_stop_without_start_is_noop(monkeypatch, voice_factory):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "true")
     sd_stop = MagicMock()
     monkeypatch.setattr(sd, "stop", sd_stop)
     v = voice_factory()
@@ -387,7 +387,7 @@ def test_stop_without_start_is_noop(monkeypatch, voice_factory):
 
 
 def test_double_start_only_spawns_one_thread(monkeypatch, voice_factory):
-    monkeypatch.setenv("MINICLAW_ELEVATOR_MUSIC", "true")
+    monkeypatch.setenv("KAIZEN_ELEVATOR_MUSIC", "true")
     stop_called = threading.Event()
 
     monkeypatch.setattr(sd, "play", lambda *a, **kw: None)
@@ -568,13 +568,13 @@ rsync -av --relative \
   main.py \
   tests/test_voice_elevator_music.py \
   assets/elevator.wav \
-  pi:/home/archimedes/miniclaw/
+  pi:/home/archimedes/kaizen/
 ```
 
 - [ ] **Step 2: Run the unit tests on the Pi**
 
 ```bash
-ssh pi 'cd ~/miniclaw && .venv/bin/python -m pytest tests/test_voice_elevator_music.py -q'
+ssh pi 'cd ~/kaizen && .venv/bin/python -m pytest tests/test_voice_elevator_music.py -q'
 ```
 
 Expected: 6 passed.
@@ -582,12 +582,12 @@ Expected: 6 passed.
 - [ ] **Step 3: Confirm the env var state**
 
 ```bash
-ssh pi 'grep "^MINICLAW_ELEVATOR_MUSIC" ~/miniclaw/.env || echo "not set (default true)"'
+ssh pi 'grep "^KAIZEN_ELEVATOR_MUSIC" ~/kaizen/.env || echo "not set (default true)"'
 ```
 
 Either explicitly set to `true` or absent — both enable the feature.
 
-- [ ] **Step 4: Restart MiniClaw on the Pi**
+- [ ] **Step 4: Restart Kaizen on the Pi**
 
 Use the existing run procedure (kill the current process, re-launch `./run.sh --voice` under tmux/systemd/whatever).
 
@@ -596,12 +596,12 @@ Use the existing run procedure (kill the current process, re-launch `./run.sh --
 1. Say the wake word, then ask anything that takes ≥1 second to answer (a tool call is ideal — e.g. `"computer, what's the weather"`).
 2. Confirm: music starts immediately after you stop talking, plays during the wait, hard-stops the moment Kokoro begins speaking.
 3. Repeat with a quick direct route (`"computer, what time is it"`) — music may barely play at all if the response is sub-second; that's expected and fine.
-4. Optionally, say `MINICLAW_ELEVATOR_MUSIC=false` in `.env`, restart, confirm the wait is silent (and there's no R2 chirp either — the chirp was removed from the loop).
+4. Optionally, say `KAIZEN_ELEVATOR_MUSIC=false` in `.env`, restart, confirm the wait is silent (and there's no R2 chirp either — the chirp was removed from the loop).
 
 - [ ] **Step 6: Capture a `[TIMING-SUMMARY]` line for the music turn**
 
 ```bash
-ssh pi 'grep TIMING-SUMMARY ~/miniclaw/miniclaw.log | tail -n 3'
+ssh pi 'grep TIMING-SUMMARY ~/kaizen/kaizen.log | tail -n 3'
 ```
 
 The summary should still look the same as before (no music stage is added — music runs on a parallel thread, not on the user-perceived critical path).

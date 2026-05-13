@@ -1,7 +1,7 @@
 """
 Per-turn stage timing for the voice pipeline.
 
-Gated by MINICLAW_PROFILE=true. When disabled, both context managers are
+Gated by KAIZEN_PROFILE=true. When disabled, both context managers are
 true no-ops. When enabled, each turn emits a single INFO log line:
 
     [TIMING-SUMMARY] stt=412 tier=3 llm_claude=3540 tool_weather=1280 total=7625
@@ -22,10 +22,10 @@ _current_turn: ContextVar["dict[str, int] | None"] = ContextVar(
 
 
 def _refresh_enabled() -> None:
-    """Re-read MINICLAW_PROFILE. Called at import time and exposed so
+    """Re-read KAIZEN_PROFILE. Called at import time and exposed so
     tests can flip the flag via monkeypatch."""
     global _enabled
-    _enabled = os.environ.get("MINICLAW_PROFILE", "").strip().lower() == "true"
+    _enabled = os.environ.get("KAIZEN_PROFILE", "").strip().lower() == "true"
 
 
 _refresh_enabled()

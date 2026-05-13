@@ -432,7 +432,7 @@ def fetch_stocks(tickers: list) -> list:
 def fetch_music() -> dict:
     """Read now_playing.json written by the soundcloud skill via shared volume."""
     try:
-        with open("/miniclaw/now_playing.json") as f:
+        with open("/kaizen/now_playing.json") as f:
             raw = f.read()
         data = json.loads(raw)
         age = time.time() - data.get("timestamp", 0)

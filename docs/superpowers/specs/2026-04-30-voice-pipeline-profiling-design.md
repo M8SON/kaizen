@@ -33,7 +33,7 @@ records the duration into a per-turn dict. The orchestrator emits one
 `[TIMING-SUMMARY]` log line at the end of `process_message` containing
 all stages observed during that turn.
 
-Gated by `MINICLAW_PROFILE=true`. When unset (default), the Timer is a
+Gated by `KAIZEN_PROFILE=true`. When unset (default), the Timer is a
 no-op and no log lines are emitted, so production runs pay nothing.
 
 ## Stages Instrumented
@@ -56,7 +56,7 @@ occurrences are suffixed `_2`, `_3`, ... so each appears in the summary.
 
 ## Output Format
 
-One INFO-level log line per turn when `MINICLAW_PROFILE=true`:
+One INFO-level log line per turn when `KAIZEN_PROFILE=true`:
 
 ```
 [TIMING-SUMMARY] stt=412 tier=3 llm_ollama=3540 tool_weather=1280 llm_claude=2100 tts_first=290 total=7625
@@ -77,7 +77,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 _logger = logging.getLogger(__name__)
-_enabled = os.environ.get("MINICLAW_PROFILE", "").lower() == "true"
+_enabled = os.environ.get("KAIZEN_PROFILE", "").lower() == "true"
 _current_turn: ContextVar[dict | None] = ContextVar("current_turn", default=None)
 
 
@@ -139,12 +139,12 @@ so all stage records land in the same summary.
 - **edit:** `core/voice.py`, `core/orchestrator.py`, `core/tier_router.py`,
   `core/ollama_tool_loop.py`, `core/container_manager.py`, `main.py`
 - **no test changes** — observability code, no behavior change when
-  `MINICLAW_PROFILE` is unset
+  `KAIZEN_PROFILE` is unset
 
 ## Validation Plan
 
-1. Set `MINICLAW_PROFILE=true` in the Pi `.env`.
-2. Restart MiniClaw.
+1. Set `KAIZEN_PROFILE=true` in the Pi `.env`.
+2. Restart Kaizen.
 3. Run three voice turns:
    - direct route (e.g. "what time is it" → handled deterministically)
    - Ollama route (e.g. "tell me a joke" → phi4-mini)

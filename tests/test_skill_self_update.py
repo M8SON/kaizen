@@ -19,7 +19,7 @@ def _write_skill(parent: Path, name: str, *, allow_body: bool, body: str = None)
         "name": name,
         "description": f"Test skill {name}.",
         "metadata": {
-            "miniclaw": {
+            "kaizen": {
                 "self_update": {"allow_body": allow_body},
             }
         },
@@ -29,7 +29,7 @@ def _write_skill(parent: Path, name: str, *, allow_body: bool, body: str = None)
         "---\n" + yaml.dump(fm, sort_keys=False) + "---\n\n" + body
     )
     (skill_dir / "config.yaml").write_text(
-        yaml.dump({"type": "docker", "image": f"miniclaw/{name}:latest"})
+        yaml.dump({"type": "docker", "image": f"kaizen/{name}:latest"})
     )
     return skill_dir
 
@@ -54,7 +54,7 @@ class _StubSkill:
 
 def _make_loader(tmp: Path, name: str, *, tier: str, allow_body: bool):
     skill_dir = _write_skill(tmp, name, allow_body=allow_body)
-    fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}}}
+    fm = {"metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}}}
     skill = _StubSkill(name, tier, skill_dir, fm)
     return _StubLoader({name: skill}), skill_dir
 
@@ -147,7 +147,7 @@ class TestAlreadyCovered(unittest.TestCase):
                 "- already there phrasing\n"
             )
             skill_dir = _write_skill(Path(tmp), "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
             r = apply_hint(loader, "foo", "- already there phrasing", "rat", turn_id="t1")
@@ -160,7 +160,7 @@ class TestSectionManagement(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_p = Path(tmp)
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -179,7 +179,7 @@ class TestSectionManagement(unittest.TestCase):
                 "- existing hint\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -200,7 +200,7 @@ class TestSectionManagement(unittest.TestCase):
                 f"{existing}\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -226,7 +226,7 @@ class TestSectionManagement(unittest.TestCase):
                 "tail content\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 

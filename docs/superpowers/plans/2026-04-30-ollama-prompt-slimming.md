@@ -663,13 +663,13 @@ rsync -av --relative \
   tests/test_prompt_builder_selector.py \
   tests/test_ollama_tool_loop.py \
   tests/test_orchestrator_routing.py \
-  pi:/home/archimedes/miniclaw/
+  pi:/home/archimedes/kaizen/
 ```
 
 - [ ] **Step 2: Run unit tests on the Pi**
 
 ```bash
-ssh pi 'cd ~/miniclaw && .venv/bin/python -m pytest tests/test_prompt_builder_selector.py tests/test_ollama_tool_loop.py tests/test_orchestrator_routing.py -q'
+ssh pi 'cd ~/kaizen && .venv/bin/python -m pytest tests/test_prompt_builder_selector.py tests/test_ollama_tool_loop.py tests/test_orchestrator_routing.py -q'
 ```
 
 Expected: all passing.
@@ -677,12 +677,12 @@ Expected: all passing.
 - [ ] **Step 3: Verify env state**
 
 ```bash
-ssh pi 'grep -E "OLLAMA|MINICLAW_PROFILE" ~/miniclaw/.env'
+ssh pi 'grep -E "OLLAMA|KAIZEN_PROFILE" ~/kaizen/.env'
 ```
 
-`MINICLAW_PROFILE=true` should already be set from the profiling task. `OLLAMA_CONVERSATION_MAX_TOKENS` does not need to be set — default 1500 applies.
+`KAIZEN_PROFILE=true` should already be set from the profiling task. `OLLAMA_CONVERSATION_MAX_TOKENS` does not need to be set — default 1500 applies.
 
-- [ ] **Step 4: Restart MiniClaw on the Pi**
+- [ ] **Step 4: Restart Kaizen on the Pi**
 
 The user runs `./run.sh --voice 2>&1 | tee /tmp/mc.log` from a shell on the Pi.
 

@@ -5,7 +5,7 @@ from core import profiling
 
 
 def test_disabled_by_default(monkeypatch, caplog):
-    monkeypatch.delenv("MINICLAW_PROFILE", raising=False)
+    monkeypatch.delenv("KAIZEN_PROFILE", raising=False)
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -15,7 +15,7 @@ def test_disabled_by_default(monkeypatch, caplog):
 
 
 def test_records_stage_when_enabled(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -26,7 +26,7 @@ def test_records_stage_when_enabled(monkeypatch, caplog):
 
 
 def test_repeat_stage_is_suffixed(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -42,7 +42,7 @@ def test_repeat_stage_is_suffixed(monkeypatch, caplog):
 
 
 def test_stage_outside_turn_is_silent(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.stage("orphan"):
@@ -51,7 +51,7 @@ def test_stage_outside_turn_is_silent(monkeypatch, caplog):
 
 
 def test_empty_turn_emits_no_line(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():

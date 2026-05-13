@@ -3,9 +3,9 @@ name: update-skill-hints
 description: Add an additive routing hint to a skill's SKILL.md so it learns
   from observed user phrasings. Use when you notice a skill was routed on a
   novel successful phrasing or when you corrected a misroute. Updates only
-  skills with metadata.miniclaw.self_update.allow_body set to true.
+  skills with metadata.kaizen.self_update.allow_body set to true.
 metadata:
-  miniclaw:
+  kaizen:
     self_update:
       allow_body: false
 ---

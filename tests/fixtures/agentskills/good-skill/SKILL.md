@@ -2,7 +2,7 @@
 name: good-skill
 description: Good test skill. Use when tests need a valid skill fixture.
 metadata:
-  miniclaw:
+  kaizen:
     requires: {}
 ---
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# uninstall_systemd_service.sh — Tear down the MiniClaw user systemd service.
+# uninstall_systemd_service.sh — Tear down the Kaizen user systemd service.
 #
 # Symmetric to install_systemd_service.sh. Safe to run if the service was
 # never installed (errors are tolerated).
@@ -16,11 +16,11 @@ NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 
-UNIT_DEST="$HOME/.config/systemd/user/miniclaw.service"
+UNIT_DEST="$HOME/.config/systemd/user/kaizen.service"
 
 # 1. Disable + stop (tolerate missing — `|| true` swallows the "not loaded" error)
-systemctl --user disable --now miniclaw.service 2>/dev/null || true
-ok "miniclaw.service disabled and stopped (or already absent)"
+systemctl --user disable --now kaizen.service 2>/dev/null || true
+ok "kaizen.service disabled and stopped (or already absent)"
 
 # 2. Remove unit file
 if [ -f "$UNIT_DEST" ]; then

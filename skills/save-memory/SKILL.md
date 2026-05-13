@@ -20,7 +20,7 @@ Extract the core fact or preference worth remembering. Keep it concise. For exam
 - "My wife's name is Sarah"
 - "User prefers temperatures in Celsius"
 - "The garage door code is 1234"
-- "User is working on MiniClaw routing reliability"
+- "User is working on Kaizen routing reliability"
 
 ## Inputs
 

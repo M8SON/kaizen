@@ -4,7 +4,7 @@ Date: 2026-04-26
 
 ## Goal
 
-Offload MiniClaw's always-listening wake-word transcription path to Hailo when
+Offload Kaizen's always-listening wake-word transcription path to Hailo when
 available, while preserving the current configurable `WAKE_PHRASE` behavior and
 leaving all post-wake routing and response logic unchanged.
 
@@ -35,7 +35,7 @@ Out of scope:
 
 ## Current State
 
-MiniClaw already supports Hailo-backed full post-wake transcription through a
+Kaizen already supports Hailo-backed full post-wake transcription through a
 hybrid backend:
 
 - wake detection stays on CPU Whisper
@@ -56,8 +56,8 @@ Wake-word flow should remain:
 
 1. microphone captures a 2-second sliding window
 2. STT backend transcribes that window
-3. MiniClaw checks whether `WAKE_PHRASE` appears in the transcript
-4. on match, MiniClaw enters active listening mode
+3. Kaizen checks whether `WAKE_PHRASE` appears in the transcript
+4. on match, Kaizen enters active listening mode
 
 Post-wake flow should remain:
 
@@ -71,7 +71,7 @@ Wake offload must affect only step 2 of the wake-word flow.
 
 ### Backend model
 
-MiniClaw should keep a single STT backend seam with two public methods:
+Kaizen should keep a single STT backend seam with two public methods:
 
 - `transcribe_wake_audio(audio_float) -> str`
 - `transcribe_file(audio_file) -> str`
@@ -130,10 +130,10 @@ path must not force the other path back to CPU if it is otherwise valid.
 
 ### Asset model
 
-Wake and transcription assets should continue to live under the same MiniClaw
+Wake and transcription assets should continue to live under the same Kaizen
 root:
 
-- `~/.miniclaw/models/hailo-whisper`
+- `~/.kaizen/models/hailo-whisper`
 
 The runtime may use per-model subdirectories beneath that root. Wake assets will
 typically correspond to `tiny` or `tiny.en`, while transcription assets may
@@ -141,7 +141,7 @@ correspond to `base`.
 
 ### Startup reporting
 
-MiniClaw should print one truthful startup line with both backend selections.
+Kaizen should print one truthful startup line with both backend selections.
 
 Examples:
 
@@ -244,7 +244,7 @@ more brittle.
 
 ## Success Criteria
 
-- MiniClaw can offload the wake transcription loop to Hailo when ready
+- Kaizen can offload the wake transcription loop to Hailo when ready
 - `WAKE_PHRASE` remains fully configurable and transcript-based
 - post-wake routing and TTS behavior are unchanged
 - wake and transcription can fall back independently

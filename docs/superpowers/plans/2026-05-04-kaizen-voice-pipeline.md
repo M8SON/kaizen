@@ -1,14 +1,14 @@
-# MiniClaw Voice Pipeline Implementation Plan
+# Kaizen Voice Pipeline Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Improve MiniClaw's voice loop accuracy and perceived latency on Pi 5 by swapping in `openWakeWord`, Silero VAD, `faster-whisper`, and Ollama→Kokoro streaming. Each swap ships independently behind a `.env` flag with a fallback to today's behaviour.
+**Goal:** Improve Kaizen's voice loop accuracy and perceived latency on Pi 5 by swapping in `openWakeWord`, Silero VAD, `faster-whisper`, and Ollama→Kokoro streaming. Each swap ships independently behind a `.env` flag with a fallback to today's behaviour.
 
 **Architecture:** Three Protocols in `core/voice_backends.py` — `WakeBackend`, `VadBackend`, `SttBackend` — each with a primary impl and a fallback wrapping today's behaviour. Factory functions select implementations from `.env`. Streaming wires through `OllamaToolLoop` → `Orchestrator.process_message_stream` → `KokoroTTSBackend.speak_stream`. Hailo path is preserved at `base`; CPU path moves to `small`.
 
 **Tech Stack:** Python 3.11+, `openwakeword`, `silero-vad` (onnxruntime), `faster-whisper` (ctranslate2), Kokoro (existing), pytest + unittest.TestCase, ollama (existing), Anthropic SDK (existing).
 
-**Spec:** `docs/superpowers/specs/2026-05-04-miniclaw-voice-pipeline-design.md`
+**Spec:** `docs/superpowers/specs/2026-05-04-kaizen-voice-pipeline-design.md`
 
 ---
 
@@ -134,7 +134,7 @@ class WakeBackend(Protocol):
 class WhisperWakeBackend:
     """Fallback wake backend — runs Whisper-tiny on a 2s window and substring-matches.
 
-    Preserves current MiniClaw behaviour. Used when WAKE_BACKEND=whisper or when
+    Preserves current Kaizen behaviour. Used when WAKE_BACKEND=whisper or when
     openWakeWord fails to load.
     """
 

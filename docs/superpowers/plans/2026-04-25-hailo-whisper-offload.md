@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Offload only MiniClaw's full-transcription path to Hailo when the Pi runtime is ready, while keeping wake detection on CPU Whisper and preserving a clean CPU fallback.
+**Goal:** Offload only Kaizen's full-transcription path to Hailo when the Pi runtime is ready, while keeping wake detection on CPU Whisper and preserving a clean CPU fallback.
 
-**Architecture:** Keep `VoiceInterface` unchanged as the microphone/session control plane. Introduce a MiniClaw-owned Hailo runtime module for full transcription only, then select a hybrid STT backend in `core/voice_backends.py` that always uses CPU for `transcribe_wake_audio()` and conditionally uses Hailo for `transcribe_file()`. Startup selection in `main.py` performs Hailo readiness checks once and prints one exact backend status line.
+**Architecture:** Keep `VoiceInterface` unchanged as the microphone/session control plane. Introduce a Kaizen-owned Hailo runtime module for full transcription only, then select a hybrid STT backend in `core/voice_backends.py` that always uses CPU for `transcribe_wake_audio()` and conditionally uses Hailo for `transcribe_file()`. Startup selection in `main.py` performs Hailo readiness checks once and prints one exact backend status line.
 
-**Tech Stack:** Python 3.11+, `openai-whisper`, Pi-installed Hailo runtime packages, `pytest`, existing MiniClaw voice harnesses.
+**Tech Stack:** Python 3.11+, `openai-whisper`, Pi-installed Hailo runtime packages, `pytest`, existing Kaizen voice harnesses.
 
 ---
 
@@ -17,7 +17,7 @@
   - Add user-scoped Hailo asset constants and readiness helpers
   - Add a hybrid backend path that preserves CPU wake and conditionally enables Hailo transcription
 - `core/hailo_whisper_runtime.py`
-  - New MiniClaw-owned Hailo transcription runtime wrapper
+  - New Kaizen-owned Hailo transcription runtime wrapper
   - Encapsulate asset lookup, backend self-check, and transcription entrypoint
 - `main.py`
   - Keep startup wiring thin
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run the startup tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: `PASS` if the current `main.py` wiring still matches the seam; otherwise fix `main.py` before continuing.
 
@@ -118,14 +118,14 @@ def build_voice_interface():
 
 - [ ] **Step 4: Re-run the startup tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: `2 passed`
 
 - [ ] **Step 5: Commit the seam checkpoint**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add main.py tests/test_main_voice_backend_selection.py
 git commit -m "test(voice): lock startup STT backend selection seam"
 ```
@@ -244,7 +244,7 @@ class BuildSttBackendTests(unittest.TestCase):
     def test_asset_root_is_user_scoped(self):
         self.assertEqual(
             voice_backends.HAILO_WHISPER_ASSET_ROOT,
-            Path.home() / ".miniclaw" / "models" / "hailo-whisper",
+            Path.home() / ".kaizen" / "models" / "hailo-whisper",
         )
 
 
@@ -282,19 +282,19 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run the backend tests and confirm they fail for the right reasons**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
 
 Expected: failures because `hailo_transcription_assets_available`, `HybridWhisperBackend`, and `HailoTranscriptionRuntime` do not exist yet, and the current constants/messages still reflect the old all-Hailo design.
 
 - [ ] **Step 3: Commit the red test definition**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add tests/test_voice_backends.py
 git commit -m "test(voice): define hybrid hailo transcription behavior"
 ```
 
-## Task 3: Add a MiniClaw-owned Hailo runtime wrapper
+## Task 3: Add a Kaizen-owned Hailo runtime wrapper
 
 **Files:**
 - Create: `core/hailo_whisper_runtime.py`
@@ -330,16 +330,16 @@ class HailoTranscriptionRuntime:
 
 - [ ] **Step 2: Run the backend tests again**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
 
 Expected: failures move forward to `core.voice_backends` because the runtime wrapper now exists but the hybrid backend and new selector logic do not.
 
 - [ ] **Step 3: Commit the runtime scaffold**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/hailo_whisper_runtime.py
-git commit -m "feat(voice): add miniclaw-owned hailo runtime scaffold"
+git commit -m "feat(voice): add kaizen-owned hailo runtime scaffold"
 ```
 
 ## Task 4: Implement the hybrid backend and selection helpers
@@ -366,7 +366,7 @@ from core.hailo_whisper_runtime import HailoTranscriptionRuntime
 logger = logging.getLogger(__name__)
 
 KOKORO_SAMPLE_RATE = 24000
-HAILO_WHISPER_ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "hailo-whisper"
+HAILO_WHISPER_ASSET_ROOT = Path.home() / ".kaizen" / "models" / "hailo-whisper"
 SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS = {"base", "tiny", "tiny.en", "base.en"}
 ```
 
@@ -470,14 +470,14 @@ def build_stt_backend(
 
 - [ ] **Step 5: Run the backend tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
 
 Expected: all tests in `tests/test_voice_backends.py` pass.
 
 - [ ] **Step 6: Commit the hybrid selector**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/voice_backends.py tests/test_voice_backends.py
 git commit -m "feat(voice): select hybrid hailo transcription backend"
 ```
@@ -490,7 +490,7 @@ git commit -m "feat(voice): select hybrid hailo transcription backend"
 
 - [ ] **Step 1: Run the startup tests after the selector rewrite**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: `2 passed`
 
@@ -504,14 +504,14 @@ If the current test file still uses the old all-Hailo success string anywhere, i
 
 - [ ] **Step 3: Re-run the startup tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: `2 passed`
 
 - [ ] **Step 4: Commit the verification pass**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add tests/test_main_voice_backend_selection.py
 git commit -m "test(voice): align startup status messages with hybrid backend"
 ```
@@ -523,13 +523,13 @@ git commit -m "test(voice): align startup status messages with hybrid backend"
 
 - [ ] **Step 1: Run the targeted voice tests together**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py tests/test_main_voice_backend_selection.py -v`
 
 Expected: all targeted voice backend tests pass.
 
 - [ ] **Step 2: Run the full suite**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/`
 
 Expected: full suite passes.
 
@@ -538,7 +538,7 @@ Expected: full suite passes.
 Run:
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 .venv/bin/python - <<'PY'
 from unittest.mock import patch
 import main
@@ -558,7 +558,7 @@ STT backend: Hybrid Whisper (wake=cpu:tiny, transcription=hailo:base)
 - [ ] **Step 4: Commit the finished implementation**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/hailo_whisper_runtime.py core/voice_backends.py main.py tests/test_main_voice_backend_selection.py tests/test_voice_backends.py
 git commit -m "feat(voice): add hailo-backed full transcription with cpu wake fallback"
 ```
@@ -572,7 +572,7 @@ git commit -m "feat(voice): add hailo-backed full transcription with cpu wake fa
 - `VoiceInterface` remains the control plane: covered by Tasks 1, 4, 5.
 - CPU wake detection remains unchanged: covered by Task 2 hybrid behavior test and Task 4 backend implementation.
 - Hailo applies only to `transcribe_file()`: covered by Tasks 2, 3, 4.
-- Assets live under `~/.miniclaw/models/hailo-whisper`: covered by Task 2 asset-root test and Task 4 constant update.
+- Assets live under `~/.kaizen/models/hailo-whisper`: covered by Task 2 asset-root test and Task 4 constant update.
 - No UDP or external Seeed repo dependency: covered by Task 3 local runtime wrapper.
 - Startup selection and one-line reporting: covered by Tasks 1, 4, 5, 6.
 - CPU fallback reasons: covered by Task 2 tests and Task 4 selector logic.

@@ -38,7 +38,7 @@ def _make_text_response(text):
 class _Loader:
     def __init__(self, opted_in: bool):
         s = MagicMock()
-        s.frontmatter = {"metadata": {"miniclaw": {"self_update": {"allow_body": opted_in}}}}
+        s.frontmatter = {"metadata": {"kaizen": {"self_update": {"allow_body": opted_in}}}}
         self.skills = {"weather": s}
 
     def get_tool_definitions(self):

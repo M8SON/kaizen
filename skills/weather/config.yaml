@@ -1,3 +1,3 @@
-image: miniclaw/weather:latest
+image: kaizen/weather:latest
 timeout_seconds: 15
 devices: []

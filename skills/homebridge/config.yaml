@@ -1,4 +1,4 @@
-image: miniclaw/homebridge:latest
+image: kaizen/homebridge:latest
 env_passthrough:
   - HOMEBRIDGE_URL
   - HOMEBRIDGE_USERNAME

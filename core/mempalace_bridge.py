@@ -1,7 +1,7 @@
 """
 Optional MemPalace integration helpers.
 
-This module lets MiniClaw read compact wake-up memory from MemPalace and,
+This module lets Kaizen read compact wake-up memory from MemPalace and,
 when enabled, file saved memories into the palace without making MemPalace a
 hard dependency.
 """
@@ -21,7 +21,7 @@ class MemPalaceBridge:
 
     DEFAULT_PALACE_PATH = Path.home() / ".mempalace" / "palace"
     DEFAULT_COLLECTION_NAME = "mempalace_drawers"
-    DEFAULT_MEMORY_WING = "wing_miniclaw"
+    DEFAULT_MEMORY_WING = "wing_kaizen"
     DEFAULT_MEMORY_ROOM = "assistant-memory"
 
     def __init__(
@@ -116,7 +116,7 @@ class MemPalaceBridge:
                     "room": room,
                     "source_file": source_file,
                     "chunk_index": 0,
-                    "added_by": "miniclaw",
+                    "added_by": "kaizen",
                     "topic": topic,
                     "filed_at": timestamp,
                 }
@@ -272,7 +272,7 @@ class MemPalaceBridge:
                             "source_file": str(md_file),
                             "topic": topic,
                             "filed_at": filed_at,
-                            "added_by": "miniclaw_vault_sync",
+                            "added_by": "kaizen_vault_sync",
                         }],
                     )
                     synced += 1

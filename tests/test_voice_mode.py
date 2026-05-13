@@ -122,7 +122,7 @@ class FakeVoice:
 
 class VoiceModeTests(unittest.TestCase):
     def test_voice_mode_processes_request_then_exits_on_goodbye(self):
-        orchestrator = FakeOrchestrator(["Hello from MiniClaw"])
+        orchestrator = FakeOrchestrator(["Hello from Kaizen"])
         voice = FakeVoice(
             wake_results=[True],
             listen_results=["tell me something", "goodbye"],
@@ -135,10 +135,10 @@ class VoiceModeTests(unittest.TestCase):
         rendered = output.getvalue()
         self.assertIn("Waiting for wake word", rendered)
         self.assertIn("You: tell me something", rendered)
-        self.assertIn("Assistant: Hello from MiniClaw", rendered)
+        self.assertIn("Assistant: Hello from Kaizen", rendered)
         self.assertIn("Assistant: Goodbye!", rendered)
         self.assertEqual(orchestrator.processed, ["tell me something"])
-        self.assertEqual(voice.spoken, ["Good morning.", "Hello from MiniClaw", "Goodbye!"])
+        self.assertEqual(voice.spoken, ["Good morning.", "Hello from Kaizen", "Goodbye!"])
         self.assertEqual(voice.startup_sounds, 1)
         # Response-ready cue fires when the first delta arrives — once per
         # streaming turn. Goodbye uses speak() (not streaming), so only the

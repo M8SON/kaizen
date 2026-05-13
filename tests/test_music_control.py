@@ -250,7 +250,7 @@ class MusicControlExternalSpotifyPlayback(unittest.TestCase):
 
     def test_phone_initiated_playback_on_pinned_device_routes_to_spotify(self):
         m = _make_manager()
-        m._active_music_source = None  # phone started it, MiniClaw didn't track it
+        m._active_music_source = None  # phone started it, Kaizen didn't track it
         sp = self._sp_with_playback("dev1")
         with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
              patch.object(m, "_spotify_device_id", return_value="dev1"):

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Offload MiniClaw's wake-word transcription loop to Hailo when available while preserving the current configurable `WAKE_PHRASE` behavior and keeping post-wake routing unchanged.
+**Goal:** Offload Kaizen's wake-word transcription loop to Hailo when available while preserving the current configurable `WAKE_PHRASE` behavior and keeping post-wake routing unchanged.
 
 **Architecture:** Extend the existing STT seam so wake and full-transcription backends are selected independently at startup. Add wake-specific support to `core/hailo_whisper_runtime.py`, then update `core/voice_backends.py` so one backend can represent mixed combinations such as `wake=hailo, transcription=cpu` or `wake=cpu, transcription=hailo` without pushing Hailo logic into `core/voice.py`.
 
-**Tech Stack:** Python 3.11+, `openai-whisper`, Pi-installed Hailo runtime packages, `pytest`, existing MiniClaw voice harnesses.
+**Tech Stack:** Python 3.11+, `openai-whisper`, Pi-installed Hailo runtime packages, `pytest`, existing Kaizen voice harnesses.
 
 ---
 
@@ -90,14 +90,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run the startup-selection tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: FAIL because `build_stt_backend()` still returns the older single-path status strings.
 
 - [ ] **Step 3: Commit the red startup expectation**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add tests/test_main_voice_backend_selection.py
 git commit -m "test(voice): define dual wake/transcription startup status"
 ```
@@ -268,7 +268,7 @@ class BuildSttBackendTests(unittest.TestCase):
     def test_asset_root_is_user_scoped(self):
         self.assertEqual(
             voice_backends.HAILO_WHISPER_ASSET_ROOT,
-            Path.home() / ".miniclaw" / "models" / "hailo-whisper",
+            Path.home() / ".kaizen" / "models" / "hailo-whisper",
         )
 ```
 
@@ -346,14 +346,14 @@ class HailoWakeRuntimeAssetTests(unittest.TestCase):
 
 - [ ] **Step 4: Run the backend tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
 
 Expected: FAIL because wake-specific helpers/classes do not exist yet and the startup selector only knows about transcription readiness.
 
 - [ ] **Step 5: Commit the red wake-offload tests**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add tests/test_voice_backends.py tests/test_main_voice_backend_selection.py
 git commit -m "test(voice): define hailo wake offload behavior"
 ```
@@ -433,14 +433,14 @@ class HailoWakeRuntime:
 
 - [ ] **Step 3: Run the wake-runtime asset tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py::HailoWakeRuntimeAssetTests -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py::HailoWakeRuntimeAssetTests -v`
 
 Expected: PASS
 
 - [ ] **Step 4: Commit the wake runtime**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/hailo_whisper_runtime.py tests/test_voice_backends.py
 git commit -m "feat(voice): add hailo wake runtime scaffold"
 ```
@@ -608,14 +608,14 @@ def build_stt_backend(
 
 - [ ] **Step 5: Run the backend tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py -v`
 
 Expected: PASS
 
 - [ ] **Step 6: Commit the selector rewrite**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/voice_backends.py tests/test_voice_backends.py
 git commit -m "feat(voice): add independent hailo wake selection"
 ```
@@ -628,7 +628,7 @@ git commit -m "feat(voice): add independent hailo wake selection"
 
 - [ ] **Step 1: Run the startup tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: PASS if `main.py` still simply prints the selector's status line.
 
@@ -646,14 +646,14 @@ print(stt_status)
 
 - [ ] **Step 3: Re-run the startup tests**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_main_voice_backend_selection.py -v`
 
 Expected: `2 passed`
 
 - [ ] **Step 4: Commit the startup verification**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add main.py tests/test_main_voice_backend_selection.py
 git commit -m "test(voice): align startup status with hailo wake offload"
 ```
@@ -665,13 +665,13 @@ git commit -m "test(voice): align startup status with hailo wake offload"
 
 - [ ] **Step 1: Run the Hailo-focused test set**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_voice_backends.py tests/test_main_voice_backend_selection.py tests/test_download_hailo_whisper_assets.py -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_voice_backends.py tests/test_main_voice_backend_selection.py tests/test_download_hailo_whisper_assets.py -v`
 
 Expected: all tests pass.
 
 - [ ] **Step 2: Run the full suite**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/`
 
 Expected: full suite passes, modulo any already-known environment-only Unix-socket sandbox issue in `tests/test_soundcloud_handler.py`.
 
@@ -680,7 +680,7 @@ Expected: full suite passes, modulo any already-known environment-only Unix-sock
 Run:
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 .venv/bin/python - <<'PY'
 from unittest.mock import patch
 import main
@@ -703,7 +703,7 @@ STT backend: Hybrid Whisper (wake=hailo:tiny, transcription=hailo:base)
 - [ ] **Step 4: Commit the finished wake-offload implementation**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/hailo_whisper_runtime.py core/voice_backends.py main.py tests/test_voice_backends.py tests/test_main_voice_backend_selection.py docs/superpowers/plans/2026-04-26-hailo-wake-offload.md
 git commit -m "feat(voice): add hailo wake-word offload"
 ```

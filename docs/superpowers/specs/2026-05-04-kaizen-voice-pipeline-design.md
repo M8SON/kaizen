@@ -6,9 +6,9 @@
 
 ## Problem
 
-Two roughly equal pain points in the current MiniClaw voice loop on Pi 5:
+Two roughly equal pain points in the current Kaizen voice loop on Pi 5:
 
-1. **Accuracy.** Whisper-tiny wake-stream hallucinates phrases (`thank you for watching`, `pewder`/`vacutor` for "computer"). RMS-amplitude endpointing truncates utterances mid-word, feeding garbage into Whisper-base. Net effect: MiniClaw mishears or false-fires often enough to be a daily friction.
+1. **Accuracy.** Whisper-tiny wake-stream hallucinates phrases (`thank you for watching`, `pewder`/`vacutor` for "computer"). RMS-amplitude endpointing truncates utterances mid-word, feeding garbage into Whisper-base. Net effect: Kaizen mishears or false-fires often enough to be a daily friction.
 2. **Speed.** After STT completes, the user waits 7–10s in silence while Ollama generates a full response on Pi 5 CPU (~3–5 tok/s) before TTS begins. The wait dominates perceived latency.
 
 ## Goals
@@ -16,7 +16,7 @@ Two roughly equal pain points in the current MiniClaw voice loop on Pi 5:
 - Eliminate wake-stream hallucinations.
 - Stop truncating utterances at silence-threshold edges.
 - Cut "stop talking → start hearing reply" from ~8–12s to ~2–3s on typical short replies.
-- Keep MiniClaw's current architecture (single Pi 5, USB ReSpeaker XVF3800, AI HAT+ Hailo for full transcription, no satellite/ESPHome rearchitecture).
+- Keep Kaizen's current architecture (single Pi 5, USB ReSpeaker XVF3800, AI HAT+ Hailo for full transcription, no satellite/ESPHome rearchitecture).
 - Each change ships independently with a working fallback to today's behaviour, controlled by `.env`.
 
 ## Non-goals
@@ -34,7 +34,7 @@ Four sequential, independently shippable swaps. Each lands behind a `.env` flag 
 
 ### 1. Wake — `openWakeWord` replaces Whisper-tiny
 
-`openWakeWord` is a purpose-built keyword spotter (TFLite, ~1MB models). Whisper-tiny was never designed to be a wake detector; using it for that job is the root cause of the hallucinations. Default wake word: `hey_jarvis` (from openWakeWord's prebuilt model set). Custom-trained `miniclaw` / `computer` models are a future option, not in this work.
+`openWakeWord` is a purpose-built keyword spotter (TFLite, ~1MB models). Whisper-tiny was never designed to be a wake detector; using it for that job is the root cause of the hallucinations. Default wake word: `hey_jarvis` (from openWakeWord's prebuilt model set). Custom-trained `kaizen` / `computer` models are a future option, not in this work.
 
 CPU only. Runs at ~3% of one Pi 5 core, real-time. Hailo NPU stays focused on full-utterance transcription.
 
@@ -243,5 +243,5 @@ Each step is a separate PR. Each PR includes its `.env` knob and fallback, so ro
 ## Open follow-ups (not in scope, flagged for after)
 
 - XVF3800 mic-gain calibration (`arecord` levels; possible 2-channel beamform + mono downmix halving effective volume).
-- Custom-trained openWakeWord model for `miniclaw` or `computer` if `hey_jarvis` becomes the long-term wake word.
+- Custom-trained openWakeWord model for `kaizen` or `computer` if `hey_jarvis` becomes the long-term wake word.
 - Future Hailo offload of openWakeWord *only if* Hailo NPU adds real headroom in some future config; currently not justified.

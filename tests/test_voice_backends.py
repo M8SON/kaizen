@@ -63,7 +63,7 @@ class BuildSttBackendTests(unittest.TestCase):
     def test_asset_root_is_user_scoped(self):
         self.assertEqual(
             voice_backends.HAILO_WHISPER_ASSET_ROOT,
-            Path.home() / ".miniclaw" / "models" / "hailo-whisper",
+            Path.home() / ".kaizen" / "models" / "hailo-whisper",
         )
 
 

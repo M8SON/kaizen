@@ -16,7 +16,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 CONTAINER_DIR="$REPO_ROOT/containers/$SKILL_NAME"
-IMAGE_NAME="miniclaw/${SKILL_NAME//_/-}:latest"
+IMAGE_NAME="kaizen/${SKILL_NAME//_/-}:latest"
 
 if [ ! -d "$CONTAINER_DIR" ]; then
     echo "Container directory not found: $CONTAINER_DIR" >&2

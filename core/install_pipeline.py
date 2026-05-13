@@ -1,5 +1,5 @@
 """
-Shared install pipeline for MiniClaw skills.
+Shared install pipeline for Kaizen skills.
 
 Entry points (voice via install-skill, CLI via core.skill_cli, future mobile
 HTTP) all funnel through InstallPipeline.install_from_path or
@@ -300,7 +300,7 @@ class InstallPipeline:
             logger.error("install_from_url: unsupported scheme %r", parsed.scheme)
             return InstallDecision.FAILED
 
-        with tempfile.TemporaryDirectory(prefix="miniclaw-install-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="kaizen-install-") as tmp:
             staging = Path(tmp) / "staging"
             if url.endswith(".git") or parsed.netloc.endswith("github.com"):
                 result = subprocess.run(

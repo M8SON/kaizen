@@ -16,13 +16,13 @@ class InstallSystemdServiceTests(unittest.TestCase):
 
     def test_copies_unit_to_user_config_dir(self):
         self.assertIn(".config/systemd/user", self.text)
-        self.assertIn("config/systemd/miniclaw.service", self.text)
+        self.assertIn("config/systemd/kaizen.service", self.text)
 
     def test_runs_daemon_reload(self):
         self.assertIn("systemctl --user daemon-reload", self.text)
 
     def test_enables_and_starts_unit(self):
-        self.assertIn("systemctl --user enable --now miniclaw.service", self.text)
+        self.assertIn("systemctl --user enable --now kaizen.service", self.text)
 
     def test_checks_and_enables_linger(self):
         self.assertIn("loginctl show-user", self.text)
@@ -50,10 +50,10 @@ class UninstallSystemdServiceTests(unittest.TestCase):
         cls.text = UNINSTALL_SH.read_text(encoding="utf-8")
 
     def test_disables_unit(self):
-        self.assertIn("systemctl --user disable --now miniclaw.service", self.text)
+        self.assertIn("systemctl --user disable --now kaizen.service", self.text)
 
     def test_removes_unit_file(self):
-        self.assertIn(".config/systemd/user/miniclaw.service", self.text)
+        self.assertIn(".config/systemd/user/kaizen.service", self.text)
         self.assertIn("rm -f", self.text)
 
     def test_runs_daemon_reload(self):

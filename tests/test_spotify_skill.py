@@ -228,33 +228,33 @@ class SpotifyDeviceIdSelection(unittest.TestCase):
     def _dev(self, name, did, active=False):
         return {"name": name, "id": did, "is_active": active}
 
-    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "Kaizen"}, clear=False)
     def test_pinned_device_chosen_over_active_other(self):
         m = _make_manager()
         sp = MagicMock()
         sp.devices.return_value = self._devices(
             self._dev("Amazon FireTV Cube Gen 2", "fire-id", active=True),
-            self._dev("MiniClaw", "mini-id", active=False),
+            self._dev("Kaizen", "mini-id", active=False),
         )
         self.assertEqual(m._spotify_device_id(sp), "mini-id")
 
-    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "Kaizen"}, clear=False)
     def test_pinned_device_match_is_case_insensitive(self):
         m = _make_manager()
         sp = MagicMock()
         sp.devices.return_value = self._devices(
-            self._dev("MINICLAW", "mini-id", active=True),
+            self._dev("KAIZEN", "mini-id", active=True),
         )
         self.assertEqual(m._spotify_device_id(sp), "mini-id")
 
-    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "MiniClaw"}, clear=False)
+    @patch.dict("os.environ", {"SPOTIFY_DEVICE_NAME": "Kaizen"}, clear=False)
     def test_pinned_device_missing_returns_none_not_fallback(self):
         m = _make_manager()
         sp = MagicMock()
         sp.devices.return_value = self._devices(
             self._dev("Amazon FireTV Cube Gen 2", "fire-id", active=True),
         )
-        # User asked for MiniClaw only — must NOT silently fall back to FireTV.
+        # User asked for Kaizen only — must NOT silently fall back to FireTV.
         self.assertIsNone(m._spotify_device_id(sp))
 
     @patch.dict("os.environ", {}, clear=True)

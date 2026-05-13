@@ -15,7 +15,7 @@ The user's manual paths — editing skills via Claude Code in another session, o
 
 These are non-negotiable per the agentskills.io compat spec:
 
-- Mechanism gated by frontmatter: `metadata.miniclaw.self_update.allow_body: true` (default false, opt-in).
+- Mechanism gated by frontmatter: `metadata.kaizen.self_update.allow_body: true` (default false, opt-in).
 - Rewrite is body-only — no frontmatter changes, no new input schema sections, no Dockerfile / config.yaml / `scripts/` modifications.
 - Rewritten file must pass `SkillValidator.validate_markdown`.
 - Native skill name: `update_skill_hints`. API shape: `{skill_name, addition, rationale}`.
@@ -25,7 +25,7 @@ These are non-negotiable per the agentskills.io compat spec:
 - **Auto skill creation.** `install-skill` (voice / CLI / URL import) already covers explicit creation. Auto-creation has different risk shape and is not in scope here.
 - **Tier 2/3 changes.** Reword existing routing hints, replace whole sections, or remove existing examples. These are higher-risk and remain manual via Claude Code or a future explicit invocation.
 - **Confirmation gates.** The product value of self-improvement is autonomy; gating each update would make it slower than the user typing the change in Claude Code. Safety shifts to *bound the surface area + make every change reversible*.
-- **Batch / scheduled review.** A periodic pattern review pass over MiniClaw's `SessionArchive` is a reasonable v2 feature. v1 is in-process detection only.
+- **Batch / scheduled review.** A periodic pattern review pass over Kaizen's `SessionArchive` is a reasonable v2 feature. v1 is in-process detection only.
 
 ## Per-tier eligibility
 
@@ -69,7 +69,7 @@ required: [skill_name, addition, rationale]
 ```
 1. Look up skill_name in skill_loader.skills.
    Reject if missing, if tier == imported, or if frontmatter
-   metadata.miniclaw.self_update.allow_body is not exactly True.
+   metadata.kaizen.self_update.allow_body is not exactly True.
 
 2. Sanity-check the addition:
    - len(addition.strip()) between 1 and 500 chars.
@@ -189,11 +189,11 @@ Code-enforced (not just prompt guidance):
 
 1. **One specific change** — `git revert <commit>`.
 2. **All auto-learned hints on one skill** — delete the `## Auto-learned routing hints` section in that SKILL.md, commit cleanup. Manual via editor or Claude Code.
-3. **Disable self-update on one skill** — flip `metadata.miniclaw.self_update.allow_body: false` in frontmatter, commit. Stops auto-updates on next reload.
+3. **Disable self-update on one skill** — flip `metadata.kaizen.self_update.allow_body: false` in frontmatter, commit. Stops auto-updates on next reload.
 
 No new rollback CLI command. The existing tools are sufficient.
 
-**Edge case: not a git repo.** If MiniClaw is running outside a git checkout, `git commit` fails. Handler logs a warning and returns success — the file change still applies; only the audit trail is missing. Self-update never blocks on git availability.
+**Edge case: not a git repo.** If Kaizen is running outside a git checkout, `git commit` fails. Handler logs a warning and returns success — the file change still applies; only the audit trail is missing. Self-update never blocks on git availability.
 
 **Edge case: unstaged unrelated changes.** Path-restricted commit (`git commit -- skills/<name>/SKILL.md`) ensures user's in-progress edits aren't swallowed by the auto-commit.
 
@@ -265,7 +265,7 @@ Fixture skill with `allow_body: true`. Mock orchestrator runs a scripted convers
 
 ## Future direction (deferred)
 
-- **Batch / scheduled pattern review** — a periodic pass over MiniClaw's `SessionArchive` (FTS5) to find recurring misroute patterns Claude didn't catch in-the-moment. Reasonable v2 if real-world usage shows in-the-moment is missing patterns.
+- **Batch / scheduled pattern review** — a periodic pass over Kaizen's `SessionArchive` (FTS5) to find recurring misroute patterns Claude didn't catch in-the-moment. Reasonable v2 if real-world usage shows in-the-moment is missing patterns.
 - **Tier 2 (rewording) auto-apply** — promote rewording from manual-only to auto-apply once Tier 1 has demonstrated stability over months of real use. Higher risk; not justified yet.
 - **Cross-skill consolidation** — when multiple skills accumulate similar phrasings, suggest one canonical home. Pure speculation; revisit if it ever feels needed.
-- **A `claude-recall`-style stats command for self-update activity** — `miniclaw skill self-update-stats` showing per-skill counts, last-updated timestamps, FIFO-evictions. Cheap to add but not needed in v1.
+- **A `claude-recall`-style stats command for self-update activity** — `kaizen skill self-update-stats` showing per-skill counts, last-updated timestamps, FIFO-evictions. Cheap to add but not needed in v1.

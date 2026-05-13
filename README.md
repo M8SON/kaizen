@@ -1,4 +1,4 @@
-# MiniClaw
+# Kaizen
 
 An open-source, modular voice assistant designed for Raspberry Pi. Think Jarvis, but running on a $120 board in your living room.
 
@@ -95,7 +95,7 @@ Two practical build tiers:
 | Case | ~$10 |
 | **Total** | **~$297** |
 
-Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but strongly recommended for always-on deployments — MiniClaw currently uses it for Hailo-backed wake detection and full transcription, with Kokoro acceleration still remaining on the roadmap.
+Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but strongly recommended for always-on deployments — Kaizen currently uses it for Hailo-backed wake detection and full transcription, with Kokoro acceleration still remaining on the roadmap.
 
 ### Yearly Electricity
 
@@ -111,8 +111,8 @@ Running costs are negligible — the hardware pays for itself in utility long be
 ## Quick Start
 
 ```bash
-git clone https://github.com/M8SON/miniclaw.git
-cd miniclaw
+git clone https://github.com/M8SON/kaizen.git
+cd kaizen
 ./run.sh --install-system-deps  # Debian/Ubuntu only: installs Docker + audio system deps
 cp .env.example .env
 # Edit .env with your API keys
@@ -125,7 +125,7 @@ cp .env.example .env
 
 ## Optional: Hailo Whisper Offload
 
-MiniClaw can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection currently stays on CPU Whisper (the published Hailo wake encoder needs a 10s window, the wake loop buffers 2s — silence padding produced hallucinations, so wake-on-Hailo was reverted).
+Kaizen can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection currently stays on CPU Whisper (the published Hailo wake encoder needs a 10s window, the wake loop buffers 2s — silence padding produced hallucinations, so wake-on-Hailo was reverted).
 
 - wake detection runs on CPU Whisper (`WAKE_MODEL`, default `tiny`)
 - full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL_HAILO`, `base` or `tiny`)
@@ -150,7 +150,7 @@ ls /dev/hailo0
 
 ### Python environment note
 
-MiniClaw's default `run.sh` creates a normal `.venv`. On many Pi installs, the `hailo_platform` Python module is provided by the system package, so you may want MiniClaw's virtualenv to see system site-packages:
+Kaizen's default `run.sh` creates a normal `.venv`. On many Pi installs, the `hailo_platform` Python module is provided by the system package, so you may want Kaizen's virtualenv to see system site-packages:
 
 ```bash
 rm -rf .venv
@@ -161,9 +161,9 @@ pip install -r requirements.txt
 
 If `python3 -c "import hailo_platform"` already works inside `.venv`, you do not need to recreate it.
 
-### Download MiniClaw Hailo assets
+### Download Kaizen Hailo assets
 
-Download the HEFs and decoder assets into MiniClaw's user-scoped model store:
+Download the HEFs and decoder assets into Kaizen's user-scoped model store:
 
 ```bash
 .venv/bin/python scripts/download_hailo_whisper_assets.py --variant base --hw-arch hailo8l
@@ -172,12 +172,12 @@ Download the HEFs and decoder assets into MiniClaw's user-scoped model store:
 Assets are stored under:
 
 ```text
-~/.miniclaw/models/hailo-whisper/
+~/.kaizen/models/hailo-whisper/
 ```
 
 ### Validate on the Pi
 
-Run MiniClaw in voice mode:
+Run Kaizen in voice mode:
 
 ```bash
 ./run.sh --voice
@@ -198,7 +198,7 @@ STT backend: CPU Whisper fallback (wake=cpu:tiny, transcription=cpu:small) — <
 If you see CPU fallback when expecting Hailo, the likely causes are:
 
 - `hailo_platform` is not visible inside `.venv` (recreate with `--system-site-packages`)
-- `~/.miniclaw/models/hailo-whisper/base` is missing assets
+- `~/.kaizen/models/hailo-whisper/base` is missing assets
 - the selected `WHISPER_MODEL_HAILO` variant has no published HEF (only `tiny` and `base` exist today)
 
 Current limitation: Hailo currently accelerates Whisper only. TierRouter and Kokoro are unchanged, and Kokoro offload is still future work.
@@ -222,7 +222,7 @@ docker info
 
 ## Testing
 
-MiniClaw now includes a small `unittest` smoke suite for core non-audio behavior, including:
+Kaizen now includes a small `unittest` smoke suite for core non-audio behavior, including:
 
 - conversation history normalization and pruning
 - native config-writing behavior for `set_env_var`
@@ -283,13 +283,13 @@ For the skill file structure and developer details, see `CLAUDE.md`.
 
 ## Memory
 
-MiniClaw can remember things across conversations. Just say:
+Kaizen can remember things across conversations. Just say:
 
 > *"computer, remember that my wife's name is Sarah"*
 > *"computer, don't forget I prefer temperatures in Celsius"*
 > *"computer, make a note that the garage code is 1234"*
 
-Memories are saved as markdown files in `~/.miniclaw/memory/` (configurable via `MEMORY_VAULT_PATH`). Each file is named `YYYY-MM-DD_topic.md` with YAML frontmatter.
+Memories are saved as markdown files in `~/.kaizen/memory/` (configurable via `MEMORY_VAULT_PATH`). Each file is named `YYYY-MM-DD_topic.md` with YAML frontmatter.
 
 **How recall works:**
 
@@ -297,17 +297,17 @@ Memories are saved as markdown files in `~/.miniclaw/memory/` (configurable via 
 - **Per message** — semantic search over the vector store surfaces relevant memories alongside the user's request, even when the phrasing doesn't match exactly (e.g. asking "what's my wife's name?" finds a note that says "Sarah is Mason's spouse")
 - chromadb is included in the default dependencies — no extra setup required
 
-**Obsidian integration** — open `~/.miniclaw/memory` as an Obsidian vault to browse, search, edit, or delete memories with a full GUI. Since the files are plain markdown, everything works out of the box.
+**Obsidian integration** — open `~/.kaizen/memory` as an Obsidian vault to browse, search, edit, or delete memories with a full GUI. Since the files are plain markdown, everything works out of the box.
 
 ### MemPalace
 
-[MemPalace](https://github.com/milla-jovovich/mempalace) is the **recommended/default recall layer when installed** because MiniClaw's default `MEMORY_BACKEND=auto` setting prefers it automatically. MiniClaw still remains vault-backed: memories are always stored as markdown notes in the vault, and when `chromadb` is available they are also synced into a local vector store for semantic recall. Installing MemPalace does not replace that storage model. Instead, MiniClaw prefers MemPalace's Python API or CLI for:
+[MemPalace](https://github.com/milla-jovovich/mempalace) is the **recommended/default recall layer when installed** because Kaizen's default `MEMORY_BACKEND=auto` setting prefers it automatically. Kaizen still remains vault-backed: memories are always stored as markdown notes in the vault, and when `chromadb` is available they are also synced into a local vector store for semantic recall. Installing MemPalace does not replace that storage model. Instead, Kaizen prefers MemPalace's Python API or CLI for:
 
 - **Wake-up memory** — curated startup summaries via `mempalace wake-up`
 - **Per-message recall** — semantic search via `mempalace search`
 - **Browsing/debugging** — using the MemPalace CLI against the same local palace directory
 
-If MemPalace is not installed, MiniClaw still keeps semantic recall working through direct `chromadb` access. In other words:
+If MemPalace is not installed, Kaizen still keeps semantic recall working through direct `chromadb` access. In other words:
 
 - **Vault markdown files** remain the source of truth
 - **chromadb** provides the actual local vector store
@@ -315,14 +315,14 @@ If MemPalace is not installed, MiniClaw still keeps semantic recall working thro
 
 ```bash
 pip install mempalace
-mempalace init ~/projects/miniclaw-memory
+mempalace init ~/projects/kaizen-memory
 ```
 
 Leave `MEMORY_BACKEND=auto` to get the default behavior: use MemPalace when installed and otherwise fall back to direct `chromadb` access. Set `MEMORY_BACKEND=mempalace` only if you want to force MemPalace usage, or `MEMORY_BACKEND=vault` to disable the MemPalace/chromadb semantic layer entirely.
 
 ## Intelligence Tiers
 
-MiniClaw routes each voice command through a three-tier gate before any LLM runs:
+Kaizen routes each voice command through a three-tier gate before any LLM runs:
 
 | Tier | Model | Latency | Examples |
 |---|---|---|---|
@@ -374,24 +374,24 @@ Key environment variables in `.env`:
 | `SKILL_PROMPT_MAX_TOKENS` | `4000` | Approximate token budget for skill instructions in the system prompt |
 | `WAKE_MODEL` | `tiny` | Wake word detection model size |
 | `CONTAINER_MEMORY` | `256m` | Default Docker memory limit per skill |
-| `MEMORY_VAULT_PATH` | `~/.miniclaw/memory` | Directory for memory notes (point Obsidian here) |
+| `MEMORY_VAULT_PATH` | `~/.kaizen/memory` | Directory for memory notes (point Obsidian here) |
 | `MEMPALACE_PALACE_PATH` | `~/.mempalace/palace` | Override MemPalace data directory |
 | `MEMPALACE_WING` | — | Optional wing filter for MemPalace wake-up memory |
 | `MEMPALACE_SAVE_MEMORY` | `auto` | `auto`, `true`, or `false` for MemPalace mirroring on `save_memory` |
-| `MEMPALACE_MEMORY_WING` | `wing_miniclaw` | Target wing when mirroring saved memories |
+| `MEMPALACE_MEMORY_WING` | `wing_kaizen` | Target wing when mirroring saved memories |
 | `MEMPALACE_MEMORY_ROOM` | `assistant-memory` | Target room when mirroring saved memories |
 | `BRAVE_API_KEY` | — | Required for web search skill |
 | `SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | — | Spotify Web API auth; redirect must use `127.0.0.1` (Spotify deprecated `localhost` in 2025) |
-| `SPOTIFY_DEVICE_NAME` | — | Pin playback to one Spotify Connect device (e.g. `MiniClaw`) so multi-device accounts don't spill onto phone/TV |
+| `SPOTIFY_DEVICE_NAME` | — | Pin playback to one Spotify Connect device (e.g. `Kaizen`) so multi-device accounts don't spill onto phone/TV |
 | `MIC_DEVICE` | `Array` | Case-insensitive substring match against the ALSA/PortAudio device name |
-| `SPEAKER_DEVICE` | `KT USB` | Same — set to `pipewire` on Pi 5 if running raspotify alongside MiniClaw |
+| `SPEAKER_DEVICE` | `KT USB` | Same — set to `pipewire` on Pi 5 if running raspotify alongside Kaizen |
 | `MICRO_TIER_ENABLED` | `false` | Enable Haiku micro-tier routing |
 | `MICRO_TIER_MODEL` | `claude-haiku-4-5` | Model used for the micro tier |
 | `CLAUDE_ONLY_SKILLS` | `install-skill` | Comma-separated skills always routed to Sonnet |
 
 ## Power Consumption
 
-MiniClaw is designed to run 24/7, so wake detection power draw is worth considering.
+Kaizen is designed to run 24/7, so wake detection power draw is worth considering.
 
 Wake word detection runs a tiny Whisper model every 2 seconds on a 2-second audio window **on CPU** (via `faster-whisper`). The Hailo integration accelerates full post-wake transcription, not the always-on wake loop.
 
@@ -405,7 +405,7 @@ Wake word detection runs a tiny Whisper model every 2 seconds on a 2-second audi
 
 ## Run on boot (Raspberry Pi)
 
-To make MiniClaw start automatically when the Pi powers on:
+To make Kaizen start automatically when the Pi powers on:
 
 ```bash
 ./scripts/install_systemd_service.sh
@@ -413,7 +413,7 @@ To make MiniClaw start automatically when the Pi powers on:
 
 The installer is idempotent — re-run it any time the unit file changes. It will:
 
-- Copy `config/systemd/miniclaw.service` to `~/.config/systemd/user/`.
+- Copy `config/systemd/kaizen.service` to `~/.config/systemd/user/`.
 - Enable `loginctl enable-linger` so user services start at boot (asks for sudo).
 - Ensure `/var/log/journal` exists so logs survive reboot (asks for sudo).
 - Enable + start the service.
@@ -421,12 +421,12 @@ The installer is idempotent — re-run it any time the unit file changes. It wil
 ### Day-to-day
 
 ```bash
-systemctl --user status miniclaw      # is it running?
-systemctl --user start miniclaw       # start after a manual stop
-systemctl --user restart miniclaw     # restart after a config change
-systemctl --user stop miniclaw        # stop until next boot or manual start
-journalctl --user -u miniclaw -f      # tail live logs
-journalctl --user -u miniclaw -p err --since '1 hour ago'   # crashes only
+systemctl --user status kaizen      # is it running?
+systemctl --user start kaizen       # start after a manual stop
+systemctl --user restart kaizen     # restart after a config change
+systemctl --user stop kaizen        # stop until next boot or manual start
+journalctl --user -u kaizen -f      # tail live logs
+journalctl --user -u kaizen -p err --since '1 hour ago'   # crashes only
 ```
 
 ### Uninstall
@@ -438,12 +438,12 @@ journalctl --user -u miniclaw -p err --since '1 hour ago'   # crashes only
 ## Project Structure
 
 ```
-miniclaw/
+kaizen/
 ├── main.py                        # Entry point (voice, text, or list mode)
 ├── run.sh                         # Setup + launch script (auto-discovers containers)
 ├── config/
 │   ├── intent_patterns.yaml       # Dispatch + escalate patterns for TierRouter
-│   └── systemd/miniclaw.service   # User-level unit for boot auto-start
+│   └── systemd/kaizen.service   # User-level unit for boot auto-start
 ├── core/
 │   ├── orchestrator.py            # Tiered routing gate + Claude API + conversation history
 │   ├── tier_router.py             # TierRouter: deterministic/micro/claude classification

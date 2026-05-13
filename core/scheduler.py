@@ -1,5 +1,5 @@
 """
-Scheduler - Recurring task execution for MiniClaw.
+Scheduler - Recurring task execution for Kaizen.
 
 Provides ScheduleEntry (one scheduled task), SchedulesStore (yaml-backed
 persistence), ScheduledFire (a due-for-execution notification), and
@@ -345,7 +345,7 @@ class SchedulerThread(threading.Thread):
         tick_seconds: float = 30.0,
         catch_up_on_start: bool = True,
     ):
-        super().__init__(name="MiniClawScheduler", daemon=True)
+        super().__init__(name="KaizenScheduler", daemon=True)
         self._store = store
         self._queue = fire_queue
         self._tick_seconds = tick_seconds

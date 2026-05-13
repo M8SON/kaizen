@@ -11,7 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-TOKEN_CACHE_PATH = Path.home() / ".miniclaw" / "spotify-tokens.json"
+TOKEN_CACHE_PATH = Path.home() / ".kaizen" / "spotify-tokens.json"
 
 DEFAULT_REDIRECT_URI = "http://localhost:8888/callback"
 

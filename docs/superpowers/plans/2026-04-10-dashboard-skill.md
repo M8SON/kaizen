@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a voice-triggered on-demand visual dashboard skill to MiniClaw that displays news/OSINT, weather, stocks, and music panels on a connected monitor.
+**Goal:** Add a voice-triggered on-demand visual dashboard skill to Kaizen that displays news/OSINT, weather, stocks, and music panels on a connected monitor.
 
 **Architecture:** A native skill handler in `ContainerManager` starts a long-running Flask Docker container (serving the dashboard HTML) and launches Chromium on the host in kiosk mode pointing at it. The container is started detached (`docker run -d`), unlike other skills which run synchronously. A `threading.Timer` on the host handles auto-close. Closing kills the host Chromium process and stops the container.
 
@@ -15,8 +15,8 @@
 | File | Action | Responsibility |
 |---|---|---|
 | `core/container_manager.py` | Modify | Add volume mount support + dashboard native handlers |
-| `skills/soundcloud/config.yaml` | Modify | Add volume mount for `~/.miniclaw` |
-| `containers/soundcloud/app.py` | Modify | Write `/miniclaw/now_playing.json` after successful play |
+| `skills/soundcloud/config.yaml` | Modify | Add volume mount for `~/.kaizen` |
+| `containers/soundcloud/app.py` | Modify | Write `/kaizen/now_playing.json` after successful play |
 | `skills/dashboard/SKILL.md` | Create | Claude's routing instructions for the dashboard skill |
 | `skills/dashboard/config.yaml` | Create | Skill type (native) + timeout |
 | `containers/dashboard/Dockerfile` | Create | Build image with Flask, Playwright, yfinance |
@@ -27,7 +27,7 @@
 
 ## Task 1: Add Volume Mount Support to ContainerManager
 
-Volume mounts allow skill containers to read/write the host's `~/.miniclaw/` directory. The soundcloud skill needs this to write `now_playing.json`.
+Volume mounts allow skill containers to read/write the host's `~/.kaizen/` directory. The soundcloud skill needs this to write `now_playing.json`.
 
 **Files:**
 - Modify: `core/container_manager.py`
@@ -77,36 +77,36 @@ In `execute_skill`, find the `_build_docker_cmd(...)` call and add the `volumes`
 
 - [ ] **Step 3: Verify the docker command is built correctly**
 
-Run this quick check from the miniclaw directory:
+Run this quick check from the kaizen directory:
 
 ```bash
-cd /home/daedalus/linux/miniclaw && source .venv/bin/activate && python3 - <<'EOF'
+cd /home/daedalus/linux/kaizen && source .venv/bin/activate && python3 - <<'EOF'
 from core.container_manager import ContainerManager
 cm = ContainerManager()
 cmd = cm._build_docker_cmd(
-    image="miniclaw/test:latest",
-    volumes=["~/.miniclaw:/miniclaw"],
+    image="kaizen/test:latest",
+    volumes=["~/.kaizen:/kaizen"],
 )
 assert "-v" in cmd, "Missing -v flag"
 v_idx = cmd.index("-v")
-assert "/miniclaw" in cmd[v_idx + 1], "Volume path not expanded"
+assert "/kaizen" in cmd[v_idx + 1], "Volume path not expanded"
 print("PASS:", cmd[v_idx], cmd[v_idx + 1])
 EOF
 ```
 
-Expected output: `PASS: -v /home/daedalus/.miniclaw:/miniclaw`
+Expected output: `PASS: -v /home/daedalus/.kaizen:/kaizen`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/container_manager.py && git commit -m "feat: add volume mount support to ContainerManager"
+cd /home/daedalus/linux/kaizen && git add core/container_manager.py && git commit -m "feat: add volume mount support to ContainerManager"
 ```
 
 ---
 
 ## Task 2: SoundCloud Now-Playing State File
 
-The dashboard music widget reads `~/.miniclaw/now_playing.json` written by the soundcloud container. The container needs a volume mount to reach the host path.
+The dashboard music widget reads `~/.kaizen/now_playing.json` written by the soundcloud container. The container needs a volume mount to reach the host path.
 
 **Files:**
 - Modify: `skills/soundcloud/config.yaml`
@@ -117,12 +117,12 @@ The dashboard music widget reads `~/.miniclaw/now_playing.json` written by the s
 Replace the contents of `skills/soundcloud/config.yaml`:
 
 ```yaml
-image: miniclaw/soundcloud:latest
+image: kaizen/soundcloud:latest
 timeout_seconds: 45
 devices:
   - /dev/snd
 volumes:
-  - ~/.miniclaw:/miniclaw
+  - ~/.kaizen:/kaizen
 ```
 
 - [ ] **Step 2: Write now_playing.json in soundcloud app.py**
@@ -143,7 +143,7 @@ import subprocess
 
 def write_now_playing(title: str) -> None:
     try:
-        with open("/miniclaw/now_playing.json", "w") as f:
+        with open("/kaizen/now_playing.json", "w") as f:
             json.dump({"title": title, "timestamp": time.time()}, f)
     except OSError:
         pass
@@ -210,11 +210,11 @@ if __name__ == "__main__":
 - [ ] **Step 3: Verify the now_playing write path manually**
 
 ```bash
-mkdir -p ~/.miniclaw && python3 - <<'EOF'
+mkdir -p ~/.kaizen && python3 - <<'EOF'
 import json, time, os
-os.makedirs(os.path.expanduser("~/.miniclaw"), exist_ok=True)
-# Simulate what the container writes to /miniclaw (which maps to ~/.miniclaw on host)
-path = os.path.expanduser("~/.miniclaw/now_playing.json")
+os.makedirs(os.path.expanduser("~/.kaizen"), exist_ok=True)
+# Simulate what the container writes to /kaizen (which maps to ~/.kaizen on host)
+path = os.path.expanduser("~/.kaizen/now_playing.json")
 with open(path, "w") as f:
     json.dump({"title": "Test Track", "timestamp": time.time()}, f)
 data = json.loads(open(path).read())
@@ -230,7 +230,7 @@ Expected: `PASS: now_playing.json written and readable`
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add skills/soundcloud/config.yaml containers/soundcloud/app.py && git commit -m "feat: soundcloud writes now_playing.json for dashboard music widget"
+cd /home/daedalus/linux/kaizen && git add skills/soundcloud/config.yaml containers/soundcloud/app.py && git commit -m "feat: soundcloud writes now_playing.json for dashboard music widget"
 ```
 
 ---
@@ -245,7 +245,7 @@ The Flask server runs inside Docker, serves the dashboard HTML, fetches data fro
 - [ ] **Step 1: Create the directory**
 
 ```bash
-mkdir -p /home/daedalus/linux/miniclaw/containers/dashboard/templates
+mkdir -p /home/daedalus/linux/kaizen/containers/dashboard/templates
 ```
 
 - [ ] **Step 2: Write `containers/dashboard/app.py`**
@@ -411,7 +411,7 @@ def fetch_stocks(tickers: list) -> list:
 def fetch_music() -> dict:
     """Read now_playing.json written by the soundcloud skill via shared volume."""
     try:
-        raw = open("/miniclaw/now_playing.json").read()
+        raw = open("/kaizen/now_playing.json").read()
         data = json.loads(raw)
         age = time.time() - data.get("timestamp", 0)
         if age > 60:
@@ -504,7 +504,7 @@ if __name__ == "__main__":
 Activate the venv and install flask, yfinance, requests if not present, then test weather:
 
 ```bash
-cd /home/daedalus/linux/miniclaw && source .venv/bin/activate
+cd /home/daedalus/linux/kaizen && source .venv/bin/activate
 pip install flask yfinance requests --quiet
 python3 - <<'EOF'
 import os
@@ -524,7 +524,7 @@ Expected: dict with `temp`, `tonight_low`, `tomorrow_high`, `location` keys prin
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add containers/dashboard/app.py && git commit -m "feat: add dashboard Flask container app"
+cd /home/daedalus/linux/kaizen && git add containers/dashboard/app.py && git commit -m "feat: add dashboard Flask container app"
 ```
 
 ---
@@ -543,7 +543,7 @@ B-layout: news feed occupies the left two-thirds; weather, stocks, and music wid
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MiniClaw</title>
+<title>Kaizen</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -737,7 +737,7 @@ setInterval(() => {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add containers/dashboard/templates/dashboard.html && git commit -m "feat: add dashboard B-layout HTML template"
+cd /home/daedalus/linux/kaizen && git add containers/dashboard/templates/dashboard.html && git commit -m "feat: add dashboard B-layout HTML template"
 ```
 
 ---
@@ -750,7 +750,7 @@ cd /home/daedalus/linux/miniclaw && git add containers/dashboard/templates/dashb
 - [ ] **Step 1: Write the Dockerfile**
 
 ```dockerfile
-FROM miniclaw/base:latest
+FROM kaizen/base:latest
 
 RUN pip install --no-cache-dir flask yfinance playwright requests
 
@@ -767,7 +767,7 @@ CMD ["python", "app.py"]
 - [ ] **Step 2: Build the image**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && docker build -t miniclaw/dashboard:latest containers/dashboard/
+cd /home/daedalus/linux/kaizen && docker build -t kaizen/dashboard:latest containers/dashboard/
 ```
 
 Expected: image builds successfully. This will take several minutes the first time (Chromium download ~200MB).
@@ -780,7 +780,7 @@ docker run -d --network=host --memory=512m --tmpfs=/tmp:size=64m --tmpfs=/dev/sh
   -e DASHBOARD_CONFIG='{"stock_tickers":["AAPL"]}' \
   -e WEATHER_LOCATION="Burlington,VT" \
   --name dashboard-test \
-  miniclaw/dashboard:latest
+  kaizen/dashboard:latest
 
 # Wait for Flask to start
 sleep 3
@@ -800,7 +800,7 @@ docker stop dashboard-test && docker rm dashboard-test
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add containers/dashboard/Dockerfile && git commit -m "feat: add dashboard container Dockerfile"
+cd /home/daedalus/linux/kaizen && git add containers/dashboard/Dockerfile && git commit -m "feat: add dashboard container Dockerfile"
 ```
 
 ---
@@ -882,7 +882,7 @@ timeout_seconds: 60
 - [ ] **Step 3: Verify skill loads**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && source .venv/bin/activate && python3 - <<'EOF'
+cd /home/daedalus/linux/kaizen && source .venv/bin/activate && python3 - <<'EOF'
 from core.skill_loader import SkillLoader
 loader = SkillLoader("skills")
 skill = loader.skills.get("dashboard")
@@ -897,7 +897,7 @@ Expected: `PASS: dashboard skill loaded — dashboard: Show a visual dashboard..
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add skills/dashboard/ && git commit -m "feat: add dashboard skill definition (SKILL.md + config.yaml)"
+cd /home/daedalus/linux/kaizen && git add skills/dashboard/ && git commit -m "feat: add dashboard skill definition (SKILL.md + config.yaml)"
 ```
 
 ---
@@ -923,7 +923,7 @@ After the `logger = ...` and `REPO_ROOT = ...` lines, add:
 
 ```python
 DASHBOARD_PORT = 7860
-DASHBOARD_LOCK = Path.home() / ".miniclaw" / "dashboard.lock"
+DASHBOARD_LOCK = Path.home() / ".kaizen" / "dashboard.lock"
 ```
 
 - [ ] **Step 2: Add `_dashboard_timer` instance variable and register handler**
@@ -1048,9 +1048,9 @@ Add this method to `ContainerManager` (before `_collect_env_vars`):
         if not self.docker_available:
             return f"Dashboard unavailable: {self.docker_error or 'Docker is not running'}."
 
-        # Ensure ~/.miniclaw exists (volume mount target)
-        miniclaw_dir = Path.home() / ".miniclaw"
-        miniclaw_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure ~/.kaizen exists (volume mount target)
+        kaizen_dir = Path.home() / ".kaizen"
+        kaizen_dir.mkdir(parents=True, exist_ok=True)
 
         dashboard_config = json.dumps({
             "news_accounts": ["OSINTDefender"],
@@ -1067,11 +1067,11 @@ Add this method to `ContainerManager` (before `_collect_env_vars`):
             "--security-opt=no-new-privileges",
             "--tmpfs=/tmp:size=64m",
             "--tmpfs=/dev/shm:size=256m",
-            "-v", f"{miniclaw_dir}:/miniclaw",
+            "-v", f"{kaizen_dir}:/kaizen",
             "-e", f"SKILL_INPUT={json.dumps({'panels': panels, 'timeout_minutes': timeout_minutes})}",
             "-e", f"DASHBOARD_CONFIG={dashboard_config}",
             "-e", f"WEATHER_LOCATION={weather_loc}",
-            "miniclaw/dashboard:latest",
+            "kaizen/dashboard:latest",
         ]
         result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
@@ -1148,13 +1148,13 @@ Add this method to `ContainerManager` (before `_collect_env_vars`):
 - [ ] **Step 9: Verify handler is wired up (no Chromium/Docker needed)**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && source .venv/bin/activate && python3 - <<'EOF'
+cd /home/daedalus/linux/kaizen && source .venv/bin/activate && python3 - <<'EOF'
 from core.container_manager import ContainerManager
 cm = ContainerManager()
 assert "dashboard" in cm._native_handlers, "dashboard handler not registered"
 # Test close with no lock file returns gracefully
 from pathlib import Path
-lock = Path.home() / ".miniclaw" / "dashboard.lock"
+lock = Path.home() / ".kaizen" / "dashboard.lock"
 lock.unlink(missing_ok=True)
 result = cm._execute_dashboard({"action": "close"})
 assert "No dashboard" in result, f"Unexpected: {result}"
@@ -1170,7 +1170,7 @@ Expected: `PASS: dashboard handler wired and routes correctly`
 - [ ] **Step 10: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/container_manager.py && git commit -m "feat: add dashboard native handler (open/close, lock file, auto-timeout)"
+cd /home/daedalus/linux/kaizen && git add core/container_manager.py && git commit -m "feat: add dashboard native handler (open/close, lock file, auto-timeout)"
 ```
 
 ---
@@ -1179,12 +1179,12 @@ cd /home/daedalus/linux/miniclaw && git add core/container_manager.py && git com
 
 Verify the full flow with a connected monitor.
 
-**Prerequisites:** Chromium installed on the Pi host (`sudo apt install chromium-browser`), a monitor connected via HDMI, MiniClaw running in text or voice mode.
+**Prerequisites:** Chromium installed on the Pi host (`sudo apt install chromium-browser`), a monitor connected via HDMI, Kaizen running in text or voice mode.
 
 - [ ] **Step 1: Ensure the dashboard image is built**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && ./run.sh --list
+cd /home/daedalus/linux/kaizen && ./run.sh --list
 ```
 
 Expected: `dashboard` skill appears in the loaded skills list (it's native so no Docker image build needed for the skill itself, but verify no errors).
@@ -1192,7 +1192,7 @@ Expected: `dashboard` skill appears in the loaded skills list (it's native so no
 - [ ] **Step 2: Test open via text mode**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && ./run.sh
+cd /home/daedalus/linux/kaizen && ./run.sh
 ```
 
 Then type: `show me the news and weather`
@@ -1218,7 +1218,7 @@ Type: `close the display`
 Expected:
 - Chromium closes
 - The container stops
-- `~/.miniclaw/dashboard.lock` is removed
+- `~/.kaizen/dashboard.lock` is removed
 - Claude responds: "Display closed."
 
 - [ ] **Step 5: Test auto-timeout**
@@ -1229,7 +1229,7 @@ Expected: Chromium opens, then closes automatically after ~60 seconds with no us
 
 - [ ] **Step 6: Final commit — update memory**
 
-If MiniClaw memory is running, ask the assistant to save a note that the dashboard skill is implemented. Otherwise just confirm you're done.
+If Kaizen memory is running, ask the assistant to save a note that the dashboard skill is implemented. Otherwise just confirm you're done.
 
 ---
 

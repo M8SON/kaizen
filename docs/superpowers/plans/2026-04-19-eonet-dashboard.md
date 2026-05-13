@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the native `dashboard` skill and host orchestration mostly unchanged. Add a focused EONET normalization/ranking helper under the dashboard container, pass a small hazard config through `DASHBOARD_CONFIG`, merge qualifying hazards into the dashboard data model in `containers/dashboard/app.py`, and render a compact `Priority hazards` block in the existing news panel.
 
-**Tech Stack:** Python 3.11, Flask, Jinja2 templates, `requests`, `unittest`, existing MiniClaw dashboard container
+**Tech Stack:** Python 3.11, Flask, Jinja2 templates, `requests`, `unittest`, existing Kaizen dashboard container
 
 ---
 
@@ -552,8 +552,8 @@ Expected: PASS, or at minimum no new failures attributable to dashboard hazard c
 
 - [ ] **Step 3: Build the dashboard container image with the new helper copied in**
 
-Run: `docker build -t miniclaw/dashboard:latest containers/dashboard`
-Expected: successful build ending with `Successfully tagged miniclaw/dashboard:latest` or the local Docker equivalent.
+Run: `docker build -t kaizen/dashboard:latest containers/dashboard`
+Expected: successful build ending with `Successfully tagged kaizen/dashboard:latest` or the local Docker equivalent.
 
 - [ ] **Step 4: Preview the dashboard locally with the news panel enabled**
 

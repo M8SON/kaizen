@@ -4,7 +4,7 @@
 
 **Goal:** Add Spotify as the default music backend alongside SoundCloud (kept for remixes/DJ content); transport commands fan through a small `music-control` router that dispatches to whichever backend is active.
 
-**Architecture:** Three skills (`spotify`, `soundcloud`, `music-control`) coordinate via `ContainerManager._active_music_source`. Spotify Web API is reached through `spotipy`; audio plays via `librespot` (Spotify Connect speaker daemon on the Pi). OAuth refresh tokens cached at `~/.miniclaw/spotify-tokens.json`. SoundCloud unchanged except its `play` action now calls `_stop_all_music()` for mutual exclusion.
+**Architecture:** Three skills (`spotify`, `soundcloud`, `music-control`) coordinate via `ContainerManager._active_music_source`. Spotify Web API is reached through `spotipy`; audio plays via `librespot` (Spotify Connect speaker daemon on the Pi). OAuth refresh tokens cached at `~/.kaizen/spotify-tokens.json`. SoundCloud unchanged except its `play` action now calls `_stop_all_music()` for mutual exclusion.
 
 **Tech Stack:** Python 3.13 venv, `spotipy>=2.24` (PyPI), Spotify Web API, `librespot` (Pi-side daemon, not in repo), `difflib` (stdlib, fuzzy match), existing `core/container_manager.py` native-skill plumbing.
 
@@ -124,7 +124,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-TOKEN_CACHE_PATH = Path.home() / ".miniclaw" / "spotify-tokens.json"
+TOKEN_CACHE_PATH = Path.home() / ".kaizen" / "spotify-tokens.json"
 
 DEFAULT_REDIRECT_URI = "http://localhost:8888/callback"
 
@@ -263,7 +263,7 @@ This script is interactive and not unit-tested — verify by running it manually
 
 ```python
 #!/usr/bin/env python3
-"""One-time browser-based OAuth dance to authorize MiniClaw with Spotify.
+"""One-time browser-based OAuth dance to authorize Kaizen with Spotify.
 
 Setup steps:
   1. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to .env (or export
@@ -276,8 +276,8 @@ Setup steps:
      "connection refused" error — that's expected. Copy the FULL URL
      (including ?code=…) and paste it back when prompted.
 
-After that, the refresh token is cached at ~/.miniclaw/spotify-tokens.json
-and MiniClaw uses it forever (or until you revoke the app at
+After that, the refresh token is cached at ~/.kaizen/spotify-tokens.json
+and Kaizen uses it forever (or until you revoke the app at
 https://www.spotify.com/account/apps/).
 """
 
@@ -461,8 +461,8 @@ Find `__init__` (around line 45) and add the new field next to the existing `_mp
 
 ```python
         self._mpv_process: subprocess.Popen | None = None
-        self._mpv_socket_path: str = "/tmp/miniclaw-mpv.sock"
-        self._mpv_log_path: Path = Path.home() / ".miniclaw" / "mpv.log"
+        self._mpv_socket_path: str = "/tmp/kaizen-mpv.sock"
+        self._mpv_log_path: Path = Path.home() / ".kaizen" / "mpv.log"
         self._mpv_log_fh = None
         # Mutual-exclusion: only one music backend plays at a time.
         # Set by play actions, cleared by _stop_all_music. Read by
@@ -1592,7 +1592,7 @@ In `core/container_manager.py:__init__`, add to `_native_handlers`:
 name: spotify
 description: Play music or saved playlists from Spotify. Default music backend — use this for "play X" / "play [artist]" / "play my [playlist]" requests unless explicitly asked for SoundCloud or for remixes/bootlegs/mashups.
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env:
         - SPOTIFY_CLIENT_ID
@@ -1736,7 +1736,7 @@ Replace it with:
 Then, after the `mpv` subprocess.Popen succeeds and the now-playing JSON is written, set the active source. Find the block that ends with `return f"Now playing: {first_title}"` and insert the assignment:
 
 ```python
-        now_playing_path = Path.home() / ".miniclaw" / "now_playing.json"
+        now_playing_path = Path.home() / ".kaizen" / "now_playing.json"
         try:
             import time as _time
             now_playing_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1858,12 +1858,12 @@ This is not automated. Mason runs through this on his Pi after pulling main.
 - [ ] **Step 1: Pull and install**
 
 ```bash
-ssh pi 'cd ~/miniclaw && git pull --ff-only origin main && .venv/bin/python -m pip install -r requirements.txt'
+ssh pi 'cd ~/kaizen && git pull --ff-only origin main && .venv/bin/python -m pip install -r requirements.txt'
 ```
 
 - [ ] **Step 2: Set Spotify env vars**
 
-Add to `~/miniclaw/.env`:
+Add to `~/kaizen/.env`:
 ```
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
@@ -1873,22 +1873,22 @@ SPOTIFY_CLIENT_SECRET=...
 - [ ] **Step 3: Run the OAuth login**
 
 ```bash
-ssh pi 'cd ~/miniclaw && .venv/bin/python scripts/spotify_login.py'
+ssh pi 'cd ~/kaizen && .venv/bin/python scripts/spotify_login.py'
 ```
-Follow the browser dance. Confirm `~/.miniclaw/spotify-tokens.json` exists.
+Follow the browser dance. Confirm `~/.kaizen/spotify-tokens.json` exists.
 
 - [ ] **Step 4: Install and pair librespot**
 
 ```bash
 ssh pi 'sudo apt install -y librespot'
-ssh pi 'librespot --name "MiniClaw Pi" --backend alsa --device default &'
+ssh pi 'librespot --name "Kaizen Pi" --backend alsa --device default &'
 ```
-Open phone Spotify → tap Connect icon → tap "MiniClaw Pi" once.
+Open phone Spotify → tap Connect icon → tap "Kaizen Pi" once.
 
 - [ ] **Step 5: Run the assistant and verify each scenario**
 
 ```bash
-ssh pi 'cd ~/miniclaw && ./run.sh --voice'
+ssh pi 'cd ~/kaizen && ./run.sh --voice'
 ```
 
 Verify:

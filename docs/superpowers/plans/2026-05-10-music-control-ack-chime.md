@@ -81,7 +81,7 @@ class MusicControlAckSuccessConstant(unittest.TestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/daedalus/linux/miniclaw && .venv/bin/python -m pytest tests/test_music_control.py::MusicControlAckSuccessConstant -v`
+Run: `cd /home/daedalus/linux/kaizen && .venv/bin/python -m pytest tests/test_music_control.py::MusicControlAckSuccessConstant -v`
 Expected: FAIL with `ImportError: cannot import name 'MUSIC_CONTROL_ACK_SUCCESS' from 'core.container_manager'`.
 
 - [ ] **Step 3: Add the constant**
@@ -488,7 +488,7 @@ Expected: all pass. (Suite runs ~4–5 minutes.)
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 git add core/orchestrator.py main.py tests/test_orchestrator_ack.py
 git commit -m "feat(music-control): chime instead of TTS for transport acks
 
@@ -514,14 +514,14 @@ git push origin main
 - [ ] **Step 1: Pull and restart on the Pi**
 
 ```bash
-ssh pi "cd ~/miniclaw && git pull && systemctl --user restart miniclaw"
+ssh pi "cd ~/kaizen && git pull && systemctl --user restart kaizen"
 ```
 
-Wait ~30s for MiniClaw to finish booting (`journalctl --user -u miniclaw -f` until the wake-loop ready line).
+Wait ~30s for Kaizen to finish booting (`journalctl --user -u kaizen -f` until the wake-loop ready line).
 
-- [ ] **Step 2: Start Spotify playback from the phone on MiniClaw**
+- [ ] **Step 2: Start Spotify playback from the phone on Kaizen**
 
-Open Spotify on phone, pick "MiniClaw" in the device picker, hit play on any track.
+Open Spotify on phone, pick "Kaizen" in the device picker, hit play on any track.
 
 - [ ] **Step 3: Verify each transport command chimes instead of speaking**
 
@@ -539,20 +539,20 @@ Say each, one at a time. After each, you should hear **only the chime** — no s
 If any of those instead produces speech, capture the journal:
 
 ```bash
-ssh pi "journalctl --user -u miniclaw --since '5 minutes ago' | grep -iE 'TierRouter|music-control|ack|direct'"
+ssh pi "journalctl --user -u kaizen --since '5 minutes ago' | grep -iE 'TierRouter|music-control|ack|direct'"
 ```
 
 - [ ] **Step 4: Verify error cases still speak**
 
 Stop playback entirely (so `_active_music_source` is None and no Spotify session is loaded). Then say "Jarvis, pause".
 
-Expected: MiniClaw **speaks** "Nothing is playing." — the chime path does NOT fire because the result string isn't in the ack set.
+Expected: Kaizen **speaks** "Nothing is playing." — the chime path does NOT fire because the result string isn't in the ack set.
 
 - [ ] **Step 5: Verify a garbled / unclear transcript still asks for clarification**
 
 Mumble something nonsensical at the wake word — e.g. say "Jarvis, fzzzbwh".
 
-Expected: MiniClaw either asks for clarification (Claude's clarification path) or, at minimum, does not produce a chime — chime is reserved for the six exact success strings.
+Expected: Kaizen either asks for clarification (Claude's clarification path) or, at minimum, does not produce a chime — chime is reserved for the six exact success strings.
 
 - [ ] **Step 6: Document the result**
 

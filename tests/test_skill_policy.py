@@ -58,9 +58,9 @@ class TestCredentialPattern(unittest.TestCase):
 
 
 class TestScopedVolume(unittest.TestCase):
-    def test_miniclaw_scoped_path_ok(self):
+    def test_kaizen_scoped_path_ok(self):
         home = "/home/user"
-        self.assertTrue(is_scoped_volume("~/.miniclaw/foo:/data", "foo", home))
+        self.assertTrue(is_scoped_volume("~/.kaizen/foo:/data", "foo", home))
 
     def test_root_mount_rejected(self):
         self.assertFalse(is_scoped_volume("/:/rootfs", "foo", "/home/user"))
@@ -69,7 +69,7 @@ class TestScopedVolume(unittest.TestCase):
         self.assertFalse(is_scoped_volume("~:/host", "foo", "/home/user"))
 
     def test_wrong_skill_name_rejected(self):
-        self.assertFalse(is_scoped_volume("~/.miniclaw/bar:/data", "foo", "/home/user"))
+        self.assertFalse(is_scoped_volume("~/.kaizen/bar:/data", "foo", "/home/user"))
 
 
 class TestDeviceAllowlist(unittest.TestCase):

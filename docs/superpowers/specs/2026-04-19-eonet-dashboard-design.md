@@ -1,7 +1,7 @@
 # EONET Hazard-Aware Dashboard Design
 
 Date: 2026-04-19
-Project: `miniclaw`
+Project: `kaizen`
 Status: Approved design for planning
 
 ## Goal
@@ -20,7 +20,7 @@ This feature is explicitly not for geopolitical or military OSINT. EONET is used
 
 ## Existing Context
 
-MiniClaw already has:
+Kaizen already has:
 
 - a native `dashboard` skill that opens, closes, and live-updates the dashboard
 - a dashboard container that aggregates RSS, GDELT, weather, stocks, and music state

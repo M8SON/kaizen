@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a voice-creatable recurring task scheduler to MiniClaw that fires natural-language prompts through the existing orchestrator at cron-defined intervals.
+**Goal:** Add a voice-creatable recurring task scheduler to Kaizen that fires natural-language prompts through the existing orchestrator at cron-defined intervals.
 
 **Architecture:** A daemon `SchedulerThread` in `core/scheduler.py` polls a yaml-backed `SchedulesStore` every 30 seconds, enqueues due fires onto an `Orchestrator`-owned queue, and the orchestrator processes each fire between voice turns. A single native `schedule` skill exposes create/list/cancel/modify actions to Claude. Three delivery modes (`immediate`, `next_wake`, `silent`) control when the output reaches the user.
 
@@ -155,7 +155,7 @@ Create `core/scheduler.py`:
 
 ```python
 """
-Scheduler - Recurring task execution for MiniClaw.
+Scheduler - Recurring task execution for Kaizen.
 
 Provides ScheduleEntry (one scheduled task), SchedulesStore (yaml-backed
 persistence), ScheduledFire (a due-for-execution notification), and
@@ -946,7 +946,7 @@ class SchedulerThread(threading.Thread):
         fire_queue,                    # queue.Queue[ScheduledFire]
         tick_seconds: float = 30.0,
     ):
-        super().__init__(name="MiniClawScheduler", daemon=True)
+        super().__init__(name="KaizenScheduler", daemon=True)
         self._store = store
         self._queue = fire_queue
         self._tick_seconds = tick_seconds
@@ -1301,7 +1301,7 @@ Inside `Orchestrator.__init__`, just after the scheduler hooks added in Task 9, 
         # Predicate injected from main.py. Default to "no active conversation".
         self.is_conversation_active = lambda: False
         # Log destination for silent-mode schedules. Overridden from main.py.
-        self.scheduler_log_path: _Path = _Path.home() / ".miniclaw" / "scheduler.log"
+        self.scheduler_log_path: _Path = _Path.home() / ".kaizen" / "scheduler.log"
 ```
 
 Add a new method on `Orchestrator`:
@@ -1754,7 +1754,7 @@ Immediately after the `Orchestrator(...)` is constructed (and after `ContainerMa
 
 ```python
     # --- scheduler wiring ---
-    schedules_path = Path.home() / ".miniclaw" / "schedules.yaml"
+    schedules_path = Path.home() / ".kaizen" / "schedules.yaml"
     schedules_store = SchedulesStore(schedules_path)
 
     # Let ContainerManager serve the `schedule` skill.
@@ -1763,7 +1763,7 @@ Immediately after the `Orchestrator(...)` is constructed (and after `ContainerMa
     # Give the orchestrator the callbacks it needs for delivery modes.
     orchestrator.speak_callback = voice.speak if voice_enabled else (lambda _t: None)
     orchestrator.is_conversation_active = lambda: conversation_state_active[0]
-    orchestrator.scheduler_log_path = Path.home() / ".miniclaw" / "scheduler.log"
+    orchestrator.scheduler_log_path = Path.home() / ".kaizen" / "scheduler.log"
 
     scheduler_thread = SchedulerThread(
         store=schedules_store,
@@ -1838,7 +1838,7 @@ Then:
 ./run.sh
 ```
 
-Expected: MiniClaw starts in text mode, no tracebacks, and typing `what do I have scheduled` returns an empty-list response from the skill.
+Expected: Kaizen starts in text mode, no tracebacks, and typing `what do I have scheduled` returns an empty-list response from the skill.
 
 - [ ] **Step 8: Commit**
 

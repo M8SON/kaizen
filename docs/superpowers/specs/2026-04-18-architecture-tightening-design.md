@@ -168,7 +168,7 @@ Add an **Execution Paths** section to `CLAUDE.md` under "Skill Structure":
 ```markdown
 ### Execution Paths
 
-MiniClaw has two first-class execution paths:
+Kaizen has two first-class execution paths:
 
 **Docker** — default for stateless, sandboxed skills. Network/text transforms,
 web queries, API integrations. Isolated, memory-limited, torn down after each

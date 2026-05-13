@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-port-skill.py — Scaffold a MiniClaw container for an OpenClaw skill.
+port-skill.py — Scaffold a Kaizen container for an OpenClaw skill.
 
 Takes an OpenClaw skill directory (containing a SKILL.md) and generates
-the config.yaml and container files needed to run it in MiniClaw.
+the config.yaml and container files needed to run it in Kaizen.
 
 Usage:
     python3 scripts/port-skill.py <path-to-openclaw-skill-dir>
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 '''
 
 DOCKERFILE_TEMPLATE = """\
-FROM miniclaw/base:latest
+FROM kaizen/base:latest
 # TODO: add any pip packages this skill needs
 # RUN pip install --no-cache-dir <package>
 COPY app.py /app/app.py
@@ -149,12 +149,12 @@ def main():
     slug = slugify(raw_name)
     img = image_name(slug)
 
-    # Requirements — read from legacy top-level, OpenClaw metadata, or miniclaw metadata.
+    # Requirements — read from legacy top-level, OpenClaw metadata, or kaizen metadata.
     requires = fm.get("requires", {}) or {}
     if not requires:
         requires = fm.get("metadata", {}).get("openclaw", {}).get("requires", {}) or {}
     if not requires:
-        requires = fm.get("metadata", {}).get("miniclaw", {}).get("requires", {}) or {}
+        requires = fm.get("metadata", {}).get("kaizen", {}).get("requires", {}) or {}
     env_vars = requires.get("env", [])
 
     # Destination paths — single-directory layout.
@@ -165,7 +165,7 @@ def main():
 
     # ── SKILL.md ─────────────────────────────────────────────────────────
     # Rewrite frontmatter into agentskills.io-compliant form:
-    # name: <kebab-slug>, and move requires under metadata.miniclaw.requires.
+    # name: <kebab-slug>, and move requires under metadata.kaizen.requires.
     body = raw.split("---", 2)[-1] if raw.startswith("---") else raw
     new_fm = {
         "name": slug,
@@ -173,7 +173,7 @@ def main():
     }
     if requires:
         new_fm["metadata"] = {
-            "miniclaw": {
+            "kaizen": {
                 "requires": requires,
                 "self_update": {"allow_body": False},
             }
@@ -186,7 +186,7 @@ def main():
     # ── config.yaml ───────────────────────────────────────────────────────
     config = {
         "type": "docker",
-        "image": f"miniclaw/{img}:latest",
+        "image": f"kaizen/{img}:latest",
         "env_passthrough": env_vars,
         "timeout_seconds": 30,
         "devices": [],
@@ -221,9 +221,9 @@ def main():
         (scripts_dest / "app.py").write_text(template.format(name=slug))
 
     # ── Summary ───────────────────────────────────────────────────────────
-    print(f"\nPorted '{raw_name}' → MiniClaw skill '{slug}'\n")
+    print(f"\nPorted '{raw_name}' → Kaizen skill '{slug}'\n")
     print(f"  skills/{slug}/")
-    print(f"    SKILL.md      (rewritten: name+description+metadata.miniclaw)")
+    print(f"    SKILL.md      (rewritten: name+description+metadata.kaizen)")
     print(f"    config.yaml   (generated)")
     print(f"    scripts/")
     print(f"      Dockerfile  (generated)")
@@ -244,7 +244,7 @@ def main():
             print(f"       {v}=your_value_here")
         step += 1
     print(f"  {step}. Build and test:")
-    print(f"       docker build -t miniclaw/{img}:latest skills/{slug}/scripts/")
+    print(f"       docker build -t kaizen/{img}:latest skills/{slug}/scripts/")
     print(f"       ./run.sh --list")
     print()
 

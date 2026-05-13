@@ -7,7 +7,7 @@
 
 ## Motivation
 
-MiniClaw remembers curated facts (markdown vault + chromadb) but forgets every conversation as soon as it ends. Users who ask *"what did we decide about the dashboard last week?"* or *"when did we last talk about the AI HAT+ 2?"* get nothing — the assistant has no record of what was actually said in prior sessions.
+Kaizen remembers curated facts (markdown vault + chromadb) but forgets every conversation as soon as it ends. Users who ask *"what did we decide about the dashboard last week?"* or *"when did we last talk about the AI HAT+ 2?"* get nothing — the assistant has no record of what was actually said in prior sessions.
 
 The vault is the wrong place to fix this. Vault notes are hand-curated facts ("user prefers af_heart voice"), not raw conversation history. Bloating the vault with thousands of voice turns would degrade the curated-memory recall it does well today.
 
@@ -264,7 +264,7 @@ archive = SessionArchive(reranker=ChromadbReranker() if HAILO_AVAILABLE else Non
 
 | Var | Default | Purpose |
 |---|---|---|
-| `SESSION_ARCHIVE_PATH` | `~/.miniclaw/sessions.db` | sqlite file location |
+| `SESSION_ARCHIVE_PATH` | `~/.kaizen/sessions.db` | sqlite file location |
 | `SESSION_ARCHIVE_ENABLED` | `true` | kill switch — when false, all archive calls become no-ops |
 | `SESSION_RECALL_DEFAULT_LIMIT` | `5` | default `limit` when the skill omits it |
 

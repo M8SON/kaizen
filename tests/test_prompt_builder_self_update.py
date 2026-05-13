@@ -14,11 +14,11 @@ class _StubSkill:
 
 
 def _opted_in(name):
-    return _StubSkill(name, {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}})
+    return _StubSkill(name, {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}})
 
 
 def _opted_out(name):
-    return _StubSkill(name, {"metadata": {"miniclaw": {"self_update": {"allow_body": False}}}})
+    return _StubSkill(name, {"metadata": {"kaizen": {"self_update": {"allow_body": False}}}})
 
 
 class TestSelfUpdateGuidance(unittest.TestCase):

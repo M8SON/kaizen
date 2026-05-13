@@ -2,7 +2,7 @@
 Homebridge skill — control smart home devices via Homebridge Config UI X.
 
 Ported from: https://github.com/openclaw/skills/tree/main/skills/jiasenl/clawdbot-skill-homebridge
-Adapted for MiniClaw: credentials via env vars, input via SKILL_INPUT JSON.
+Adapted for Kaizen: credentials via env vars, input via SKILL_INPUT JSON.
 """
 
 import json

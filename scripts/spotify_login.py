@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time browser-based OAuth dance to authorize MiniClaw with Spotify.
+"""One-time browser-based OAuth dance to authorize Kaizen with Spotify.
 
 Setup steps:
   1. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to .env (or export
@@ -12,8 +12,8 @@ Setup steps:
      "connection refused" error — that's expected. Copy the FULL URL
      (including ?code=…) and paste it back when prompted.
 
-After that, the refresh token is cached at ~/.miniclaw/spotify-tokens.json
-and MiniClaw uses it forever (or until you revoke the app at
+After that, the refresh token is cached at ~/.kaizen/spotify-tokens.json
+and Kaizen uses it forever (or until you revoke the app at
 https://www.spotify.com/account/apps/).
 """
 

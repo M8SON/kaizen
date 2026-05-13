@@ -1,5 +1,5 @@
 """
-Memory provider for MiniClaw.
+Memory provider for Kaizen.
 
 Loads persisted memory for prompt injection. Supports the original markdown
 vault flow and an optional MemPalace-backed wake-up flow.
@@ -28,7 +28,7 @@ class MemoryProvider:
         recall_max_results: int = 3,
     ):
         self.vault_path = vault_path or Path(
-            os.environ.get("MEMORY_VAULT_PATH", Path.home() / ".miniclaw" / "memory")
+            os.environ.get("MEMORY_VAULT_PATH", Path.home() / ".kaizen" / "memory")
         )
         self.max_tokens = max_tokens
         self.backend = (backend or os.environ.get("MEMORY_BACKEND", "auto")).strip().lower()

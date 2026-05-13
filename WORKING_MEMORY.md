@@ -1,13 +1,13 @@
 # Working Memory
 
-Canonical shared memory for MiniClaw.
+Canonical shared memory for Kaizen.
 
 Update this file when durable project context changes. Do not create overlapping handoff files unless there is a short-lived reason.
 
 ## Identity
 
-- Project: `miniclaw`
-- Repo path: `~/linux/miniclaw`
+- Project: `kaizen`
+- Repo path: `~/linux/kaizen`
 - Owner: Mason Misch (`M8SON`)
 
 ## What It Is
@@ -19,15 +19,15 @@ Update this file when durable project context changes. Do not create overlapping
 
 - Hardware-adjacent or host-integrated capabilities should be native, not Docker.
 - Stateless HTTP/text tools are good Docker skill candidates.
-- Memory source of truth is the markdown vault at `~/.miniclaw/memory`.
+- Memory source of truth is the markdown vault at `~/.kaizen/memory`.
 - chromadb is the default semantic memory layer.
 - MemPalace is optional and not required for normal operation.
-- MiniClaw remains vault-backed even when MemPalace is installed: markdown vault is canonical storage, chromadb is the local semantic index, and MemPalace is an optional local API/CLI and wake-up/search layer over that store.
+- Kaizen remains vault-backed even when MemPalace is installed: markdown vault is canonical storage, chromadb is the local semantic index, and MemPalace is an optional local API/CLI and wake-up/search layer over that store.
 - Tiered routing gate: `TierRouter` classifies each transcript (<5ms, no LLM) as
   direct | ollama | claude. Ollama handles routine tool calls; Claude handles complex,
   ambiguous, and meta requests. Feature-flagged via `OLLAMA_ENABLED`.
 - Direct routes now avoid building the full Claude system prompt first.
-- If Ollama runs tools and then cannot finish the turn, MiniClaw now commits that tool activity into `ConversationState` and asks Claude to finalize the response without re-running the tools.
+- If Ollama runs tools and then cannot finish the turn, Kaizen now commits that tool activity into `ConversationState` and asks Claude to finalize the response without re-running the tools.
 - Native handlers are a first-class execution path alongside Docker, not just a temporary exception.
 - Hailo STT rollout is intentionally hybrid in V1: wake detection stays CPU Whisper, full post-wake transcription can offload to Hailo when runtime + assets are present.
 - Memory policy is intentionally proactive: save durable, useful long-term facts even without an explicit "remember this" request; avoid trivial or one-turn context.
@@ -53,7 +53,7 @@ Update this file when durable project context changes. Do not create overlapping
   Three tiers: deterministic → Ollama → Claude. Activate when Pi hardware arrives.
 - The major Ollama/Claude handoff seam has been hardened: escalation after tool execution no longer requires re-executing the same side effects.
 - Hailo-backed full transcription path is implemented behind startup auto-detection.
-  MiniClaw selects `HybridWhisperBackend` when `/dev/hailo0`, `hailo_platform`, and `~/.miniclaw/models/hailo-whisper/<variant>` assets are present.
+  Kaizen selects `HybridWhisperBackend` when `/dev/hailo0`, `hailo_platform`, and `~/.kaizen/models/hailo-whisper/<variant>` assets are present.
 
 ## Recent Durable Milestones
 
@@ -74,8 +74,8 @@ Update this file when durable project context changes. Do not create overlapping
   the `AudioFeatures` preprocessor's `raw_data_buffer`, `melspectrogram_buffer`,
   `accumulated_samples`, and `feature_buffer` primed with the prior wake utterance
   — `OpenWakeWordBackend.reset()` now clears all of them in place.
-  Spec at `docs/superpowers/specs/2026-05-04-miniclaw-voice-pipeline-design.md`,
-  plan at `docs/superpowers/plans/2026-05-04-miniclaw-voice-pipeline.md`. Wave 2
+  Spec at `docs/superpowers/specs/2026-05-04-kaizen-voice-pipeline-design.md`,
+  plan at `docs/superpowers/plans/2026-05-04-kaizen-voice-pipeline.md`. Wave 2
   (Silero VAD), Wave 3 (faster-whisper + small), Wave 4 (Ollama→Kokoro streaming)
   are the remaining waves.
 - 2026-05-05: voice-pipeline Wave 2 shipped — Silero VAD endpointing
@@ -100,7 +100,7 @@ Update this file when durable project context changes. Do not create overlapping
   Phase 2 (pending): stream LLM tokens to Kokoro per sentence — see Likely Next Direction
 - 2026-04-25: shipped Hailo-backed full transcription (hybrid STT)
   wake detection stays on CPU Whisper; full transcription can offload to Hailo
-  MiniClaw-owned runtime in `core/hailo_whisper_runtime.py`
+  Kaizen-owned runtime in `core/hailo_whisper_runtime.py`
   user-scoped asset downloader: `scripts/download_hailo_whisper_assets.py`
 - 2026-04-25: shipped voice transport for SoundCloud music
   pause / resume / skip / volume on top of existing play / stop
@@ -111,7 +111,7 @@ Update this file when durable project context changes. Do not create overlapping
   Tier 1 additive only; per-skill per-turn rate limit; FIFO at 30 bullets in the auto-section
   every change is a git commit; reversal is `git revert`
 - 2026-04-22: shipped FTS5 session archive (`SessionArchive`) and `recall_session` native skill
-  every voice/text turn is appended to `~/.miniclaw/sessions.db` (sqlite + FTS5, porter+unicode61, BM25)
+  every voice/text turn is appended to `~/.kaizen/sessions.db` (sqlite + FTS5, porter+unicode61, BM25)
   archive is failure-tolerant and gated by `SESSION_ARCHIVE_ENABLED` kill switch
   search returns ±1 surrounding turns for context; reranker hook reserved for future Hailo-8L chromadb layer
 - 2026-04-19: shipped the `schedule` native skill with yaml-backed recurring tasks
@@ -167,9 +167,9 @@ Four enhancements inspired by the Hermes project. `schedule` skill (#1) shipped 
 2. ~~FTS5 session archive — persist past conversations to a sqlite FTS5 index so Claude can recall prior sessions by content search.~~ Done 2026-04-22.
    Forward plan still open: a chromadb rerank layer can drop in via the reserved `reranker` hook on `SessionArchive` once Hailo-8L NPU makes embeddings near-free. Do NOT implement the chromadb path until Hailo arrives — never ship CPU-side embedding on the write path.
 3. ~~agentskills.io compat — align skill loader / manifest format with the agentskills.io registry so community skills are drop-in installable.~~ In progress 2026-04-24.
-   Skill layout migrated (single-directory, kebab-case names matching parent dirs, scripts/ subfolder). Three-tier trust model (bundled/authored/imported) wired into the loader with per-tier Dockerfile + config.yaml clamps. `requires:` now lives under `metadata.miniclaw.requires`. Remaining: shared install pipeline, CLI surface, voice URL install, self-update frontmatter scaffolding.
+   Skill layout migrated (single-directory, kebab-case names matching parent dirs, scripts/ subfolder). Three-tier trust model (bundled/authored/imported) wired into the loader with per-tier Dockerfile + config.yaml clamps. `requires:` now lives under `metadata.kaizen.requires`. Remaining: shared install pipeline, CLI surface, voice URL install, self-update frontmatter scaffolding.
 4. ~~Self-improving skills — let skills record their own usage outcomes and refine their SKILL.md routing hints over time.~~ Done 2026-04-25.
-   Skills with `metadata.miniclaw.self_update.allow_body: true` autonomously gain additive routing hints via the new `update-skill-hints` native skill. Two trigger paths: Claude's in-the-moment judgment plus a 15-tool-call checkpoint nudge. Each change is a path-restricted git commit; rollback is `git revert`. Tier 2/3 changes (rewording, removal) remain manual. Imported-tier skills are blocked regardless of frontmatter.
+   Skills with `metadata.kaizen.self_update.allow_body: true` autonomously gain additive routing hints via the new `update-skill-hints` native skill. Two trigger paths: Claude's in-the-moment judgment plus a 15-tool-call checkpoint nudge. Each change is a path-restricted git commit; rollback is `git revert`. Tier 2/3 changes (rewording, removal) remain manual. Imported-tier skills are blocked regardless of frontmatter.
 
 ## Editing Rules
 

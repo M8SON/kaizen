@@ -4,7 +4,7 @@
 
 **Goal:** Persist every conversation turn (voice + text mode) to a local sqlite + FTS5 store and expose a tool-invoked `recall_session` skill so Claude can search prior sessions by content.
 
-**Architecture:** New `core/session_archive.py` owns a sqlite db at `~/.miniclaw/sessions.db`. The orchestrator starts a session at the beginning of each conversation arc, hands `tool_loop` an `archive_callback` that fires after each completed turn, and ends the session when the arc closes. A new native skill `recall_session` calls `archive.search()` with FTS5 BM25 ranking and returns dated snippets with ±1 turn of context. Forward-compatible with a future chromadb rerank layer (search returns structured dicts; `oversample` and `reranker` hooks are wired in v1 but inert).
+**Architecture:** New `core/session_archive.py` owns a sqlite db at `~/.kaizen/sessions.db`. The orchestrator starts a session at the beginning of each conversation arc, hands `tool_loop` an `archive_callback` that fires after each completed turn, and ends the session when the arc closes. A new native skill `recall_session` calls `archive.search()` with FTS5 BM25 ranking and returns dated snippets with ±1 turn of context. Forward-compatible with a future chromadb rerank layer (search returns structured dicts; `oversample` and `reranker` hooks are wired in v1 but inert).
 
 **Tech Stack:** Python stdlib `sqlite3` (FTS5 built-in), no new dependencies. Hooks into existing `core/orchestrator.py`, `core/tool_loop.py`, `core/container_manager.py`, `main.py`.
 
@@ -75,7 +75,7 @@ def test_init_is_idempotent(tmp_path: Path) -> None:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL with `ImportError: cannot import name 'SessionArchive'`
 
 - [ ] **Step 3: Implement minimal SessionArchive — schema only**
@@ -84,7 +84,7 @@ Create `core/session_archive.py`:
 
 ```python
 """
-Session archive for MiniClaw.
+Session archive for Kaizen.
 
 Persists every conversation turn to a local sqlite + FTS5 store so Claude
 can recall prior sessions by content via the `recall_session` skill.
@@ -150,7 +150,7 @@ class SessionArchive:
             db_path
             or os.environ.get(
                 "SESSION_ARCHIVE_PATH",
-                Path.home() / ".miniclaw" / "sessions.db",
+                Path.home() / ".kaizen" / "sessions.db",
             )
         )
         self._reranker = reranker
@@ -174,13 +174,13 @@ class SessionArchive:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for both tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add SessionArchive schema initialization"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add SessionArchive schema initialization"
 ```
 
 ---
@@ -237,7 +237,7 @@ def test_end_session_unknown_id_is_noop(archive: SessionArchive) -> None:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL with `AttributeError: 'SessionArchive' object has no attribute 'start_session'`
 
 - [ ] **Step 3: Implement start_session and end_session**
@@ -286,13 +286,13 @@ Add to `core/session_archive.py` inside the `SessionArchive` class:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for all 6 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add session start/end lifecycle to SessionArchive"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add session start/end lifecycle to SessionArchive"
 ```
 
 ---
@@ -378,7 +378,7 @@ def test_append_turn_with_no_session_is_noop(archive: SessionArchive) -> None:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL with `AttributeError: 'SessionArchive' object has no attribute 'append_turn'`
 
 - [ ] **Step 3: Implement append_turn**
@@ -420,13 +420,13 @@ Add to `core/session_archive.py` inside the `SessionArchive` class:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for all 11 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add append_turn write path to SessionArchive"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add append_turn write path to SessionArchive"
 ```
 
 ---
@@ -494,7 +494,7 @@ def test_search_oversample_param_accepted_but_inert_in_v1(archive: SessionArchiv
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL with `AttributeError: 'SessionArchive' object has no attribute 'search'`
 
 - [ ] **Step 3: Implement search (without context turns or since filter yet)**
@@ -556,13 +556,13 @@ Add to `core/session_archive.py` inside the `SessionArchive` class:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for all 17 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add FTS5 search to SessionArchive"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add FTS5 search to SessionArchive"
 ```
 
 ---
@@ -628,7 +628,7 @@ def test_search_context_at_session_boundary(archive: SessionArchive) -> None:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL — `since` filter not applied; `context` always empty
 
 - [ ] **Step 3: Update search to add `since` filter + context lookup**
@@ -729,13 +729,13 @@ Replace the `search` method body in `core/session_archive.py`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for all 20 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add since filter and context turns to SessionArchive.search"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add since filter and context turns to SessionArchive.search"
 ```
 
 ---
@@ -777,7 +777,7 @@ def test_kill_switch_via_env(tmp_path: Path, monkeypatch) -> None:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: FAIL — env kill switch not honored; unwritable path test may already pass since `_init_schema` already wraps in try/except
 
 - [ ] **Step 3: Add the env kill switch**
@@ -794,7 +794,7 @@ Modify `__init__` in `core/session_archive.py`:
             db_path
             or os.environ.get(
                 "SESSION_ARCHIVE_PATH",
-                Path.home() / ".miniclaw" / "sessions.db",
+                Path.home() / ".kaizen" / "sessions.db",
             )
         )
         self._reranker = reranker
@@ -809,13 +809,13 @@ Modify `__init__` in `core/session_archive.py`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_session_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_session_archive.py -v`
 Expected: PASS for all 22 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add SESSION_ARCHIVE_ENABLED kill switch and verify failure tolerance"
+cd /home/daedalus/linux/kaizen && git add core/session_archive.py tests/test_session_archive.py && git commit -m "feat: add SESSION_ARCHIVE_ENABLED kill switch and verify failure tolerance"
 ```
 
 ---
@@ -934,7 +934,7 @@ def test_run_without_callback_unchanged():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_tool_loop_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_tool_loop_archive.py -v`
 Expected: FAIL with `TypeError: run() got an unexpected keyword argument 'archive_callback'`
 
 - [ ] **Step 3: Add archive_callback to ToolLoop.run**
@@ -1052,13 +1052,13 @@ Update `_handle_tool_calls` to accept and append to `tool_activity`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_tool_loop_archive.py tests/test_orchestrator_routing.py tests/test_orchestrator_scheduler.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_tool_loop_archive.py tests/test_orchestrator_routing.py tests/test_orchestrator_scheduler.py -v`
 Expected: PASS for new tests, no regressions in existing orchestrator tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/tool_loop.py tests/test_tool_loop_archive.py && git commit -m "feat: add optional archive_callback to ToolLoop.run"
+cd /home/daedalus/linux/kaizen && git add core/tool_loop.py tests/test_tool_loop_archive.py && git commit -m "feat: add optional archive_callback to ToolLoop.run"
 ```
 
 ---
@@ -1223,7 +1223,7 @@ def test_archive_noop_without_started_session(archive: SessionArchive):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_orchestrator_archive.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_orchestrator_archive.py -v`
 Expected: FAIL — Orchestrator does not accept `archive` kwarg, has no `start_session`/`end_session` methods, no `_current_session_id` attribute
 
 - [ ] **Step 3: Wire archive into Orchestrator**
@@ -1390,13 +1390,13 @@ Update `reset_conversation`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_orchestrator_archive.py tests/test_orchestrator_routing.py tests/test_orchestrator_scheduler.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_orchestrator_archive.py tests/test_orchestrator_routing.py tests/test_orchestrator_scheduler.py -v`
 Expected: PASS for all new tests, no regressions in existing orchestrator tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/orchestrator.py tests/test_orchestrator_archive.py && git commit -m "feat: wire SessionArchive into Orchestrator lifecycle"
+cd /home/daedalus/linux/kaizen && git add core/orchestrator.py tests/test_orchestrator_archive.py && git commit -m "feat: wire SessionArchive into Orchestrator lifecycle"
 ```
 
 ---
@@ -1503,7 +1503,7 @@ def test_handler_unknown_since_falls_through_to_no_filter(cm, archive):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_recall_session_skill.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_recall_session_skill.py -v`
 Expected: FAIL with `AttributeError: 'ContainerManager' object has no attribute '_execute_recall_session'`
 
 - [ ] **Step 3: Add the recall_session handler to ContainerManager**
@@ -1710,13 +1710,13 @@ timeout_seconds: 5
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /home/daedalus/linux/miniclaw && python -m pytest tests/test_recall_session_skill.py tests/test_session_archive.py tests/test_container_manager.py -v`
+Run: `cd /home/daedalus/linux/kaizen && python -m pytest tests/test_recall_session_skill.py tests/test_session_archive.py tests/test_container_manager.py -v`
 Expected: PASS for all new tests, no regressions
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add core/container_manager.py core/session_archive.py skills/recall_session tests/test_recall_session_skill.py tests/test_session_archive.py && git commit -m "feat: add recall_session native skill"
+cd /home/daedalus/linux/kaizen && git add core/container_manager.py core/session_archive.py skills/recall_session tests/test_recall_session_skill.py tests/test_session_archive.py && git commit -m "feat: add recall_session native skill"
 ```
 
 ---
@@ -1854,7 +1854,7 @@ In `main.py`, in `run_text_mode`, find the start of the function body — after 
 def run_text_mode(orchestrator):
     """Run the assistant in text-only mode (no microphone needed)."""
     print("\n" + "=" * 60)
-    print("  MiniClaw (Text Mode)")
+    print("  Kaizen (Text Mode)")
     print("=" * 60)
 
     _print_loaded_skills(orchestrator)
@@ -1869,7 +1869,7 @@ Add `orchestrator.start_session("text")` right before `try:`:
 def run_text_mode(orchestrator):
     """Run the assistant in text-only mode (no microphone needed)."""
     print("\n" + "=" * 60)
-    print("  MiniClaw (Text Mode)")
+    print("  Kaizen (Text Mode)")
     print("=" * 60)
 
     _print_loaded_skills(orchestrator)
@@ -1901,8 +1901,8 @@ Replace with:
 Run text mode and exercise the archive end-to-end. The user (Mason) needs an API key set up for this; if `ANTHROPIC_API_KEY` is not in `.env`, skip this step and rely on the unit/integration tests.
 
 ```bash
-cd /home/daedalus/linux/miniclaw && rm -f ~/.miniclaw/sessions.db
-cd /home/daedalus/linux/miniclaw && python main.py --text
+cd /home/daedalus/linux/kaizen && rm -f ~/.kaizen/sessions.db
+cd /home/daedalus/linux/kaizen && python main.py --text
 ```
 
 In the prompt:
@@ -1916,10 +1916,10 @@ In the prompt:
 Then inspect the db directly:
 
 ```bash
-cd /home/daedalus/linux/miniclaw && python -c "
+cd /home/daedalus/linux/kaizen && python -c "
 import sqlite3
 from pathlib import Path
-db = Path.home() / '.miniclaw' / 'sessions.db'
+db = Path.home() / '.kaizen' / 'sessions.db'
 conn = sqlite3.connect(db)
 print('sessions:', list(conn.execute('SELECT id, mode, started_at, ended_at, turn_count FROM sessions')))
 print('turns:', conn.execute('SELECT COUNT(*) FROM turns').fetchone())
@@ -1935,7 +1935,7 @@ Expected:
 Run:
 
 ```bash
-cd /home/daedalus/linux/miniclaw && python -m pytest tests/ -v
+cd /home/daedalus/linux/kaizen && python -m pytest tests/ -v
 ```
 
 Expected: all tests pass — no regressions in the existing 16 test files.
@@ -1943,7 +1943,7 @@ Expected: all tests pass — no regressions in the existing 16 test files.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add main.py && git commit -m "feat: wire SessionArchive lifecycle into main.py voice and text modes"
+cd /home/daedalus/linux/kaizen && git add main.py && git commit -m "feat: wire SessionArchive lifecycle into main.py voice and text modes"
 ```
 
 ---
@@ -1972,7 +1972,7 @@ Current native skills: `install_skill`, `set_env_var`, `save_memory`, `dashboard
 In `CLAUDE.md`, find the `### Key Behaviours` section and the `save_memory` entry. After the `save_memory` paragraph, add:
 
 ```markdown
-- **`recall_session` skill**: Native skill that searches past conversation transcripts via FTS5. Every conversation arc (one per voice wake/idle cycle, one per text process) is logged to `~/.miniclaw/sessions.db` (configurable via `SESSION_ARCHIVE_PATH`). The orchestrator hooks `start_session` / `end_session` around each arc and passes an `archive_callback` to `tool_loop.run` so each completed turn writes user text + tool activity summaries + assistant response immediately. Recall is tool-invoked only — Claude calls `recall_session(query=..., since=..., limit=...)` when the user references prior conversations. Returns dated snippets with ±1 turn of context, BM25-ranked. Forward-compatible with a chromadb rerank layer (see spec `2026-04-22-fts5-session-archive-design.md`) — `SessionArchive.search` returns structured dicts and accepts an `oversample` param (inert in v1).
+- **`recall_session` skill**: Native skill that searches past conversation transcripts via FTS5. Every conversation arc (one per voice wake/idle cycle, one per text process) is logged to `~/.kaizen/sessions.db` (configurable via `SESSION_ARCHIVE_PATH`). The orchestrator hooks `start_session` / `end_session` around each arc and passes an `archive_callback` to `tool_loop.run` so each completed turn writes user text + tool activity summaries + assistant response immediately. Recall is tool-invoked only — Claude calls `recall_session(query=..., since=..., limit=...)` when the user references prior conversations. Returns dated snippets with ±1 turn of context, BM25-ranked. Forward-compatible with a chromadb rerank layer (see spec `2026-04-22-fts5-session-archive-design.md`) — `SessionArchive.search` returns structured dicts and accepts an `oversample` param (inert in v1).
 ```
 
 - [ ] **Step 3: Add the new env vars to the table**
@@ -1980,7 +1980,7 @@ In `CLAUDE.md`, find the `### Key Behaviours` section and the `save_memory` entr
 In `CLAUDE.md`, find the `## Key Environment Variables` table. Add three rows at the bottom (before the closing of the table):
 
 ```markdown
-| `SESSION_ARCHIVE_PATH` | `~/.miniclaw/sessions.db` | sqlite + FTS5 file for the conversation archive |
+| `SESSION_ARCHIVE_PATH` | `~/.kaizen/sessions.db` | sqlite + FTS5 file for the conversation archive |
 | `SESSION_ARCHIVE_ENABLED` | `true` | Set false to disable the archive entirely |
 | `SESSION_RECALL_DEFAULT_LIMIT` | `5` | Default `limit` when `recall_session` omits it |
 ```
@@ -1988,7 +1988,7 @@ In `CLAUDE.md`, find the `## Key Environment Variables` table. Add three rows at
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add CLAUDE.md && git commit -m "docs: document recall_session skill and session archive env vars in CLAUDE.md"
+cd /home/daedalus/linux/kaizen && git add CLAUDE.md && git commit -m "docs: document recall_session skill and session archive env vars in CLAUDE.md"
 ```
 
 ---
@@ -2013,7 +2013,7 @@ Replace with:
 
 ```markdown
 2. ~~FTS5 session archive — persist past conversations to a sqlite FTS5 index so Claude can recall prior sessions by content search.~~ Done 2026-04-22.
-   Shipped as `recall_session` native skill backed by `~/.miniclaw/sessions.db`. v1 is FTS5-only with per-turn writes; `SessionArchive.search` returns structured dicts and accepts an inert `oversample` param so a chromadb rerank layer can drop in cleanly once Hailo-8L NPU offload arrives. Do not add chromadb to the write path — only as a lazy rerank layer over FTS5 top-N when embeddings are near-free.
+   Shipped as `recall_session` native skill backed by `~/.kaizen/sessions.db`. v1 is FTS5-only with per-turn writes; `SessionArchive.search` returns structured dicts and accepts an inert `oversample` param so a chromadb rerank layer can drop in cleanly once Hailo-8L NPU offload arrives. Do not add chromadb to the write path — only as a lazy rerank layer over FTS5 top-N when embeddings are near-free.
 ```
 
 - [ ] **Step 2: Add a Recent Durable Milestones entry**
@@ -2022,7 +2022,7 @@ In `WORKING_MEMORY.md`, find the `## Recent Durable Milestones` section and add 
 
 ```markdown
 - 2026-04-22: shipped the FTS5 session archive and `recall_session` native skill
-  per-turn writes from orchestrator to `~/.miniclaw/sessions.db` via `SessionArchive`
+  per-turn writes from orchestrator to `~/.kaizen/sessions.db` via `SessionArchive`
   tool-invoked recall with BM25 ranking + ±1 turn of context
   forward-compatible with chromadb rerank when Hailo-8L lands (no schema migration needed)
 ```
@@ -2030,7 +2030,7 @@ In `WORKING_MEMORY.md`, find the `## Recent Durable Milestones` section and add 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/daedalus/linux/miniclaw && git add WORKING_MEMORY.md && git commit -m "docs: record fts5 session archive milestone in working memory"
+cd /home/daedalus/linux/kaizen && git add WORKING_MEMORY.md && git commit -m "docs: record fts5 session archive milestone in working memory"
 ```
 
 ---

@@ -1,12 +1,12 @@
 [Unit]
-Description=MiniClaw voice assistant
+Description=Kaizen voice assistant
 After=network-online.target sound.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/miniclaw
-ExecStart=%h/miniclaw/run.sh --voice
+WorkingDirectory=%h/kaizen
+ExecStart=%h/kaizen/run.sh --voice
 Restart=on-failure
 RestartSec=5
 

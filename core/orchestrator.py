@@ -221,16 +221,28 @@ class Orchestrator:
         return f"{activity.get('name','?')}({input_str}) -> {result}"
 
     def _build_system_prompt(self, user_message: str | None = None) -> str:
-        """Build the system prompt, optionally scoped to a user message."""
-        prompt = self.prompt_builder.build(
+        """Build the system prompt as a single string (legacy callers)."""
+        stable, dynamic = self._build_system_prompt_split(user_message=user_message)
+        return stable + dynamic
+
+    def _build_system_prompt_split(
+        self, user_message: str | None = None
+    ) -> tuple[str, str]:
+        """Build the system prompt as (stable, dynamic) for prompt caching.
+
+        stable carries persona + memory + skipped/invalid + self-update + startup
+        context — byte-stable across turns in a session. dynamic carries the
+        selector-driven skill context, which changes per user message.
+        """
+        stable, dynamic = self.prompt_builder.build_cacheable_parts(
             skills=self.skills,
             skipped_skills=self.skill_loader.skipped_skills,
             invalid_skills=self.skill_loader.invalid_skills,
             user_message=user_message,
         )
         if self._startup_context:
-            prompt += f"\n--- Current Context ---\n{self._startup_context}\n"
-        return prompt
+            stable += f"\n--- Current Context ---\n{self._startup_context}\n"
+        return stable, dynamic
 
     def drain_pending_announcements(self) -> list[str]:
         """Return queued next_wake announcements in FIFO order, clearing them."""
@@ -302,10 +314,11 @@ class Orchestrator:
 
     def _process_message(self, user_message: str, on_chunk=None, on_ack_success=None) -> str:
         if self._tier_router is None:
-            system_prompt = self._build_system_prompt(user_message=user_message)
+            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
-                system_prompt=system_prompt,
+                system_prompt=stable,
+                system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
             )
@@ -320,10 +333,11 @@ class Orchestrator:
             return result
 
         if route.tier == "claude":
-            system_prompt = self._build_system_prompt(user_message=user_message)
+            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
-                system_prompt=system_prompt,
+                system_prompt=stable,
+                system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
             )
@@ -342,10 +356,11 @@ class Orchestrator:
             )
         except Exception:
             logger.exception("Micro tier failed → escalating to Claude")
-            system_prompt = self._build_system_prompt(user_message=user_message)
+            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
             return self.tool_loop.run(
                 user_message=user_message,
-                system_prompt=system_prompt,
+                system_prompt=stable,
+                system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
             )

@@ -154,6 +154,7 @@ class TestOrchestratorProcessMessageStream(unittest.TestCase):
         orch.model = "test-model"
         orch.prompt_builder = MagicMock()
         orch.prompt_builder.build.return_value = "system prompt"
+        orch.prompt_builder.build_cacheable_parts.return_value = ("system prompt", "")
         orch.tool_loop = MagicMock()
         orch.skills = {}
         orch.skill_loader = MagicMock()

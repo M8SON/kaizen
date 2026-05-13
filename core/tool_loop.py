@@ -64,6 +64,7 @@ class ToolLoop:
         system_prompt: str,
         archive_callback=None,
         on_chunk=None,
+        system_prompt_dynamic: str = "",
     ) -> str:
         """
         Process a user message through Claude with tool support.
@@ -79,14 +80,32 @@ class ToolLoop:
         tools execute; the streaming only affects WHEN text reaches the
         caller, not the round structure. When None, behaviour is identical
         to the non-streaming path.
+
+        system_prompt_dynamic: when non-empty, the caller has opted into
+        Anthropic prompt caching. `system_prompt` is treated as the stable
+        cacheable prefix and gets a `cache_control: ephemeral` breakpoint;
+        per-turn variance (memory recall, checkpoint nudges) is appended to
+        `system_prompt_dynamic` instead of mutating the cached prefix.
         """
         if hasattr(self.container_manager, "start_turn"):
             self.container_manager.start_turn()
         self.conversation_state.append_user_text(user_message)
-        effective_system_prompt = self._augment_system_prompt(
-            system_prompt=system_prompt,
-            user_message=user_message,
-        )
+
+        use_cache = bool(system_prompt_dynamic)
+        if use_cache:
+            stable_block = system_prompt
+            dynamic_block = self._augment_dynamic_block(
+                dynamic_text=system_prompt_dynamic,
+                user_message=user_message,
+            )
+            effective_system_prompt = system_prompt  # unused in cached path
+        else:
+            stable_block = ""
+            dynamic_block = ""
+            effective_system_prompt = self._augment_system_prompt(
+                system_prompt=system_prompt,
+                user_message=user_message,
+            )
 
         tool_definitions = self._build_tool_definitions(user_message)
         tool_activity: list[dict] = []
@@ -96,23 +115,34 @@ class ToolLoop:
         while rounds < self.max_rounds:
             rounds += 1
 
-            # Build per-round system prompt — checkpoint nudge if we just
-            # crossed a multiple of CHECKPOINT_INTERVAL since last nudge.
+            # Per-round checkpoint nudge — appended to the dynamic block (cached
+            # path) or to the single system string (legacy path).
             tool_count = len(tool_activity)
             current_checkpoint = (tool_count // CHECKPOINT_INTERVAL) * CHECKPOINT_INTERVAL
-            if (
+            add_nudge = (
                 current_checkpoint > last_nudged_at
                 and current_checkpoint > 0
                 and self._any_opted_in_skill()
-            ):
-                round_system = (
-                    effective_system_prompt
-                    + "\n\n"
-                    + CHECKPOINT_NUDGE.format(n=current_checkpoint)
-                )
+            )
+            if add_nudge:
                 last_nudged_at = current_checkpoint
+
+            if use_cache:
+                round_dynamic = dynamic_block
+                if add_nudge:
+                    round_dynamic = (
+                        round_dynamic + "\n\n" + CHECKPOINT_NUDGE.format(n=current_checkpoint)
+                    )
+                round_system = self._build_cached_system(stable_block, round_dynamic)
             else:
-                round_system = effective_system_prompt
+                if add_nudge:
+                    round_system = (
+                        effective_system_prompt
+                        + "\n\n"
+                        + CHECKPOINT_NUDGE.format(n=current_checkpoint)
+                    )
+                else:
+                    round_system = effective_system_prompt
 
             with profiling.stage("llm_claude"):
                 if on_chunk is None:
@@ -157,11 +187,16 @@ class ToolLoop:
             response_text = self._extract_text(response)
             self.conversation_state.append_assistant_content(response.content)
 
+            cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+            cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
             logger.info(
-                "Response ready: %d rounds, %d input / %d output tokens",
+                "Response ready: %d rounds, %d input / %d output tokens "
+                "(cache_read=%d cache_write=%d)",
                 rounds,
                 response.usage.input_tokens,
                 response.usage.output_tokens,
+                cache_read,
+                cache_write,
             )
             if archive_callback is not None:
                 try:
@@ -240,6 +275,36 @@ class ToolLoop:
             "before making claims about prior preferences, projects, or past events.\n"
             f"{recalled}\n"
         )
+
+    def _augment_dynamic_block(self, dynamic_text: str, user_message: str) -> str:
+        """Append memory recall to the (non-cached) dynamic block."""
+        if not self.memory_provider:
+            return dynamic_text
+        recalled = self.memory_provider.recall_for_message(user_message)
+        if not recalled:
+            return dynamic_text
+        return (
+            f"{dynamic_text}\n"
+            "\n--- Relevant Memory Recall ---\n"
+            "Use this as supporting memory for the current turn. Verify details against it "
+            "before making claims about prior preferences, projects, or past events.\n"
+            f"{recalled}\n"
+        )
+
+    @staticmethod
+    def _build_cached_system(stable: str, dynamic: str) -> list[dict]:
+        """Assemble the `system=` field as a 2-block list with a cache breakpoint
+        on the stable prefix. The dynamic suffix block (if any) follows uncached."""
+        blocks: list[dict] = [
+            {
+                "type": "text",
+                "text": stable,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        if dynamic:
+            blocks.append({"type": "text", "text": dynamic})
+        return blocks
 
     def _handle_tool_calls(self, response, tool_activity: list[dict]) -> list[dict]:
         """Execute tool calls from Claude's response, appending to tool_activity."""

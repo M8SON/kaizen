@@ -131,6 +131,55 @@ class PromptBuilder:
         voice still says "I'm Jarvis" when needed."""
         return self.MICRO_TIER_TEMPLATE.format(persona=self.persona_name)
 
+    def build_cacheable_parts(
+        self,
+        skills: dict,
+        skipped_skills: dict,
+        invalid_skills: dict | None = None,
+        user_message: str | None = None,
+    ) -> tuple[str, str]:
+        """Return (stable_prefix, dynamic_suffix) for Anthropic prompt caching.
+
+        stable_prefix is byte-stable across turns within a session: persona,
+        vault memory, unavailable/invalid skill lists, self-update guidance.
+        Callers may append additional stable content (e.g. startup context).
+
+        dynamic_suffix carries per-turn variance — the selector-driven skill
+        context — and must NOT be cached.
+        """
+        stable = self.BASE_PROMPT
+
+        memories = self.memory_provider.load_for_prompt()
+        if memories:
+            stable += f"\n--- Remembered from past conversations ---\n{memories}\n"
+
+        if skipped_skills:
+            stable += "\n--- Unavailable Skills (installed but missing requirements) ---\n"
+            for name, info in skipped_skills.items():
+                stable += f"\n- {name}: {info['description']} — {info['reason']}\n"
+            stable += (
+                "\nIf the user asks for something handled by an unavailable skill, "
+                "tell them what is needed to enable it rather than saying you cannot help.\n"
+            )
+
+        if invalid_skills:
+            stable += "\n--- Invalid Skills (installed but misconfigured) ---\n"
+            for name, info in invalid_skills.items():
+                description = info.get("description", "")
+                reason = info.get("reason", "invalid configuration")
+                summary = f"{name}: {description} — {reason}" if description else f"{name}: {reason}"
+                stable += f"\n- {summary}\n"
+            stable += (
+                "\nIf the user asks for one of these skills, explain that it is installed "
+                "but misconfigured and needs to be fixed before it can run.\n"
+            )
+
+        stable = self.add_self_update_guidance(stable, skills=skills)
+
+        dynamic = self._render_skill_context(skills, user_message=user_message) or ""
+
+        return stable, dynamic
+
     def build(
         self,
         skills: dict,
@@ -138,49 +187,15 @@ class PromptBuilder:
         invalid_skills: dict | None = None,
         user_message: str | None = None,
     ) -> str:
+        """Build the full system prompt as a single string.
+
+        Equivalent to concatenating the two parts from `build_cacheable_parts`.
+        Kept for callers that don't need caching (greet path, internal calls).
         """
-        Build the system prompt including memories and skill instructions.
-
-        Each skill's markdown body is appended so Claude understands when and
-        how to use each tool, not just the tool schema.
-
-        When a skill_selector is configured and user_message is provided, only
-        the semantically relevant skills (plus ALWAYS_FULL_SKILLS) are expanded
-        in full — the rest collapse to compact one-liners.
-        """
-        prompt = self.BASE_PROMPT
-
-        memories = self.memory_provider.load_for_prompt()
-        if memories:
-            prompt += f"\n--- Remembered from past conversations ---\n{memories}\n"
-
-        skill_context = self._render_skill_context(skills, user_message=user_message)
-        if skill_context:
-            prompt += skill_context
-
-        if skipped_skills:
-            prompt += "\n--- Unavailable Skills (installed but missing requirements) ---\n"
-            for name, info in skipped_skills.items():
-                prompt += f"\n- {name}: {info['description']} — {info['reason']}\n"
-            prompt += (
-                "\nIf the user asks for something handled by an unavailable skill, "
-                "tell them what is needed to enable it rather than saying you cannot help.\n"
-            )
-
-        if invalid_skills:
-            prompt += "\n--- Invalid Skills (installed but misconfigured) ---\n"
-            for name, info in invalid_skills.items():
-                description = info.get("description", "")
-                reason = info.get("reason", "invalid configuration")
-                summary = f"{name}: {description} — {reason}" if description else f"{name}: {reason}"
-                prompt += f"\n- {summary}\n"
-            prompt += (
-                "\nIf the user asks for one of these skills, explain that it is installed "
-                "but misconfigured and needs to be fixed before it can run.\n"
-            )
-
-        prompt = self.add_self_update_guidance(prompt, skills=skills)
-        return prompt
+        stable, dynamic = self.build_cacheable_parts(
+            skills, skipped_skills, invalid_skills, user_message=user_message
+        )
+        return stable + dynamic
 
     def add_self_update_guidance(self, prompt: str, *, skills: dict) -> str:
         """Append standing self-update guidance if any loaded skill has allow_body: true."""

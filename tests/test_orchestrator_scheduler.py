@@ -9,9 +9,10 @@ class OrchestratorSchedulerHooksTests(unittest.TestCase):
              patch("core.orchestrator.SkillLoader"), \
              patch("core.orchestrator.ContainerManager"), \
              patch("core.orchestrator.MemoryProvider"), \
-             patch("core.orchestrator.PromptBuilder"), \
+             patch("core.orchestrator.PromptBuilder") as pb, \
              patch("core.orchestrator.SkillSelector"), \
              patch("core.orchestrator.ToolLoop"):
+            pb.return_value.build_cacheable_parts.return_value = ("SYSTEM", "")
             from core.orchestrator import Orchestrator
             return Orchestrator(anthropic_api_key="test-key")
 
@@ -41,6 +42,7 @@ class ProcessScheduledFireTests(unittest.TestCase):
              patch("core.orchestrator.SkillSelector"), \
              patch("core.orchestrator.ToolLoop") as tl:
             pb.return_value.build.return_value = "SYSTEM"
+            pb.return_value.build_cacheable_parts.return_value = ("SYSTEM", "")
             tl.return_value.run.return_value = tool_loop_result
             from core.orchestrator import Orchestrator
             orch = Orchestrator(anthropic_api_key="test-key")

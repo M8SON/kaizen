@@ -32,6 +32,7 @@ def _make_orchestrator_with_mocks():
     orch.memory_provider = MagicMock()
     orch.prompt_builder = MagicMock()
     orch.prompt_builder.build.return_value = "system prompt"
+    orch.prompt_builder.build_cacheable_parts.return_value = ("system prompt", "")
     orch.tool_loop = MagicMock()
     orch.tool_loop.run.return_value = "Sonnet response"
     orch._startup_context = ""
@@ -147,7 +148,9 @@ class TestOrchestratorRoutingEnabled(unittest.TestCase):
         orch._micro_loop = MagicMock()
 
         with patch.object(
-            orch, "_build_system_prompt", return_value="full claude prompt"
+            orch,
+            "_build_system_prompt_split",
+            return_value=("stable claude prompt", "dynamic claude suffix"),
         ) as mock_build:
             result = orch.process_message("install a new skill")
         mock_build.assert_called_once()

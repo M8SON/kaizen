@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename MiniClaw → Kaizen across code, filesystem, GitHub repo, MemPalace wing, and Nexus wiring as a single total cutover.
+**Goal:** Rename Kaizen → Kaizen across code, filesystem, GitHub repo, MemPalace wing, and Nexus wiring as a single total cutover.
 
 **Architecture:** Seven sequential phases, each independently reversible while a pre-cutover snapshot exists. Mechanical text rewrites are driven by a committed, auditable script; filesystem and external-system changes are explicit one-shot commands. No legacy shims, no parallel naming.
 
@@ -15,10 +15,10 @@
 ## Files created / modified
 
 - **Create:** `scripts/rename_to_kaizen.sh` (committed alongside the rewrite)
-- **Modify (via script):** every tracked file containing `miniclaw` / `MiniClaw` / `MINICLAW` — ~30 source files under `core/`, plus `CLAUDE.md`, `README.md`, `WORKING_MEMORY.md`, `.env.example`, `conftest.py`, `main.py`, `run.sh`, and ~50 historical plan/spec docs.
-- **Rename via `git mv`:** `config/systemd/miniclaw.service` and three dated docs under `docs/superpowers/specs|plans/`.
-- **Filesystem renames:** `~/.miniclaw` → `~/.kaizen`; `~/linux/miniclaw[-voice-pipeline]` → `~/linux/kaizen[-voice-pipeline]`.
-- **External:** GitHub repo `M8SON/miniclaw` → `M8SON/kaizen`; MemPalace wing column `wing_miniclaw` → `wing_kaizen`; nexus wiring under `~/linux/nexus`.
+- **Modify (via script):** every tracked file containing `kaizen` / `Kaizen` / `KAIZEN` — ~30 source files under `core/`, plus `CLAUDE.md`, `README.md`, `WORKING_MEMORY.md`, `.env.example`, `conftest.py`, `main.py`, `run.sh`, and ~50 historical plan/spec docs.
+- **Rename via `git mv`:** `config/systemd/kaizen.service` and three dated docs under `docs/superpowers/specs|plans/`.
+- **Filesystem renames:** `~/.kaizen` → `~/.kaizen`; `~/linux/kaizen[-voice-pipeline]` → `~/linux/kaizen[-voice-pipeline]`.
+- **External:** GitHub repo `M8SON/kaizen` → `M8SON/kaizen`; MemPalace wing column `wing_kaizen` → `wing_kaizen`; nexus wiring under `~/linux/nexus`.
 
 ---
 
@@ -31,8 +31,8 @@
 - [ ] **Step 1: Verify clean working trees in both checkouts**
 
 ```bash
-cd ~/linux/miniclaw && git status --short
-cd ~/linux/miniclaw-voice-pipeline && git status --short
+cd ~/linux/kaizen && git status --short
+cd ~/linux/kaizen-voice-pipeline && git status --short
 ```
 
 Expected: both commands print nothing. If either is dirty, commit or stash before proceeding.
@@ -40,7 +40,7 @@ Expected: both commands print nothing. If either is dirty, commit or stash befor
 - [ ] **Step 2: Tag the pre-rename state and push**
 
 ```bash
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 git tag rename/pre-kaizen
 git push origin rename/pre-kaizen
 ```
@@ -50,16 +50,16 @@ Expected: `* [new tag]         rename/pre-kaizen -> rename/pre-kaizen`.
 - [ ] **Step 3: Snapshot user data**
 
 ```bash
-tar -czf ~/.miniclaw.backup.2026-05-13.tgz -C ~ .miniclaw
-ls -lh ~/.miniclaw.backup.2026-05-13.tgz
+tar -czf ~/.kaizen.backup.2026-05-13.tgz -C ~ .kaizen
+ls -lh ~/.kaizen.backup.2026-05-13.tgz
 ```
 
-Expected: a tarball whose size is roughly that of `du -sh ~/.miniclaw`.
+Expected: a tarball whose size is roughly that of `du -sh ~/.kaizen`.
 
 - [ ] **Step 4: Stop any running instance**
 
 ```bash
-systemctl --user stop miniclaw 2>/dev/null || true
+systemctl --user stop kaizen 2>/dev/null || true
 pgrep -af 'main.py' || echo "no main.py running"
 ```
 
@@ -72,12 +72,12 @@ Expected: no `main.py` process listed.
 ### Task 2: Create branch and write the rename script
 
 **Files:**
-- Create: `~/linux/miniclaw/scripts/rename_to_kaizen.sh`
+- Create: `~/linux/kaizen/scripts/rename_to_kaizen.sh`
 
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 git checkout -b rename/kaizen
 ```
 
@@ -85,11 +85,11 @@ Expected: `Switched to a new branch 'rename/kaizen'`.
 
 - [ ] **Step 2: Write `scripts/rename_to_kaizen.sh`**
 
-The patterns are constructed via `printf` so the script source itself contains no literal `miniclaw` / `MiniClaw` / `MINICLAW`. This means `git grep -i miniclaw` returns zero hits post-rewrite without any special-casing.
+The patterns are constructed via `printf` so the script source itself contains no literal `kaizen` / `Kaizen` / `KAIZEN`. This means `git grep -i kaizen` returns zero hits post-rewrite without any special-casing.
 
 ```bash
 #!/usr/bin/env bash
-# One-shot rename: miniclaw -> kaizen across all tracked files.
+# One-shot rename: kaizen -> kaizen across all tracked files.
 # Patterns are built via printf so this script's source contains no
 # literal occurrence of the legacy name.
 set -euo pipefail
@@ -133,34 +133,34 @@ Expected: no errors.
 - [ ] **Step 4: Confirm the script source contains no legacy literal**
 
 ```bash
-grep -ciE 'miniclaw' scripts/rename_to_kaizen.sh
+grep -ciE 'kaizen' scripts/rename_to_kaizen.sh
 ```
 
 Expected: `0`.
 
 ---
 
-### Task 3: `git mv` paths with `miniclaw` in their names
+### Task 3: `git mv` paths with `kaizen` in their names
 
 **Files:** four file renames.
 
 - [ ] **Step 1: Rename the four paths**
 
 ```bash
-cd ~/linux/miniclaw
-git mv config/systemd/miniclaw.service config/systemd/kaizen.service
-git mv docs/superpowers/specs/2026-04-10-miniclaw-dashboard-design.md \
+cd ~/linux/kaizen
+git mv config/systemd/kaizen.service config/systemd/kaizen.service
+git mv docs/superpowers/specs/2026-04-10-kaizen-dashboard-design.md \
        docs/superpowers/specs/2026-04-10-kaizen-dashboard-design.md
-git mv docs/superpowers/plans/2026-05-04-miniclaw-voice-pipeline.md \
+git mv docs/superpowers/plans/2026-05-04-kaizen-voice-pipeline.md \
        docs/superpowers/plans/2026-05-04-kaizen-voice-pipeline.md
-git mv docs/superpowers/specs/2026-05-04-miniclaw-voice-pipeline-design.md \
+git mv docs/superpowers/specs/2026-05-04-kaizen-voice-pipeline-design.md \
        docs/superpowers/specs/2026-05-04-kaizen-voice-pipeline-design.md
 ```
 
 - [ ] **Step 2: Verify no other paths still contain the legacy name**
 
 ```bash
-git ls-files | grep -i miniclaw
+git ls-files | grep -i kaizen
 ```
 
 Expected: nothing printed.
@@ -174,7 +174,7 @@ Expected: nothing printed.
 - [ ] **Step 1: Run the script**
 
 ```bash
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 ./scripts/rename_to_kaizen.sh
 ```
 
@@ -183,7 +183,7 @@ Expected output: a single line `Rewrote NNN file(s).` with NNN ≥ 80.
 - [ ] **Step 2: Verify no tracked file contains the legacy name**
 
 ```bash
-git grep -i miniclaw
+git grep -i kaizen
 ```
 
 Expected: no output, exit code 1 (grep "no matches").
@@ -196,7 +196,7 @@ grep -nE 'Kaizen|kaizen|KAIZEN' core/orchestrator.py | head
 grep -nE 'KAIZEN_' .env.example | head
 ```
 
-Expected: all three show plausible hits (no `miniclaw` in any form).
+Expected: all three show plausible hits (no `kaizen` in any form).
 
 - [ ] **Step 4: Stat the diff**
 
@@ -217,7 +217,7 @@ Expected: a line like `~80 files changed, NNNN insertions(+), NNNN deletions(-)`
 - [ ] **Step 1: Run pytest**
 
 ```bash
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 pytest -q 2>&1 | tail -20
 ```
 
@@ -236,7 +236,7 @@ Expected: every change appears as `M` (modified) or `R` (renamed). No untracked 
 
 ```bash
 git -c commit.gpgsign=false commit -m "$(cat <<'EOF'
-rename: miniclaw → kaizen across code, docs, configs
+rename: kaizen → kaizen across code, docs, configs
 
 Single atomic rename driven by scripts/rename_to_kaizen.sh, which
 walks git ls-files and runs three case-preserving sed passes. Also
@@ -270,7 +270,7 @@ Expected: fast-forward succeeds.
 - [ ] **Step 1: Move the user data directory**
 
 ```bash
-mv ~/.miniclaw ~/.kaizen
+mv ~/.kaizen ~/.kaizen
 ```
 
 Expected: no output.
@@ -293,11 +293,11 @@ Expected: memory directory listing matches what was there before; `.tables` list
 - [ ] **Step 1: Rename worktree dir first, then the main checkout**
 
 ```bash
-mv ~/linux/miniclaw-voice-pipeline ~/linux/kaizen-voice-pipeline
-mv ~/linux/miniclaw ~/linux/kaizen
+mv ~/linux/kaizen-voice-pipeline ~/linux/kaizen-voice-pipeline
+mv ~/linux/kaizen ~/linux/kaizen
 ```
 
-Expected: no output. The worktree's `.git` file currently points to a now-missing path inside `~/linux/miniclaw/.git/worktrees/...`, which is fine because we repair next.
+Expected: no output. The worktree's `.git` file currently points to a now-missing path inside `~/linux/kaizen/.git/worktrees/...`, which is fine because we repair next.
 
 - [ ] **Step 2: Repair the worktree pointer**
 
@@ -330,12 +330,12 @@ cd ~/linux/kaizen
 python main.py --skill-select "what's the weather"
 ```
 
-Expected: a ranked-skill output (a list with similarity scores). No tracebacks. No log lines mentioning `miniclaw` or `~/.miniclaw/`.
+Expected: a ranked-skill output (a list with similarity scores). No tracebacks. No log lines mentioning `kaizen` or `~/.kaizen/`.
 
 - [ ] **Step 2: Inspect logs for stale references**
 
 ```bash
-journalctl --user -u kaizen --since "5 min ago" 2>/dev/null | grep -i miniclaw || echo "no stale refs"
+journalctl --user -u kaizen --since "5 min ago" 2>/dev/null | grep -i kaizen || echo "no stale refs"
 ```
 
 Expected: `no stale refs`.
@@ -351,10 +351,10 @@ Expected: `no stale refs`.
 - [ ] **Step 1: Rename on GitHub**
 
 ```bash
-gh repo rename kaizen --repo M8SON/miniclaw
+gh repo rename kaizen --repo M8SON/kaizen
 ```
 
-Expected: confirmation that `M8SON/miniclaw` is now `M8SON/kaizen`. GitHub auto-redirects old URLs; stars/issues/PRs preserved.
+Expected: confirmation that `M8SON/kaizen` is now `M8SON/kaizen`. GitHub auto-redirects old URLs; stars/issues/PRs preserved.
 
 - [ ] **Step 2: Update local remote URLs**
 
@@ -400,7 +400,7 @@ Expected: workflow completes green. If anything in `.github/workflows/` hardcode
 - [ ] **Step 1: Record drawer counts before migration**
 
 ```bash
-# Via MCP from the assistant: mempalace_list_drawers wing=wing_miniclaw
+# Via MCP from the assistant: mempalace_list_drawers wing=wing_kaizen
 # Note the total count.
 ```
 
@@ -421,10 +421,10 @@ Expected: at least one table (likely `drawers` in `knowledge_graph.sqlite3` or c
 - [ ] **Step 3: Find Nexus wiring that maps repo paths to wings**
 
 ```bash
-grep -rn 'wing_miniclaw\|/linux/miniclaw' ~/linux/nexus --include='*.py' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.md'
+grep -rn 'wing_kaizen\|/linux/kaizen' ~/linux/nexus --include='*.py' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.md'
 ```
 
-Expected: a short list of files (likely under `nexus/nexus/`) that need both `wing_miniclaw` → `wing_kaizen` and `/linux/miniclaw` → `/linux/kaizen` rewrites.
+Expected: a short list of files (likely under `nexus/nexus/`) that need both `wing_kaizen` → `wing_kaizen` and `/linux/kaizen` → `/linux/kaizen` rewrites.
 
 ---
 
@@ -446,7 +446,7 @@ Expected: no output.
 For each triple, run the equivalent of:
 
 ```bash
-sqlite3 <DB_PATH> "UPDATE <TABLE> SET <COL> = 'wing_kaizen' WHERE <COL> = 'wing_miniclaw';"
+sqlite3 <DB_PATH> "UPDATE <TABLE> SET <COL> = 'wing_kaizen' WHERE <COL> = 'wing_kaizen';"
 sqlite3 <DB_PATH> "SELECT changes();"
 ```
 
@@ -457,7 +457,7 @@ Expected: `changes()` returns a positive number on at least one of the tables. S
 For each triple:
 
 ```bash
-sqlite3 <DB_PATH> "SELECT COUNT(*) FROM <TABLE> WHERE <COL> = 'wing_miniclaw';"
+sqlite3 <DB_PATH> "SELECT COUNT(*) FROM <TABLE> WHERE <COL> = 'wing_kaizen';"
 ```
 
 Expected: `0` for every triple.
@@ -471,13 +471,13 @@ Expected: `0` for every triple.
 - [ ] **Step 1: Rewrite each file from Task 10 step 3**
 
 For each file, apply both substitutions:
-- `wing_miniclaw` → `wing_kaizen`
-- `/linux/miniclaw` (and any other path stems pointing at the old location) → `/linux/kaizen`
+- `wing_kaizen` → `wing_kaizen`
+- `/linux/kaizen` (and any other path stems pointing at the old location) → `/linux/kaizen`
 
 Use `sed -i` per file. After each, confirm:
 
 ```bash
-grep -c 'miniclaw' <FILE>
+grep -c 'kaizen' <FILE>
 ```
 
 Expected: `0`.
@@ -485,7 +485,7 @@ Expected: `0`.
 - [ ] **Step 2: Confirm no stale references remain in `~/linux/nexus`**
 
 ```bash
-grep -rn 'miniclaw' ~/linux/nexus --include='*.py' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.md'
+grep -rn 'kaizen' ~/linux/nexus --include='*.py' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.md'
 ```
 
 Expected: no output.
@@ -518,15 +518,15 @@ Expected: count matches the number recorded in Task 10 step 1.
 - [ ] **Step 2: Confirm new wing returns useful search results**
 
 ```bash
-# Via MCP: mempalace_search query="MiniClaw project overview" wing=wing_kaizen
+# Via MCP: mempalace_search query="Kaizen project overview" wing=wing_kaizen
 ```
 
-Expected: at least one drawer comes back. (The text inside drawers may still say "MiniClaw" — that's the editorial pass in Task 14.)
+Expected: at least one drawer comes back. (The text inside drawers may still say "Kaizen" — that's the editorial pass in Task 14.)
 
 - [ ] **Step 3: Confirm old wing is empty**
 
 ```bash
-# Via MCP: mempalace_search query="MiniClaw project overview" wing=wing_miniclaw
+# Via MCP: mempalace_search query="Kaizen project overview" wing=wing_kaizen
 ```
 
 Expected: zero results.
@@ -535,7 +535,7 @@ Expected: zero results.
 
 ### Task 14: Editorial pass on drawer text
 
-**Files:** durable drawers under `wing_kaizen` whose text still says "MiniClaw" or `~/.miniclaw/`.
+**Files:** durable drawers under `wing_kaizen` whose text still says "Kaizen" or `~/.kaizen/`.
 
 This is content rewriting, not just a column change. The wing FK is mechanical; the *narrative* of each memory needs human-readable updates.
 
@@ -544,14 +544,14 @@ This is content rewriting, not just a column change. The wing FK is mechanical; 
 ```bash
 # Via MCP: mempalace_list_drawers wing=wing_kaizen
 # Look for type=project, type=user, type=feedback drawers whose text
-# references "MiniClaw", "miniclaw", or "~/.miniclaw/".
+# references "Kaizen", "kaizen", or "~/.kaizen/".
 ```
 
 Record a list of drawer IDs that need text updates. Expected candidates:
-- `project_miniclaw.md` (path: `~/linux/miniclaw` → `~/linux/kaizen`; name; data-dir path)
-- `user_mason.md` (passing reference to MiniClaw as the project name)
+- `project_kaizen.md` (path: `~/linux/kaizen` → `~/linux/kaizen`; name; data-dir path)
+- `user_mason.md` (passing reference to Kaizen as the project name)
 - Activity-snapshot drawers dated 2026-04-07 and 2026-04-11 (these are dated historical snapshots — update only the *current-state* fields, not the historical-state ones)
-- `feedback_*` drawers that mention MiniClaw in their **Why:** lines — update only if the reference is to the *current* project, not to a dated incident
+- `feedback_*` drawers that mention Kaizen in their **Why:** lines — update only if the reference is to the *current* project, not to a dated incident
 
 - [ ] **Step 2: Update each drawer**
 
@@ -562,8 +562,8 @@ For each drawer ID in the list:
 ```
 
 When rewriting:
-- Replace project name `MiniClaw` → `Kaizen`.
-- Replace paths `~/linux/miniclaw` → `~/linux/kaizen`, `~/.miniclaw/` → `~/.kaizen/`.
+- Replace project name `Kaizen` → `Kaizen`.
+- Replace paths `~/linux/kaizen` → `~/linux/kaizen`, `~/.kaizen/` → `~/.kaizen/`.
 - Replace the GitHub remote where mentioned.
 - Leave historical/dated content (e.g. "as of 2026-04-22") intact — those are time-stamped snapshots.
 
@@ -572,10 +572,10 @@ Expected: drawer text returns clean from `mempalace_search` with no stale refere
 - [ ] **Step 3: Confirm cleanup**
 
 ```bash
-# Via MCP: mempalace_search query="miniclaw" wing=wing_kaizen max_distance=1.5
+# Via MCP: mempalace_search query="kaizen" wing=wing_kaizen max_distance=1.5
 ```
 
-Expected: any remaining hits are inside historical/dated snapshots that were intentionally preserved (verify each by reading; if any current-state drawer still says "miniclaw", update it).
+Expected: any remaining hits are inside historical/dated snapshots that were intentionally preserved (verify each by reading; if any current-state drawer still says "kaizen", update it).
 
 ---
 
@@ -585,14 +585,14 @@ Expected: any remaining hits are inside historical/dated snapshots that were int
 
 **Files:**
 - Modify: `/home/daedalus/linux/CLAUDE.md`
-- Modify: any file under `~/linux/nexus/nexus/policies/` that references `wing_miniclaw` or `~/linux/miniclaw`
+- Modify: any file under `~/linux/nexus/nexus/policies/` that references `wing_kaizen` or `~/linux/kaizen`
 
 (Task 12 already swept `~/linux/nexus` — this task picks up any sibling files like the root `CLAUDE.md` that aren't inside the nexus package.)
 
 - [ ] **Step 1: Grep**
 
 ```bash
-grep -rn 'miniclaw\|MiniClaw\|MINICLAW' /home/daedalus/linux/CLAUDE.md ~/linux/nexus/nexus/policies/
+grep -rn 'kaizen\|Kaizen\|KAIZEN' /home/daedalus/linux/CLAUDE.md ~/linux/nexus/nexus/policies/
 ```
 
 Expected: a short list, possibly empty.
@@ -602,13 +602,13 @@ Expected: a short list, possibly empty.
 For each file with hits, run:
 
 ```bash
-sed -i -e 's/MiniClaw/Kaizen/g' -e 's/miniclaw/kaizen/g' -e 's/MINICLAW/KAIZEN/g' <FILE>
+sed -i -e 's/Kaizen/Kaizen/g' -e 's/kaizen/kaizen/g' -e 's/KAIZEN/KAIZEN/g' <FILE>
 ```
 
 - [ ] **Step 3: Verify**
 
 ```bash
-grep -rn 'miniclaw\|MiniClaw\|MINICLAW' /home/daedalus/linux/CLAUDE.md ~/linux/nexus/nexus/policies/
+grep -rn 'kaizen\|Kaizen\|KAIZEN' /home/daedalus/linux/CLAUDE.md ~/linux/nexus/nexus/policies/
 ```
 
 Expected: no output.
@@ -631,13 +631,13 @@ git add -A && git -c commit.gpgsign=false commit -m "rename: policies and root C
 - [ ] **Step 1: Sweep**
 
 ```bash
-grep -rl --binary-files=without-match -i 'miniclaw' ~/linux 2>/dev/null \
+grep -rl --binary-files=without-match -i 'kaizen' ~/linux 2>/dev/null \
   --exclude-dir=.git --exclude-dir=__pycache__ --exclude-dir=node_modules \
   --exclude-dir=.pytest_cache --exclude-dir=.venv
 ```
 
 Expected residue (acceptable):
-- `~/linux` may contain no `~/.miniclaw.backup.2026-05-13.tgz` — that's at `~/`, not `~/linux`, so it shouldn't appear.
+- `~/linux` may contain no `~/.kaizen.backup.2026-05-13.tgz` — that's at `~/`, not `~/linux`, so it shouldn't appear.
 - `_archive_2026-05-10/` directory under `~/.claude/projects/-home-daedalus-linux/memory/` may contain frozen archive content — intentional per the retirement note.
 
 Anything else: investigate and rewrite.
@@ -645,7 +645,7 @@ Anything else: investigate and rewrite.
 - [ ] **Step 2: Sweep `~/` for the backup tarball reference only**
 
 ```bash
-ls -la ~/.miniclaw.backup.2026-05-13.tgz
+ls -la ~/.kaizen.backup.2026-05-13.tgz
 ```
 
 Expected: file exists. Leave it in place — Task 19 covers eventual cleanup.
@@ -665,7 +665,7 @@ cd ~/linux/kaizen
 
 (Run interactively in a separate terminal if `run.sh` blocks. The remaining steps assume it's running.)
 
-Expected: clean startup, no tracebacks. Skill index loads. No log lines mentioning `miniclaw` or `~/.miniclaw/`.
+Expected: clean startup, no tracebacks. Skill index loads. No log lines mentioning `kaizen` or `~/.kaizen/`.
 
 - [ ] **Step 2: Issue a command that touches memory**
 
@@ -706,15 +706,15 @@ systemctl --user stop kaizen 2>/dev/null || pkill -f 'main.py'
 # Via MCP: mempalace_kg_add or mempalace_add_drawer
 # wing: wing_kaizen
 # type: project
-# name: "MiniClaw → Kaizen rename, 2026-05-13"
+# name: "Kaizen → Kaizen rename, 2026-05-13"
 # text:
-#   Renamed MiniClaw → Kaizen on 2026-05-13.
-#   - Local: ~/linux/miniclaw → ~/linux/kaizen (worktree: ~/linux/kaizen-voice-pipeline)
-#   - User data: ~/.miniclaw → ~/.kaizen (memory vault + sessions.db preserved)
-#   - GitHub: M8SON/miniclaw → M8SON/kaizen (gh repo rename; redirects in place)
-#   - MemPalace: wing_miniclaw → wing_kaizen (32 drawers migrated)
-#   - Env var prefix: MINICLAW_* → KAIZEN_*
-#   - Backup tarball: ~/.miniclaw.backup.2026-05-13.tgz (delete after a few days)
+#   Renamed Kaizen → Kaizen on 2026-05-13.
+#   - Local: ~/linux/kaizen → ~/linux/kaizen (worktree: ~/linux/kaizen-voice-pipeline)
+#   - User data: ~/.kaizen → ~/.kaizen (memory vault + sessions.db preserved)
+#   - GitHub: M8SON/kaizen → M8SON/kaizen (gh repo rename; redirects in place)
+#   - MemPalace: wing_kaizen → wing_kaizen (32 drawers migrated)
+#   - Env var prefix: KAIZEN_* → KAIZEN_*
+#   - Backup tarball: ~/.kaizen.backup.2026-05-13.tgz (delete after a few days)
 ```
 
 Expected: drawer write succeeds; subsequent `mempalace_search` returns it.
@@ -723,11 +723,11 @@ Expected: drawer write succeeds; subsequent `mempalace_search` returns it.
 
 ### Task 19: Final cleanup (deferred)
 
-**Files:** the backup tarball at `~/.miniclaw.backup.2026-05-13.tgz`.
+**Files:** the backup tarball at `~/.kaizen.backup.2026-05-13.tgz`.
 
 This task is intentionally deferred — do NOT execute it as part of this plan run. It's listed here as the documented final step so it isn't forgotten.
 
-- [ ] **Step 1 (deferred, run after a few days of confidence):** `rm ~/.miniclaw.backup.2026-05-13.tgz`
+- [ ] **Step 1 (deferred, run after a few days of confidence):** `rm ~/.kaizen.backup.2026-05-13.tgz`
 
 ---
 
@@ -736,7 +736,7 @@ This task is intentionally deferred — do NOT execute it as part of this plan r
 | Gate | Task | Pass condition |
 |---|---|---|
 | Tests on renamed code | 5 | `pytest -q` exit 0 |
-| Zero `miniclaw` in tracked files | 4 | `git grep -i miniclaw` empty |
+| Zero `kaizen` in tracked files | 4 | `git grep -i kaizen` empty |
 | Local smoke | 8 | `--skill-select` runs cleanly against `~/.kaizen/` |
 | CI on renamed repo | 9 | `gh run watch` reports green |
 | MemPalace migration | 13 | new-wing count == baseline; old wing empty |
@@ -744,11 +744,11 @@ This task is intentionally deferred — do NOT execute it as part of this plan r
 
 ## Rollback
 
-While `~/.miniclaw.backup.2026-05-13.tgz` exists:
+While `~/.kaizen.backup.2026-05-13.tgz` exists:
 
-- **After Task 5:** `cd ~/linux/miniclaw && git reset --hard rename/pre-kaizen`.
-- **After Task 7:** as above, plus `mv ~/.kaizen ~/.miniclaw`, `mv ~/linux/kaizen-voice-pipeline ~/linux/miniclaw-voice-pipeline`, `mv ~/linux/kaizen ~/linux/miniclaw`, `git worktree repair`.
-- **After Task 9:** `gh repo rename miniclaw --repo M8SON/kaizen`; reset both remote URLs.
+- **After Task 5:** `cd ~/linux/kaizen && git reset --hard rename/pre-kaizen`.
+- **After Task 7:** as above, plus `mv ~/.kaizen ~/.kaizen`, `mv ~/linux/kaizen-voice-pipeline ~/linux/kaizen-voice-pipeline`, `mv ~/linux/kaizen ~/linux/kaizen`, `git worktree repair`.
+- **After Task 9:** `gh repo rename kaizen --repo M8SON/kaizen`; reset both remote URLs.
 - **After Task 13:** restore `~/.mempalace/knowledge_graph.sqlite3.pre-kaizen` and `~/.mempalace/palace/chroma.sqlite3.pre-kaizen` in place.
 
 Once Task 19 runs, rollback of user data is no longer possible.

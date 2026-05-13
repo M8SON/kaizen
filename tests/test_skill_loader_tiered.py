@@ -29,7 +29,7 @@ def _write_skill(
     (skill_dir / "config.yaml").write_text(
         yaml.dump({
             "type": "docker",
-            "image": f"miniclaw/{name}:latest",
+            "image": f"kaizen/{name}:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
@@ -37,7 +37,7 @@ def _write_skill(
     )
     if with_dockerfile:
         (skill_dir / "scripts" / "Dockerfile").write_text(
-            "FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n"
+            "FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n"
         )
         (skill_dir / "scripts" / "app.py").write_text("print('ok')\n")
     if with_install_json:
@@ -108,19 +108,19 @@ def test_skill_exposes_frontmatter_dict():
         (skill_dir / "scripts").mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
             "---\nname: alpha\ndescription: x.\n"
-            "metadata:\n  miniclaw:\n    self_update:\n      allow_body: true\n"
+            "metadata:\n  kaizen:\n    self_update:\n      allow_body: true\n"
             "---\n\n"
             "## Inputs\n\n```yaml\ntype: object\nproperties: {}\nrequired: []\n```\n\nBody.\n"
         )
         (skill_dir / "config.yaml").write_text(yaml.dump({
             "type": "docker",
-            "image": "miniclaw/alpha:latest",
+            "image": "kaizen/alpha:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
         }))
         (skill_dir / "scripts" / "Dockerfile").write_text(
-            "FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n"
+            "FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n"
         )
         (skill_dir / "scripts" / "app.py").write_text("print('ok')\n")
 
@@ -128,7 +128,7 @@ def test_skill_exposes_frontmatter_dict():
         skills = loader.load_all()
         s = skills["alpha"]
         assert hasattr(s, "frontmatter")
-        assert s.frontmatter["metadata"]["miniclaw"]["self_update"]["allow_body"] is True
+        assert s.frontmatter["metadata"]["kaizen"]["self_update"]["allow_body"] is True
 
 
 if __name__ == "__main__":

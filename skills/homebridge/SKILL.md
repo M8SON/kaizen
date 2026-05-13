@@ -3,7 +3,7 @@ name: homebridge
 description: Control smart home devices via Homebridge Config UI X. Use to list devices,
   turn things on/off, adjust brightness, color, temperature, or fan speed.
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env:
       - HOMEBRIDGE_URL

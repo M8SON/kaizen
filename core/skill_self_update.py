@@ -63,7 +63,7 @@ def apply_hint(
 
     fm = getattr(skill, "frontmatter", None) or {}
     allow_body = (
-        fm.get("metadata", {}).get("miniclaw", {})
+        fm.get("metadata", {}).get("kaizen", {})
           .get("self_update", {}).get("allow_body")
     )
     if allow_body is not True:

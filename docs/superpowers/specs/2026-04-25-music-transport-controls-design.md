@@ -15,7 +15,7 @@ Mason has the Pi hardware. Voice transport is one of the highest-value daily-use
 ## In scope
 
 - Soundcloud handler gains `pause`, `resume`, `skip`, `volume_up`, `volume_down` actions in addition to existing `play` / `stop`.
-- mpv runs with `--input-ipc-server=/tmp/miniclaw-mpv.sock` so it can be controlled while alive. Pause / resume / skip / volume operate via the socket. Stop still terminates the process.
+- mpv runs with `--input-ipc-server=/tmp/kaizen-mpv.sock` so it can be controlled while alive. Pause / resume / skip / volume operate via the socket. Stop still terminates the process.
 - Each `play` query fetches 20 results from SoundCloud (`yt-dlp scsearch20:query`). All 20 URLs are passed to mpv as positional args; mpv plays them sequentially. Skip advances to the next track in the queue. Hardcoded depth of 20.
 - `intent_patterns.yaml`: rename stale `soundcloud_play` → `soundcloud`, split the existing single stop/pause/halt regex into separate dispatch entries, add resume and skip patterns.
 - `skills/soundcloud/SKILL.md`: expose the action enum and routing hints so Claude routes correctly when the regex doesn't match (LLM fallback path).
@@ -24,7 +24,7 @@ Mason has the Pi hardware. Voice transport is one of the highest-value daily-use
 
 - **Live `now_playing.json` updates** as mpv advances through the queue. Would require an mpv event-listener thread; defer. The dashboard music widget will show the first track until the next `play` command refreshes it.
 - **Skip-back / previous-track.** YAGNI unless explicitly requested.
-- **Cross-restart recovery.** If MiniClaw restarts mid-playback, mpv keeps running but `_mpv_process` reference is lost. Document; defer to a follow-up that uses the socket file's existence to detect a live mpv.
+- **Cross-restart recovery.** If Kaizen restarts mid-playback, mpv keeps running but `_mpv_process` reference is lost. Document; defer to a follow-up that uses the socket file's existence to detect a live mpv.
 - **Playback position seek.** Not a transport-control primitive; out of scope.
 - **Queue replenishment.** When a 20-track queue exhausts, playback ends. User says "play country" again. No auto-fetch of the next 20.
 - **Configuration knobs** for queue depth, volume step size, socket path. All hardcoded in v1; promote to env vars only if real usage demonstrates need.
@@ -38,7 +38,7 @@ Mason has the Pi hardware. Voice transport is one of the highest-value daily-use
 | Action | Behavior |
 |---|---|
 | `play` | yt-dlp `scsearch20:query` → spawn mpv with IPC socket and 20 URLs → write `now_playing.json` with the first track's title → return `"Now playing: <first track>"`. If music already playing, terminate it first. |
-| `stop` | Terminate mpv process → unlink `/tmp/miniclaw-mpv.sock` → unlink `~/.miniclaw/now_playing.json` → return `"Stopped."`. If nothing is playing, return `"Nothing is playing."`. |
+| `stop` | Terminate mpv process → unlink `/tmp/kaizen-mpv.sock` → unlink `~/.kaizen/now_playing.json` → return `"Stopped."`. If nothing is playing, return `"Nothing is playing."`. |
 | `pause` | IPC: `{"command": ["set_property", "pause", true]}` → return `"Paused."`. If socket doesn't exist, return `"Nothing is playing."`. |
 | `resume` | IPC: `{"command": ["set_property", "pause", false]}` → return `"Resumed."`. Socket-missing same as above. |
 | `skip` | IPC: `{"command": ["playlist-next"]}` → return `"Skipped."`. Socket-missing same as above. |
@@ -51,7 +51,7 @@ New private helper on `ContainerManager`. Connects to the Unix socket, sends a s
 
 ```python
 def _send_mpv_command(self, args: list) -> dict | None:
-    sock_path = "/tmp/miniclaw-mpv.sock"
+    sock_path = "/tmp/kaizen-mpv.sock"
     if not os.path.exists(sock_path):
         return None
     payload = json.dumps({"command": args}).encode() + b"\n"
@@ -70,7 +70,7 @@ def _send_mpv_command(self, args: list) -> dict | None:
 
 `yt-dlp --get-title --get-url -f bestaudio --no-playlist scsearch20:query` returns title and URL on alternating lines. With 20 results: 40 lines. Parse pairwise. If the result count is odd or zero, treat as a search failure and return `"No results found for '<query>' on SoundCloud."`.
 
-The first track's title is written to `~/.miniclaw/now_playing.json`. The 20 URLs are passed to mpv as positional args.
+The first track's title is written to `~/.kaizen/now_playing.json`. The 20 URLs are passed to mpv as positional args.
 
 ### `skills/soundcloud/SKILL.md`
 
@@ -189,4 +189,4 @@ Unit tests, no real mpv or yt-dlp invocation.
 - **Skip-back** — IPC: `["playlist-prev"]`. Trivial to add. Withhold until you ask for it.
 - **Queue replenishment** — when the queue is one track from exhausted, fire another yt-dlp in a thread, append URLs to mpv's playlist via `["loadfile", url, "append"]`. Turns "play country" into truly continuous music. Real value for the long-running session use case.
 - **Volume step size as env var** — `SOUNDCLOUD_VOLUME_STEP=5`. Add when you want finer control.
-- **Per-session "current queue" memory** — persist the queue + position across MiniClaw restarts so a crash doesn't lose the listening session.
+- **Per-session "current queue" memory** — persist the queue + position across Kaizen restarts so a crash doesn't lose the listening session.

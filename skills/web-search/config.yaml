@@ -1,4 +1,4 @@
-image: miniclaw/web-search:latest
+image: kaizen/web-search:latest
 env_passthrough:
   - BRAVE_API_KEY
 timeout_seconds: 15

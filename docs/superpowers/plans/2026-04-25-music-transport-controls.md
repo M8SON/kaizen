@@ -4,7 +4,7 @@
 
 **Goal:** Add `pause`, `resume`, `skip`, `volume_up`, `volume_down` actions to the soundcloud handler with mpv IPC; queue 20 tracks per `play`; rewire `intent_patterns.yaml` so the transport regexes dispatch correctly to the post-migration `soundcloud` skill.
 
-**Architecture:** Spawn mpv with `--input-ipc-server=/tmp/miniclaw-mpv.sock` and all 20 yt-dlp results as positional args; mpv handles the queue natively. Transport actions speak JSON-IPC over the Unix socket. A new private `_send_mpv_command` helper centralizes the socket logic; each action is a thin wrapper. SKILL.md exposes the action enum so Claude routes correctly when the regex doesn't match (LLM fallback path); `intent_patterns.yaml` covers the regex dispatch path.
+**Architecture:** Spawn mpv with `--input-ipc-server=/tmp/kaizen-mpv.sock` and all 20 yt-dlp results as positional args; mpv handles the queue natively. Transport actions speak JSON-IPC over the Unix socket. A new private `_send_mpv_command` helper centralizes the socket logic; each action is a thin wrapper. SKILL.md exposes the action enum so Claude routes correctly when the regex doesn't match (LLM fallback path); `intent_patterns.yaml` covers the regex dispatch path.
 
 **Tech Stack:** Python 3.11+ stdlib (`socket`, `json`, `subprocess`), pytest, mpv with `--input-ipc-server` (since mpv 0.7.0; ubiquitous), yt-dlp.
 
@@ -154,7 +154,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -10
 ```
 
 Expected: failure (`AttributeError: 'ContainerManager' object has no attribute '_send_mpv_command'`).
@@ -170,7 +170,7 @@ import socket
 In `ContainerManager.__init__`, near the existing `self._mpv_process` line, add:
 
 ```python
-        self._mpv_socket_path: str = "/tmp/miniclaw-mpv.sock"
+        self._mpv_socket_path: str = "/tmp/kaizen-mpv.sock"
 ```
 
 Add this method to `ContainerManager` (place it near the soundcloud handler — adjacent to `_execute_soundcloud` is fine):
@@ -198,7 +198,7 @@ Add this method to `ContainerManager` (place it near the soundcloud handler — 
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -10
 ```
 
 Expected: 3 IPC tests pass.
@@ -206,7 +206,7 @@ Expected: 3 IPC tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/container_manager.py tests/test_soundcloud_handler.py && git commit -m "feat(soundcloud): add mpv IPC helper for transport-control commands"
+cd ~/linux/kaizen && git add core/container_manager.py tests/test_soundcloud_handler.py && git commit -m "feat(soundcloud): add mpv IPC helper for transport-control commands"
 ```
 
 ### Task 2: Action dispatch + 20-track queue
@@ -326,7 +326,7 @@ class TestStop(unittest.TestCase):
             sock_path_obj = Path(sock_path)
             sock_path_obj.touch()
 
-            now_playing_dir = tmp_p / ".miniclaw"
+            now_playing_dir = tmp_p / ".kaizen"
             now_playing_dir.mkdir()
             now_playing = now_playing_dir / "now_playing.json"
             now_playing.write_text('{"title": "test"}')
@@ -462,7 +462,7 @@ class TestPlayQueue(unittest.TestCase):
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -20
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -20
 ```
 
 Expected: many failures — actions not yet implemented, queue behavior wrong.
@@ -556,7 +556,7 @@ Find the existing `_execute_soundcloud` method and replace its entire body with:
         )
 
         # Write now_playing.json for the dashboard music widget.
-        now_playing_path = Path.home() / ".miniclaw" / "now_playing.json"
+        now_playing_path = Path.home() / ".kaizen" / "now_playing.json"
         try:
             import time as _time
             now_playing_path.parent.mkdir(parents=True, exist_ok=True)
@@ -594,7 +594,7 @@ Find the existing `_execute_soundcloud` method and replace its entire body with:
                 os.unlink(self._mpv_socket_path)
             except OSError:
                 pass
-        now_playing = Path.home() / ".miniclaw" / "now_playing.json"
+        now_playing = Path.home() / ".kaizen" / "now_playing.json"
         try:
             now_playing.unlink(missing_ok=True)
         except OSError:
@@ -605,7 +605,7 @@ Find the existing `_execute_soundcloud` method and replace its entire body with:
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -20
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_soundcloud_handler.py -v 2>&1 | tail -20
 ```
 
 Expected: all soundcloud handler tests pass.
@@ -613,7 +613,7 @@ Expected: all soundcloud handler tests pass.
 - [ ] **Step 5: Run full suite to catch regressions**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -621,7 +621,7 @@ Expected: all tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/container_manager.py tests/test_soundcloud_handler.py && git commit -m "feat(soundcloud): pause/resume/skip/volume actions + 20-track queue"
+cd ~/linux/kaizen && git add core/container_manager.py tests/test_soundcloud_handler.py && git commit -m "feat(soundcloud): pause/resume/skip/volume actions + 20-track queue"
 ```
 
 ---
@@ -680,7 +680,7 @@ nothing is playing for a transport command, say so plainly.
 - [ ] **Step 2: Verify the skill still loads**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -c "
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -c "
 from core.skill_loader import SkillLoader
 loader = SkillLoader()
 loader.load_all()
@@ -695,7 +695,7 @@ Expected: `loaded: True`, schema enum lists all seven actions.
 - [ ] **Step 3: Run full suite to ensure no regression**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -703,7 +703,7 @@ Expected: all tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add skills/soundcloud/SKILL.md && git commit -m "feat(soundcloud): expose action enum + transport routing hints"
+cd ~/linux/kaizen && git add skills/soundcloud/SKILL.md && git commit -m "feat(soundcloud): expose action enum + transport routing hints"
 ```
 
 ### Task 4: intent_patterns.yaml — fix dispatch entries
@@ -810,7 +810,7 @@ class TestMusicTransportPatterns(unittest.TestCase):
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_tier_router.py::TestMusicTransportPatterns -v 2>&1 | tail -15
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_tier_router.py::TestMusicTransportPatterns -v 2>&1 | tail -15
 ```
 
 Expected: failures because the patterns file still references `soundcloud_play` and lumps pause with stop.
@@ -848,7 +848,7 @@ Open `config/intent_patterns.yaml`. Find the existing entries that begin with th
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_tier_router.py -v 2>&1 | tail -25
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_tier_router.py -v 2>&1 | tail -25
 ```
 
 Expected: all tier_router tests (including the 14 new transport-pattern tests) pass. Existing tier_router tests must also continue to pass.
@@ -856,7 +856,7 @@ Expected: all tier_router tests (including the 14 new transport-pattern tests) p
 - [ ] **Step 5: Run full suite**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -864,7 +864,7 @@ Expected: all tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add config/intent_patterns.yaml tests/test_tier_router.py && git commit -m "feat(intent-patterns): rewire music transport regexes for soundcloud + skip/pause/resume"
+cd ~/linux/kaizen && git add config/intent_patterns.yaml tests/test_tier_router.py && git commit -m "feat(intent-patterns): rewire music transport regexes for soundcloud + skip/pause/resume"
 ```
 
 ---
@@ -881,7 +881,7 @@ Phase-boundary checkpoint: full suite green; on-Pi smoke verifies the regex disp
 - [ ] **Step 1: Locate the known-gaps section**
 
 ```bash
-grep -n "Voice control for music\|Voice stop\|music stop" ~/linux/miniclaw/WORKING_MEMORY.md
+grep -n "Voice control for music\|Voice stop\|music stop" ~/linux/kaizen/WORKING_MEMORY.md
 ```
 
 Expected: a line under known gaps mentioning music stop/pause is incomplete.
@@ -915,7 +915,7 @@ Also add a milestone bullet under "Recent Durable Milestones":
 - [ ] **Step 3: Run full suite**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -923,7 +923,7 @@ Expected: all tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add WORKING_MEMORY.md && git commit -m "docs: close music stop/pause gap in WORKING_MEMORY"
+cd ~/linux/kaizen && git add WORKING_MEMORY.md && git commit -m "docs: close music stop/pause gap in WORKING_MEMORY"
 ```
 
 ### Task 6: Integration sanity (no commit unless something needs fixing)
@@ -931,7 +931,7 @@ cd ~/linux/miniclaw && git add WORKING_MEMORY.md && git commit -m "docs: close m
 - [ ] **Step 1: Local smoke — load orchestrator and inspect routing**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && OLLAMA_ENABLED=true python3 -c "
+cd ~/linux/kaizen && source .venv/bin/activate && OLLAMA_ENABLED=true python3 -c "
 import os
 os.environ['ANTHROPIC_API_KEY'] = os.environ.get('ANTHROPIC_API_KEY', 'test')
 from core.tier_router import TierRouter

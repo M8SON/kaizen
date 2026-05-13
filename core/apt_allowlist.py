@@ -2,7 +2,7 @@
 apt-get package allowlist for imported skills.
 
 Default list is the minimum set that covers common needs; users can extend
-by editing ~/.miniclaw/config/apt-allowlist.txt (one package per line,
+by editing ~/.kaizen/config/apt-allowlist.txt (one package per line,
 lines starting with # are ignored).
 
 Extending the allowlist is a deliberate, keyboard-only trust decision and
@@ -25,7 +25,7 @@ DEFAULT_APT_ALLOWLIST: frozenset[str] = frozenset({
 
 
 def _user_allowlist_path() -> Path:
-    return Path(os.path.expanduser("~")) / ".miniclaw" / "config" / "apt-allowlist.txt"
+    return Path(os.path.expanduser("~")) / ".kaizen" / "config" / "apt-allowlist.txt"
 
 
 def load_apt_allowlist() -> frozenset[str]:

@@ -79,7 +79,7 @@ class TestTieredConfigValidation(unittest.TestCase):
     def _base_config(self):
         return {
             "type": "docker",
-            "image": "miniclaw/foo:latest",
+            "image": "kaizen/foo:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
@@ -150,21 +150,21 @@ class TestTieredConfigValidation(unittest.TestCase):
 
     def test_scoped_volume_imported(self):
         cfg = self._base_config()
-        cfg["volumes"] = ["~/.miniclaw/foo:/data"]
+        cfg["volumes"] = ["~/.kaizen/foo:/data"]
         result = self.v.validate_execution_config(cfg, tier=TIER_IMPORTED, skill_name="foo")
-        self.assertEqual(result["volumes"], ["~/.miniclaw/foo:/data"])
+        self.assertEqual(result["volumes"], ["~/.kaizen/foo:/data"])
 
 
 class TestRequiresLocation(unittest.TestCase):
     def setUp(self):
         self.elig = SkillEligibility()
 
-    def test_requires_read_from_metadata_miniclaw(self):
+    def test_requires_read_from_metadata_kaizen(self):
         fm = {
             "name": "foo",
             "description": "x",
             "metadata": {
-                "miniclaw": {"requires": {"env": ["NEVER_SET_XYZ_VAR"]}}
+                "kaizen": {"requires": {"env": ["NEVER_SET_XYZ_VAR"]}}
             },
         }
         reason, missing = self.elig.check(fm)
@@ -182,7 +182,7 @@ class TestRequiresLocation(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(missing, [])
 
-    def test_empty_metadata_miniclaw_is_fine(self):
+    def test_empty_metadata_kaizen_is_fine(self):
         fm = {"name": "foo", "description": "x", "metadata": {}}
         reason, missing = self.elig.check(fm)
         self.assertIsNone(reason)
@@ -196,11 +196,11 @@ class TestSelfUpdateScaffolding(unittest.TestCase):
     def test_self_update_flag_parsed(self):
         raw = (
             "---\nname: foo\ndescription: x\n"
-            "metadata:\n  miniclaw:\n    self_update:\n      allow_body: true\n---\n\nBody.\n"
+            "metadata:\n  kaizen:\n    self_update:\n      allow_body: true\n---\n\nBody.\n"
         )
         fm, _ = self.v.validate_markdown(raw, Path("/tmp/foo"))
         self.assertTrue(
-            fm["metadata"]["miniclaw"]["self_update"]["allow_body"]
+            fm["metadata"]["kaizen"]["self_update"]["allow_body"]
         )
 
     def test_self_update_flag_defaults_to_missing(self):

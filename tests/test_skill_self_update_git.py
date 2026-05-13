@@ -44,17 +44,17 @@ def _setup_repo(tmp: Path, *, allow_body: bool = True) -> tuple[Path, _Loader]:
         + yaml.dump({
             "name": "foo",
             "description": "Test skill foo.",
-            "metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}},
+            "metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}},
         }, sort_keys=False)
         + "---\n\n## When to use\n- existing\n"
     )
     (skill_dir / "config.yaml").write_text(
-        yaml.dump({"type": "docker", "image": "miniclaw/foo:latest"})
+        yaml.dump({"type": "docker", "image": "kaizen/foo:latest"})
     )
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "initial")
 
-    fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}}}
+    fm = {"metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}}}
     skill = _Skill("foo", "bundled", skill_dir, fm)
     return repo, _Loader({"foo": skill})
 
@@ -109,14 +109,14 @@ class TestGitCommit(unittest.TestCase):
                 + yaml.dump({
                     "name": "foo",
                     "description": "x.",
-                    "metadata": {"miniclaw": {"self_update": {"allow_body": True}}},
+                    "metadata": {"kaizen": {"self_update": {"allow_body": True}}},
                 }, sort_keys=False)
                 + "---\n\n## When to use\n- existing\n"
             )
             (skill_dir / "config.yaml").write_text(
-                yaml.dump({"type": "docker", "image": "miniclaw/foo:latest"})
+                yaml.dump({"type": "docker", "image": "kaizen/foo:latest"})
             )
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _Skill("foo", "bundled", skill_dir, fm)
             loader = _Loader({"foo": skill})
 

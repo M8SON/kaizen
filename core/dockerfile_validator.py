@@ -1,9 +1,9 @@
 """
-Dockerfile validator for MiniClaw skills.
+Dockerfile validator for Kaizen skills.
 
 Per-tier allowlist:
   bundled  — no validation (trusted; repo-reviewed)
-  authored — FROM must be miniclaw/base:latest; RUN only pip/apt prefixes; no ADD; no USER
+  authored — FROM must be kaizen/base:latest; RUN only pip/apt prefixes; no ADD; no USER
   imported — everything authored allows, PLUS apt-get packages must be in
              the allowlist (core.apt_allowlist), and pip install must not use
              --index-url / --extra-index-url
@@ -87,9 +87,9 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
                 )
             parts = line.split()
             image_ref = parts[1] if len(parts) > 1 else ""
-            if image_ref.lower() != "miniclaw/base:latest":
+            if image_ref.lower() != "kaizen/base:latest":
                 raise DockerfileValidationError(
-                    f"Line {lineno}: base image must be 'miniclaw/base:latest', got {image_ref!r}"
+                    f"Line {lineno}: base image must be 'kaizen/base:latest', got {image_ref!r}"
                 )
 
         elif instruction == "RUN":
@@ -154,7 +154,7 @@ def _validate_run_imported(run_body: str, apt_allowlist: frozenset[str], lineno:
                     continue
                 raise DockerfileValidationError(
                     f"Line {lineno}: apt package {pkg!r} is not in the allowlist "
-                    "(extend via ~/.miniclaw/config/apt-allowlist.txt)"
+                    "(extend via ~/.kaizen/config/apt-allowlist.txt)"
                 )
 
 

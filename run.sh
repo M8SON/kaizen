@@ -1,5 +1,5 @@
 #!/bin/bash
-# run.sh - Start MiniClaw, building anything missing first.
+# run.sh - Start Kaizen, building anything missing first.
 #
 # Usage:
 #   ./run.sh                       # text mode (default)
@@ -97,9 +97,9 @@ docker_run() {
     fi
 }
 
-launch_miniclaw() {
+launch_kaizen() {
     # Ensure shared state directory exists for skill inter-container communication
-    mkdir -p "$HOME/.miniclaw"
+    mkdir -p "$HOME/.kaizen"
 
     if [ "$DOCKER_USE_SG" = true ]; then
         local quoted=(".venv/bin/python3" "main.py")
@@ -135,7 +135,7 @@ install_system_deps() {
     ok "system dependencies installed"
 }
 
-echo -e "\n${BOLD}MiniClaw${NC}"
+echo -e "\n${BOLD}Kaizen${NC}"
 echo "──────────────────────────────"
 
 if [ "$INSTALL_SYSTEM_DEPS" = true ]; then
@@ -231,12 +231,12 @@ fi
 # Base image must be built first — skill containers depend on it
 
 if [ "$DOCKER_READY" = true ]; then
-    if docker_run image inspect miniclaw/base:latest &>/dev/null 2>&1; then
-        ok "miniclaw/base:latest"
+    if docker_run image inspect kaizen/base:latest &>/dev/null 2>&1; then
+        ok "kaizen/base:latest"
     else
-        echo "  Building miniclaw/base:latest..."
-        docker_run build -t miniclaw/base:latest containers/base/ -q
-        ok "miniclaw/base:latest (built)"
+        echo "  Building kaizen/base:latest..."
+        docker_run build -t kaizen/base:latest containers/base/ -q
+        ok "kaizen/base:latest (built)"
     fi
 
     # Auto-discover all skill containers (any skills/<name>/scripts/Dockerfile)
@@ -246,7 +246,7 @@ if [ "$DOCKER_READY" = true ]; then
         skill_dir="$(dirname "$dir")"
         name="$(basename "$skill_dir")"
 
-        image="miniclaw/${name}:latest"
+        image="kaizen/${name}:latest"
 
         if docker_run image inspect "$image" &>/dev/null 2>&1; then
             ok "$image"
@@ -262,4 +262,4 @@ fi
 
 echo "──────────────────────────────"
 
-launch_miniclaw
+launch_kaizen

@@ -6,7 +6,7 @@
 
 ## Goal
 
-When a deterministic-tier voice command lands on a music-control transport success ("pause", "resume", "skip", "volume up/down", "stop"), MiniClaw should play a short chime instead of speaking "Paused." / "Resumed." / etc. Errors and clarifications stay spoken.
+When a deterministic-tier voice command lands on a music-control transport success ("pause", "resume", "skip", "volume up/down", "stop"), Kaizen should play a short chime instead of speaking "Paused." / "Resumed." / etc. Errors and clarifications stay spoken.
 
 ## Background
 

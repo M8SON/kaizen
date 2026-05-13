@@ -133,8 +133,8 @@ class ContainerManagerTests(unittest.TestCase):
                 self.started = True
 
         with tempfile.TemporaryDirectory() as tmp:
-            miniclaw_home = Path(tmp)
-            dashboard_lock = miniclaw_home / "dashboard.lock"
+            kaizen_home = Path(tmp)
+            dashboard_lock = kaizen_home / "dashboard.lock"
             captured = {}
 
             def fake_run(cmd, capture_output=False, text=False, timeout=None):
@@ -157,7 +157,7 @@ class ContainerManagerTests(unittest.TestCase):
                         return b""
                 return Response()
 
-            with patch("core.container_manager.Path.home", return_value=miniclaw_home), \
+            with patch("core.container_manager.Path.home", return_value=kaizen_home), \
                  patch("core.container_manager.DASHBOARD_LOCK", dashboard_lock), \
                  patch("core.container_manager.subprocess.run", side_effect=fake_run), \
                  patch("core.container_manager.subprocess.Popen", return_value=DummyProcess()), \
@@ -180,8 +180,8 @@ class ContainerManagerTests(unittest.TestCase):
         manager.docker_available = True
 
         with tempfile.TemporaryDirectory() as tmp:
-            miniclaw_home = Path(tmp)
-            dashboard_lock = miniclaw_home / "dashboard.lock"
+            kaizen_home = Path(tmp)
+            dashboard_lock = kaizen_home / "dashboard.lock"
             dashboard_lock.write_text(
                 json.dumps({"chromium_pid": 4321, "container_id": "container123", "port": 7860}),
                 encoding="utf-8",
@@ -192,7 +192,7 @@ class ContainerManagerTests(unittest.TestCase):
                 self.assertEqual(sig, 0)
                 return None
 
-            with patch("core.container_manager.Path.home", return_value=miniclaw_home), \
+            with patch("core.container_manager.Path.home", return_value=kaizen_home), \
                  patch("core.container_manager.DASHBOARD_LOCK", dashboard_lock), \
                  patch("core.container_manager.os.kill", side_effect=fake_kill), \
                  patch("core.container_manager.urllib.request.urlopen", side_effect=RuntimeError("refresh unavailable")), \
@@ -235,8 +235,8 @@ class ContainerManagerTests(unittest.TestCase):
         manager._dashboard_timer = existing_timer
 
         with tempfile.TemporaryDirectory() as tmp:
-            miniclaw_home = Path(tmp)
-            dashboard_lock = miniclaw_home / "dashboard.lock"
+            kaizen_home = Path(tmp)
+            dashboard_lock = kaizen_home / "dashboard.lock"
             dashboard_lock.write_text(
                 json.dumps({"chromium_pid": 4321, "container_id": "container123", "port": 7860}),
                 encoding="utf-8",
@@ -255,7 +255,7 @@ class ContainerManagerTests(unittest.TestCase):
                         return b""
                 return Response()
 
-            with patch("core.container_manager.Path.home", return_value=miniclaw_home), \
+            with patch("core.container_manager.Path.home", return_value=kaizen_home), \
                  patch("core.container_manager.DASHBOARD_LOCK", dashboard_lock), \
                  patch("core.container_manager.os.kill", side_effect=fake_kill), \
                  patch("core.container_manager.urllib.request.urlopen", side_effect=fake_urlopen), \
@@ -325,8 +325,8 @@ class ContainerManagerTests(unittest.TestCase):
                 self.started = True
 
         with tempfile.TemporaryDirectory() as tmp:
-            miniclaw_home = Path(tmp)
-            dashboard_lock = miniclaw_home / "dashboard.lock"
+            kaizen_home = Path(tmp)
+            dashboard_lock = kaizen_home / "dashboard.lock"
             captured = {}
 
             def fake_run(cmd, capture_output=False, text=False, timeout=None):
@@ -349,7 +349,7 @@ class ContainerManagerTests(unittest.TestCase):
                         return b""
                 return Response()
 
-            with patch("core.container_manager.Path.home", return_value=miniclaw_home), \
+            with patch("core.container_manager.Path.home", return_value=kaizen_home), \
                  patch("core.container_manager.DASHBOARD_LOCK", dashboard_lock), \
                  patch("core.container_manager.resolve_location", return_value="Denver,CO"), \
                  patch("core.container_manager.subprocess.run", side_effect=fake_run), \

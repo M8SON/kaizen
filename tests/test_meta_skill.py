@@ -45,11 +45,11 @@ class MetaSkillExecutorTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 (skill_dir / "config.yaml").write_text(
-                    "image: miniclaw/demo-skill:latest\nenv_passthrough:\n  - DEMO_KEY\n",
+                    "image: kaizen/demo-skill:latest\nenv_passthrough:\n  - DEMO_KEY\n",
                     encoding="utf-8",
                 )
                 (container_dir / "Dockerfile").write_text(
-                    "FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n",
+                    "FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n",
                     encoding="utf-8",
                 )
                 (container_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
@@ -85,11 +85,11 @@ class MetaSkillExecutorTests(unittest.TestCase):
                 (repo_root / "skills" / skill_name).mkdir()
                 (repo_root / "containers" / skill_name).mkdir()
                 (repo_root / "skills" / skill_name / "config.yaml").write_text(
-                    "image: miniclaw/demo:latest\n",
+                    "image: kaizen/demo:latest\n",
                     encoding="utf-8",
                 )
                 (repo_root / "containers" / skill_name / "Dockerfile").write_text(
-                    "FROM miniclaw/base:latest\n",
+                    "FROM kaizen/base:latest\n",
                     encoding="utf-8",
                 )
                 return True, "ok"

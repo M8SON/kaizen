@@ -6,7 +6,7 @@ UNIT_PATH = (
     Path(__file__).resolve().parent.parent
     / "config"
     / "systemd"
-    / "miniclaw.service"
+    / "kaizen.service"
 )
 
 
@@ -20,10 +20,10 @@ class SystemdUnitTests(unittest.TestCase):
         self.assertIn("Wants=network-online.target", self.text)
 
     def test_execstart_runs_run_sh_voice(self):
-        self.assertIn("ExecStart=%h/miniclaw/run.sh --voice", self.text)
+        self.assertIn("ExecStart=%h/kaizen/run.sh --voice", self.text)
 
     def test_working_directory_is_repo_root(self):
-        self.assertIn("WorkingDirectory=%h/miniclaw", self.text)
+        self.assertIn("WorkingDirectory=%h/kaizen", self.text)
 
     def test_restart_policy_is_on_failure_with_5s_delay(self):
         self.assertIn("Restart=on-failure", self.text)

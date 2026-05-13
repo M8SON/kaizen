@@ -1,4 +1,4 @@
-"""Tests for the miniclaw skill CLI."""
+"""Tests for the kaizen skill CLI."""
 
 import unittest
 from io import StringIO

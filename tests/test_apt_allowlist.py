@@ -23,7 +23,7 @@ class TestAptAllowlist(unittest.TestCase):
 
     def test_user_file_extends_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cfg_dir = Path(tmp) / ".miniclaw" / "config"
+            cfg_dir = Path(tmp) / ".kaizen" / "config"
             cfg_dir.mkdir(parents=True)
             (cfg_dir / "apt-allowlist.txt").write_text("wget\nlibssl-dev\n# comment\n\n")
             with patch.dict(os.environ, {"HOME": tmp}):

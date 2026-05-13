@@ -1,5 +1,5 @@
 """
-Meta Skill Executor — allows users to install new MiniClaw skills by voice.
+Meta Skill Executor — allows users to install new Kaizen skills by voice.
 
 Claude Code runs as a restricted subprocess (no Docker socket, no core file access)
 and writes skill files into skills/<name>/ and containers/<name>/ only.
@@ -84,7 +84,7 @@ class MetaSkillExecutor:
             def reload(self):
                 self.orch.reload_skills()
 
-        install_root = _Path.home() / ".miniclaw" / TIER_IMPORTED
+        install_root = _Path.home() / ".kaizen" / TIER_IMPORTED
         install_root.mkdir(parents=True, exist_ok=True)
         pipeline = InstallPipeline(
             confirmer=VoiceConfirmer(),
@@ -181,7 +181,7 @@ class MetaSkillExecutor:
         if not self._confirm("confirm restart"):
             return (
                 f"Skill {spoken_name} is installed but not yet active. "
-                f"Restart MiniClaw to load it."
+                f"Restart Kaizen to load it."
             )
 
         self.orchestrator.reload_skills()
@@ -252,10 +252,10 @@ def _run_claude_code(skill_name: str, description: str) -> tuple[bool, str]:
     Bash is excluded so Claude Code cannot run shell commands.
     The prompt explicitly restricts writes to skills/<name>/ and containers/<name>/.
     """
-    image_name = f"miniclaw/{skill_name.replace('_', '-')}:latest"
+    image_name = f"kaizen/{skill_name.replace('_', '-')}:latest"
 
     prompt = textwrap.dedent(f"""
-        You are implementing a new MiniClaw skill named '{skill_name}'.
+        You are implementing a new Kaizen skill named '{skill_name}'.
         The user wants: {description}
 
         First read CLAUDE.md to understand the project architecture.
@@ -272,7 +272,7 @@ def _run_claude_code(skill_name: str, description: str) -> tuple[bool, str]:
           containers/{skill_name}/app.py
 
         Rules you MUST follow:
-          - Dockerfile MUST start with: FROM miniclaw/base:latest
+          - Dockerfile MUST start with: FROM kaizen/base:latest
           - Only allowed Dockerfile instructions: FROM, RUN (pip install or apt-get only),
             COPY (local files only), WORKDIR, CMD, ENV
           - config.yaml must set image: {image_name}

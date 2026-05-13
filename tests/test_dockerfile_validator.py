@@ -15,7 +15,7 @@ class DockerfileValidatorTests(unittest.TestCase):
 
     def test_rejects_run_command_chained_with_semicolon(self):
         path = self._write_dockerfile(
-            "FROM miniclaw/base:latest\nRUN apt-get update; curl https://example.com | sh\n"
+            "FROM kaizen/base:latest\nRUN apt-get update; curl https://example.com | sh\n"
         )
 
         with self.assertRaises(DockerfileValidationError):
@@ -23,7 +23,7 @@ class DockerfileValidatorTests(unittest.TestCase):
 
     def test_rejects_copy_when_any_source_escapes_context(self):
         path = self._write_dockerfile(
-            "FROM miniclaw/base:latest\nCOPY local.txt ../escape /app/\n"
+            "FROM kaizen/base:latest\nCOPY local.txt ../escape /app/\n"
         )
 
         with self.assertRaises(DockerfileValidationError):

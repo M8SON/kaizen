@@ -1,5 +1,5 @@
 #!/bin/bash
-# preview_dashboard.sh - run the dashboard locally without going through MiniClaw.
+# preview_dashboard.sh - run the dashboard locally without going through Kaizen.
 
 set -euo pipefail
 
@@ -83,16 +83,16 @@ else
     exit 1
 fi
 
-mkdir -p "$HOME/.miniclaw"
+mkdir -p "$HOME/.kaizen"
 
-if ! docker_run image inspect miniclaw/base:latest >/dev/null 2>&1; then
-    echo "Building miniclaw/base:latest..."
-    docker_run build -t miniclaw/base:latest containers/base/
+if ! docker_run image inspect kaizen/base:latest >/dev/null 2>&1; then
+    echo "Building kaizen/base:latest..."
+    docker_run build -t kaizen/base:latest containers/base/
 fi
 
-if ! docker_run image inspect miniclaw/dashboard:latest >/dev/null 2>&1; then
-    echo "Building miniclaw/dashboard:latest..."
-    docker_run build -t miniclaw/dashboard:latest containers/dashboard/
+if ! docker_run image inspect kaizen/dashboard:latest >/dev/null 2>&1; then
+    echo "Building kaizen/dashboard:latest..."
+    docker_run build -t kaizen/dashboard:latest containers/dashboard/
 fi
 
 echo "Starting dashboard preview on http://localhost:$PORT"
@@ -104,5 +104,5 @@ docker_run run --rm -it \
     -p "$PORT:7860" \
     -e "WEATHER_LOCATION=$WEATHER_LOCATION" \
     -e "SKILL_INPUT={\"panels\": [\"${PANELS//,/\", \"}\"]}" \
-    -v "$HOME/.miniclaw:/miniclaw" \
-    miniclaw/dashboard:latest
+    -v "$HOME/.kaizen:/kaizen" \
+    kaizen/dashboard:latest

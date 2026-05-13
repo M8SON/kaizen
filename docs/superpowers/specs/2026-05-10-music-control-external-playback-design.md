@@ -6,7 +6,7 @@
 
 ## Goal
 
-When the user starts Spotify playback from their phone via Connect (tapping "MiniClaw" in the Spotify device picker) and then asks MiniClaw to control it ("turn the volume down", "pause", "skip"), MiniClaw should route the transport command to Spotify instead of returning "Nothing is playing."
+When the user starts Spotify playback from their phone via Connect (tapping "Kaizen" in the Spotify device picker) and then asks Kaizen to control it ("turn the volume down", "pause", "skip"), Kaizen should route the transport command to Spotify instead of returning "Nothing is playing."
 
 ## Background
 
@@ -18,13 +18,13 @@ if source is None:
     return "Nothing is playing."
 ```
 
-This early return is the bug — at this point, MiniClaw could ask Spotify whether *something* is playing on the pinned device.
+This early return is the bug — at this point, Kaizen could ask Spotify whether *something* is playing on the pinned device.
 
 ## Non-goals
 
-- Detecting playback that's not on the pinned MiniClaw device (e.g. user playing on phone speaker). Out of scope — they didn't ask MiniClaw to control phone audio.
-- Persisting `_active_music_source = "spotify"` after a successful probe. We re-probe each call (~200–500ms cost) so MiniClaw stays accurate when the user pauses from their phone mid-session.
-- A SoundCloud equivalent. SoundCloud playback can't start without MiniClaw initiating it, so the gate already covers SoundCloud correctly.
+- Detecting playback that's not on the pinned Kaizen device (e.g. user playing on phone speaker). Out of scope — they didn't ask Kaizen to control phone audio.
+- Persisting `_active_music_source = "spotify"` after a successful probe. We re-probe each call (~200–500ms cost) so Kaizen stays accurate when the user pauses from their phone mid-session.
+- A SoundCloud equivalent. SoundCloud playback can't start without Kaizen initiating it, so the gate already covers SoundCloud correctly.
 - Generalizing the probe beyond `_execute_music_control`. No other code path needs it today.
 
 ## Design
@@ -33,10 +33,10 @@ Add a helper:
 
 ```python
 def _detect_external_spotify_playback(self) -> str | None:
-    """Probe Spotify for active playback on the pinned MiniClaw device.
+    """Probe Spotify for active playback on the pinned Kaizen device.
 
     Returns 'spotify' if the user has phone-initiated playback running on
-    the device this MiniClaw owns. Returns None if Spotify isn't set up,
+    the device this Kaizen owns. Returns None if Spotify isn't set up,
     no playback is active, or playback is on a different device.
     """
     from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
@@ -107,6 +107,6 @@ None.
 
 ## Risks
 
-- **Latency cost on every "no active source" call.** ~200–500ms for the Spotify API round-trip. Only paid when `_active_music_source` is None — so MiniClaw-initiated playback (the common path) isn't affected.
+- **Latency cost on every "no active source" call.** ~200–500ms for the Spotify API round-trip. Only paid when `_active_music_source` is None — so Kaizen-initiated playback (the common path) isn't affected.
 - **Spotify API rate limits.** spotipy uses Spotify's app credentials; per-user rate limits are generous. A user spamming "turn it up" 50 times in a minute would still be well under limits.
 - **OAuth scope check.** Verified: `user-read-playback-state` is already in `core/spotify_auth.py:24-30`. No re-auth required.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MiniClaw - Main entry point
+Kaizen - Main entry point
 
 A modular, voice-controlled AI assistant designed for Raspberry Pi.
 Uses a skill-based architecture with Docker container execution.
@@ -19,7 +19,7 @@ import signal
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Early dispatch for `miniclaw skill <subcommand>`. Handled before loading
+# Early dispatch for `kaizen skill <subcommand>`. Handled before loading
 # the orchestrator stack so the CLI stays responsive and doesn't require
 # Anthropic credentials / audio / etc.
 if len(sys.argv) >= 2 and sys.argv[1] == "skill":
@@ -40,7 +40,7 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("miniclaw")
+logger = logging.getLogger("kaizen")
 
 
 def _print_loaded_skills(orchestrator):
@@ -153,7 +153,7 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     TTS_BACKEND=kokoro       — kokoro PyTorch package (default; works everywhere)
     TTS_BACKEND=kokoro-onnx  — kokoro-onnx (ONNX Runtime int8); ~2-3x faster
                                on Pi 5 ARM64 CPU. Requires model files at
-                               ~/.miniclaw/models/kokoro-onnx/ — fetch with
+                               ~/.kaizen/models/kokoro-onnx/ — fetch with
                                scripts/download_kokoro_onnx.py.
 
     Resolves the output device and its native sample rate up front so the
@@ -249,7 +249,7 @@ def run_voice_mode(orchestrator, voice=None):
     voice.play_startup_sound()
 
     print("\n" + "=" * 60)
-    print("  MiniClaw")
+    print("  Kaizen")
     print("=" * 60)
     print(f"\n  Wake word: '{wake_word}'")
     print("  Say 'goodbye' or 'stop' to exit.")
@@ -387,7 +387,7 @@ def run_voice_mode(orchestrator, voice=None):
 def run_text_mode(orchestrator):
     """Run the assistant in text-only mode (no microphone needed)."""
     print("\n" + "=" * 60)
-    print("  MiniClaw (Text Mode)")
+    print("  Kaizen (Text Mode)")
     print("=" * 60)
 
     _print_loaded_skills(orchestrator)
@@ -454,7 +454,7 @@ def list_skills(orchestrator):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MiniClaw")
+    parser = argparse.ArgumentParser(description="Kaizen")
     parser.add_argument(
         "--text", action="store_true", help="Run in text-only mode"
     )
@@ -484,7 +484,7 @@ def main():
     # Build skill search paths
     skill_paths = [
         Path("./skills"),
-        Path.home() / ".miniclaw" / "skills",
+        Path.home() / ".kaizen" / "skills",
     ]
     if args.skills_dir:
         skill_paths.insert(0, Path(args.skills_dir))
@@ -514,10 +514,10 @@ def main():
     orchestrator.container_manager._skill_loader_for_self_update = orchestrator.skill_loader
 
     # --- scheduler wiring ---
-    schedules_path = Path.home() / ".miniclaw" / "schedules.yaml"
+    schedules_path = Path.home() / ".kaizen" / "schedules.yaml"
     schedules_store = SchedulesStore(schedules_path)
     orchestrator.container_manager._schedules_store = schedules_store
-    orchestrator.scheduler_log_path = Path.home() / ".miniclaw" / "scheduler.log"
+    orchestrator.scheduler_log_path = Path.home() / ".kaizen" / "scheduler.log"
 
     # Mutable flag read by the orchestrator to downgrade immediate fires while a
     # conversation is active. Toggled in run_voice_mode around each session.

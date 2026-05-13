@@ -6,7 +6,7 @@
 
 ## Goal
 
-MiniClaw skills become agentskills.io-spec-compliant, so they drop into Claude Code, Cursor, OpenCode, Goose, and other spec-compatible agents without modification. MiniClaw also accepts community skills from the agentskills.io ecosystem and OpenClaw-style sources, running them sandboxed through a single install pipeline.
+Kaizen skills become agentskills.io-spec-compliant, so they drop into Claude Code, Cursor, OpenCode, Goose, and other spec-compatible agents without modification. Kaizen also accepts community skills from the agentskills.io ecosystem and OpenClaw-style sources, running them sandboxed through a single install pipeline.
 
 Bidirectional compatibility — publishing and consumption — is the goal. OpenClaw compatibility falls out for free because OpenClaw uses the same `metadata.<vendor>.*` extension pattern the agentskills.io spec defines.
 
@@ -24,7 +24,7 @@ Single-directory skills. The top-level `containers/` tree is deleted.
 ```
 <skill-name>/
   SKILL.md              # frontmatter + instructions (agentskills.io-spec)
-  config.yaml           # MiniClaw execution config (optional; sibling file)
+  config.yaml           # Kaizen execution config (optional; sibling file)
   scripts/
     app.py              # container entrypoint (was containers/<name>/app.py)
     Dockerfile          # was containers/<name>/Dockerfile
@@ -45,9 +45,9 @@ Trust tier equals the directory a skill was loaded from. Policy is applied by th
 
 ```
 skills/                         # bundled  — full trust; native execution allowed
-~/.miniclaw/authored/           # authored — voice-installed via install_skill;
+~/.kaizen/authored/           # authored — voice-installed via install_skill;
                                 #            Docker-only; Dockerfile allowlist
-~/.miniclaw/imported/           # imported — community-sourced;
+~/.kaizen/imported/           # imported — community-sourced;
                                 #            Docker-only; allowlist + config clamps
 ```
 
@@ -65,7 +65,7 @@ description: Search the web using Brave Search. Use when the user asks for
 license: MIT                           # optional (spec field)
 compatibility: Requires network access and BRAVE_API_KEY.   # optional (spec field)
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env: [BRAVE_API_KEY]
       bins: [curl]
@@ -80,12 +80,12 @@ metadata:
 - `description`: 1–1024 chars, non-empty.
 - `license`, `compatibility`, `metadata` (spec fields): validated shape only; stored as-is.
 - `allowed-tools`: **ignored outright**. The field is experimental in the spec and honoring it would permit frontmatter-based privilege escalation.
-- `requires`: read from `metadata.miniclaw.requires` only. Old top-level `requires:` is not accepted — clean break per migration decision.
+- `requires`: read from `metadata.kaizen.requires` only. Old top-level `requires:` is not accepted — clean break per migration decision.
 - Unknown frontmatter keys log a warning; they do not fail the load (forward-compat with spec evolution).
 
 ### Body
 
-No structural change. `## Inputs`/`## Parameters`/`## Input Schema` extraction in `SkillValidator.extract_input_schema` is preserved. The spec does not define input schemas, so this remains a spec-legal MiniClaw extension.
+No structural change. `## Inputs`/`## Parameters`/`## Input Schema` extraction in `SkillValidator.extract_input_schema` is preserved. The spec does not define input schemas, so this remains a spec-legal Kaizen extension.
 
 ## `config.yaml` — per-tier policy
 
@@ -93,7 +93,7 @@ Sibling file. Shape unchanged for bundled; new enforcement kicks in per tier via
 
 ```yaml
 type: docker                  # docker | native  (native only honored for bundled)
-image: miniclaw/web-search:latest
+image: kaizen/web-search:latest
 env_passthrough: [BRAVE_API_KEY]
 timeout_seconds: 15
 memory: 256m
@@ -119,9 +119,9 @@ volumes: []
 
 **Device allowlist:** `/dev/snd`, `/dev/video0`, `/dev/video1`, `/dev/i2c-*`, `/dev/gpiomem`. Anything else rejected.
 
-**Skill-scoped volumes:** host-side path must resolve under `~/.miniclaw/<skill-name>/`. Mounts like `~:/host` or `/:/rootfs` rejected.
+**Skill-scoped volumes:** host-side path must resolve under `~/.kaizen/<skill-name>/`. Mounts like `~:/host` or `/:/rootfs` rejected.
 
-**env_passthrough gate:** on first run of an authored or imported skill, MiniClaw speaks (or prints) the env var list and requires explicit confirmation (`confirm passthrough` by voice, `y/N` by text). The confirmed list is recorded in `.install.json`. Re-prompt only if the skill's config changes on disk.
+**env_passthrough gate:** on first run of an authored or imported skill, Kaizen speaks (or prints) the env var list and requires explicit confirmation (`confirm passthrough` by voice, `y/N` by text). The confirmed list is recorded in `.install.json`. Re-prompt only if the skill's config changes on disk.
 
 **Credential-pattern warning:** `env_passthrough` values matching `*_SECRET`, `*_TOKEN`, `*_KEY`, or `ANTHROPIC_API_KEY` trigger an additional confirmation prompt even inside the normal passthrough gate. Not a hard block — users may legitimately want to grant `OPENWEATHER_API_KEY` — but an extra step.
 
@@ -129,11 +129,11 @@ Clamps + allowlists are applied at both install time (reject the install) and lo
 
 ## Dockerfile validator (generalized)
 
-`core/dockerfile_validator.py` is generalized to a per-tier allowlist. It is invoked from every non-bundled skill load path: the existing `install_skill` voice flow, the new `miniclaw skill install` CLI, and `SkillLoader._load_skill` for any skill in `authored/` or `imported/` (defense in depth against manual file edits).
+`core/dockerfile_validator.py` is generalized to a per-tier allowlist. It is invoked from every non-bundled skill load path: the existing `install_skill` voice flow, the new `kaizen skill install` CLI, and `SkillLoader._load_skill` for any skill in `authored/` or `imported/` (defense in depth against manual file edits).
 
 | Instruction                   | bundled | authored                   | imported                                         |
 | ----------------------------- | ------- | -------------------------- | ------------------------------------------------ |
-| `FROM miniclaw/base:latest`   | yes     | required                   | required                                         |
+| `FROM kaizen/base:latest`   | yes     | required                   | required                                         |
 | `FROM` anything else          | yes     | no                         | no                                               |
 | `RUN pip install <pkg>`       | yes     | yes                        | yes; no `--index-url` or `--extra-index-url`     |
 | `RUN apt-get install <pkg>`   | yes     | yes                        | yes; apt allowlist (see below)                   |
@@ -146,7 +146,7 @@ Clamps + allowlists are applied at both install time (reject the install) and lo
 | `EXPOSE`                      | yes     | no-op                      | no-op                                            |
 | `VOLUME`                      | yes     | no (use config.yaml)       | no (use config.yaml)                             |
 
-**apt-get allowlist (imported tier):** `curl`, `ca-certificates`, `git`, `jq`, `ffmpeg`, `libsndfile1`, `espeak-ng`. Users can extend the allowlist by editing `~/.miniclaw/config/apt-allowlist.txt` — a deliberate, keyboard-only trust decision.
+**apt-get allowlist (imported tier):** `curl`, `ca-certificates`, `git`, `jq`, `ffmpeg`, `libsndfile1`, `espeak-ng`. Users can extend the allowlist by editing `~/.kaizen/config/apt-allowlist.txt` — a deliberate, keyboard-only trust decision.
 
 Bundled skills are exempt from Dockerfile validation. They live in git; their provenance is code review.
 
@@ -166,12 +166,12 @@ A single pipeline services voice, CLI, and (future) mobile entry points. Voice a
                  Gate style matches invocation mode (spoken for voice, y/N for CLI).
 6. Install     — strip any .install.json the staging dir shipped (prevents a
                  malicious skill from claiming pre-confirmed passthrough or
-                 trusted provenance). Move staging → ~/.miniclaw/<tier>/<name>/
+                 trusted provenance). Move staging → ~/.kaizen/<tier>/<name>/
                  then write a fresh .install.json with
                  {source, sha256, installed_at, user_confirmed_env_passthrough}.
                  The tier is never written into this file — it is inferred by
                  the loader from the install directory.
-7. Build       — docker build -t miniclaw/<name>:latest <skill>/scripts/
+7. Build       — docker build -t kaizen/<name>:latest <skill>/scripts/
                  invoked via scripts/build_new_skill.sh on the host.
                  Pipeline never touches the Docker socket directly from a
                  restricted subprocess context.
@@ -183,14 +183,14 @@ This pipeline reuses all of `meta_skill.py`'s existing scaffolding: three-gate p
 ### New CLI surface
 
 ```
-miniclaw skill install <url|path> [--tier imported|authored]
-miniclaw skill uninstall <name>
-miniclaw skill list [--tier bundled|authored|imported]
-miniclaw skill validate <path>      # dry-run validation, no install
-miniclaw skill dev <path>           # dev-mode bind-mount / symlink
+kaizen skill install <url|path> [--tier imported|authored]
+kaizen skill uninstall <name>
+kaizen skill list [--tier bundled|authored|imported]
+kaizen skill validate <path>      # dry-run validation, no install
+kaizen skill dev <path>           # dev-mode bind-mount / symlink
 ```
 
-Implemented in a thin wrapper module invoked from `main.py` (subcommand dispatch) or a dedicated `scripts/miniclaw-skill.py`. Decide at implementation time.
+Implemented in a thin wrapper module invoked from `main.py` (subcommand dispatch) or a dedicated `scripts/kaizen-skill.py`. Decide at implementation time.
 
 ## Voice ergonomics
 
@@ -203,29 +203,29 @@ Voice-in-scope — flows through the same install pipeline with spoken gates:
 
 Voice-out-of-scope — keyboard-only, because "mis-hearing" would widen attack surface materially:
 
-- Extending `~/.miniclaw/config/apt-allowlist.txt`.
+- Extending `~/.kaizen/config/apt-allowlist.txt`.
 - Promoting a skill between trust tiers (requires `mv` on the filesystem).
-- `MINICLAW_SKILL_STRICT=false` and other master switches. Logged loudly at startup when set.
-- `miniclaw skill dev <path>` — dev-mode entry.
-- Granting devices or volumes outside the default allowlist (edit `~/.miniclaw/config/device-allowlist.txt` / `volume-allowlist.txt`).
+- `KAIZEN_SKILL_STRICT=false` and other master switches. Logged loudly at startup when set.
+- `kaizen skill dev <path>` — dev-mode entry.
+- Granting devices or volumes outside the default allowlist (edit `~/.kaizen/config/device-allowlist.txt` / `volume-allowlist.txt`).
 
 Text-mode parity: every voice gate has a `y/N` equivalent on the terminal. Nothing is voice-only.
 
 ## Dev mode
 
-`miniclaw skill dev <path>`:
+`kaizen skill dev <path>`:
 
 1. Validate path contains `SKILL.md` + `config.yaml`.
-2. Create symlink `~/.miniclaw/imported/<name>` → `<path>` (or bind-mount on systems without symlink support).
+2. Create symlink `~/.kaizen/imported/<name>` → `<path>` (or bind-mount on systems without symlink support).
 3. Do not write `.install.json`. Dev mode is identified by the loader via symlink detection on the skill directory itself — unspoofable by skill content.
 4. Loader detects the symlink and skips Dockerfile allowlist + config clamps.
 5. On every load, log `SKILL <name> IN DEV MODE — security validations bypassed`.
 
-Dev mode still runs **structural validation** (name format, frontmatter required fields, parent-dir match). The escape hatch is only for security clamps, not correctness checks. Exiting dev mode is `miniclaw skill install <path>`, which removes the symlink and runs the real pipeline to install the skill normally.
+Dev mode still runs **structural validation** (name format, frontmatter required fields, parent-dir match). The escape hatch is only for security clamps, not correctness checks. Exiting dev mode is `kaizen skill install <path>`, which removes the symlink and runs the real pipeline to install the skill normally.
 
 ## Self-updating skills — scaffolding for roadmap #4
 
-The frontmatter field `metadata.miniclaw.self_update.allow_body: true` is reserved, recognized by the validator, and otherwise inert in this iteration.
+The frontmatter field `metadata.kaizen.self_update.allow_body: true` is reserved, recognized by the validator, and otherwise inert in this iteration.
 
 When roadmap item #4 lands, a new native skill (tentatively `update_skill_hints`) will accept `{skill_name, new_body_markdown}` and rewrite only the SKILL.md body, after validating:
 
@@ -272,22 +272,22 @@ containers/web_search/            scripts/
 
 ### Frontmatter migration
 
-Per skill: move top-level `requires:` into `metadata.miniclaw.requires:`. Descriptions already fit the 1024-char limit.
+Per skill: move top-level `requires:` into `metadata.kaizen.requires:`. Descriptions already fit the 1024-char limit.
 
 ### Code-side touch points
 
 - `core/container_manager._execute_native_skill` — dispatch dict keys updated: `install_skill` → `install-skill`, `save_memory` → `save-memory`, `set_env_var` → `set-env-var`, `recall_session` → `recall-session`. `dashboard` unchanged.
-- `core/skill_loader.DEFAULT_SEARCH_PATHS` — replace `~/.miniclaw/skills` with `~/.miniclaw/authored` + `~/.miniclaw/imported`. Bundled `./skills` path unchanged.
+- `core/skill_loader.DEFAULT_SEARCH_PATHS` — replace `~/.kaizen/skills` with `~/.kaizen/authored` + `~/.kaizen/imported`. Bundled `./skills` path unchanged.
 - `run.sh` auto-discovery — `containers/*/Dockerfile` → `skills/*/scripts/Dockerfile`.
 - `scripts/port-skill.py` — emits new layout; renamed to `scripts/port-openclaw-skill.py` for clarity.
-- Docker image tags (`miniclaw/web-search:latest` etc.) already kebab-case; no change.
+- Docker image tags (`kaizen/web-search:latest` etc.) already kebab-case; no change.
 - `CLAUDE.md` — rewrite the skill list and "Skill Structure" section to the new layout.
 - `WORKING_MEMORY.md` — append migration note under the Hermes roadmap item.
 
 ### Unaffected
 
-- `~/.miniclaw/memory/` — content-addressed, no skill-name dependency.
-- `~/.miniclaw/sessions.db` — FTS5 search is over user/assistant/tool bodies, not the tool name column; BM25 ranking is unaffected. No reindex needed. Pre-migration rows keep the old snake_case names in the `tool_name` column; this is a historical record, not a live index.
+- `~/.kaizen/memory/` — content-addressed, no skill-name dependency.
+- `~/.kaizen/sessions.db` — FTS5 search is over user/assistant/tool bodies, not the tool name column; BM25 ranking is unaffected. No reindex needed. Pre-migration rows keep the old snake_case names in the `tool_name` column; this is a historical record, not a live index.
 - `.env` — no skill names referenced.
 
 ### Migration script
@@ -298,7 +298,7 @@ Per skill: move top-level `requires:` into `metadata.miniclaw.requires:`. Descri
 
 ### Unit tests
 
-- `test_skill_validator.py` — frontmatter name regex, description length, tier-aware `validate_execution_config`, `metadata.miniclaw.requires` parsing, unknown-frontmatter warning, parent-dir name match.
+- `test_skill_validator.py` — frontmatter name regex, description length, tier-aware `validate_execution_config`, `metadata.kaizen.requires` parsing, unknown-frontmatter warning, parent-dir name match.
 - `test_dockerfile_validator.py` — per-tier allowlist cases: reject arbitrary `FROM`/`RUN`/`COPY --from`/`ADD`; accept only allowlisted apt packages on imported tier.
 - `test_skill_loader.py` — three-search-path precedence, per-tier policy application, `.install.json` sidecar read, dev-mode symlink handling, cross-tier name collision rejection.
 - `test_install_pipeline.py` — fetch → validate → confirm → install → build → reload happy path, plus one case per rejection branch (bad name, bad Dockerfile, volume escape, env_passthrough credential-pattern block, name collision, memory clamp, timeout clamp).
@@ -308,7 +308,7 @@ Per skill: move top-level `requires:` into `metadata.miniclaw.requires:`. Descri
 
 - Install a known-good agentskills.io-format fixture end-to-end against a real Docker daemon; assert it loads, responds, tears down cleanly.
 - Install a known-bad fixture (one per security rule); assert rejection with the correct reason.
-- Dev-mode round-trip: `miniclaw skill dev` → edit SKILL.md → reload picks up changes without re-validation.
+- Dev-mode round-trip: `kaizen skill dev` → edit SKILL.md → reload picks up changes without re-validation.
 
 ## Rollout
 
@@ -324,6 +324,6 @@ Single PR, merged after tests green. Recommended commit ordering:
 
 - **Voice-only install** — the end goal is an Alexa-like voice-only experience. CLI stays in scope this iteration for dev ergonomics; the pipeline is entry-point-agnostic so voice-only install can harden later by removing CLI paths if desired.
 - **Mobile install** — an HTTP entry point can dispatch into the same pipeline. No architectural change needed.
-- **Registry discovery** — if agentskills.io publishes a searchable registry API, a new `miniclaw skill search <query>` subcommand plugs in ahead of step 1 of the install pipeline.
+- **Registry discovery** — if agentskills.io publishes a searchable registry API, a new `kaizen skill search <query>` subcommand plugs in ahead of step 1 of the install pipeline.
 - **Skill signing** — when a mature standard exists in the ecosystem, verify signatures in step 3 before validation.
-- **Self-improving skills (roadmap #4)** — the `metadata.miniclaw.self_update.allow_body` scaffolding is already in place.
+- **Self-improving skills (roadmap #4)** — the `metadata.kaizen.self_update.allow_body` scaffolding is already in place.

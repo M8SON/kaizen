@@ -1,5 +1,5 @@
 """
-TierRouter - Fast pre-LLM routing for MiniClaw's tiered intelligence system.
+TierRouter - Fast pre-LLM routing for Kaizen's tiered intelligence system.
 
 Classifies each STT transcript as direct | micro | claude in <5ms before
 any LLM is invoked. Checked in order:

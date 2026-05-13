@@ -4,7 +4,7 @@
 
 **Goal:** Add opt-in, low-overhead per-stage timing to the voice pipeline that emits one greppable `[TIMING-SUMMARY]` log line per turn, so we can identify the real latency bottlenecks before designing fixes.
 
-**Architecture:** A small `core/profiling.py` exposes two context managers — `turn()` opens a per-turn scope (a `ContextVar[dict]`) that collects stage durations and logs the summary on exit, and `stage(name)` measures a single block. Both are no-ops when `MINICLAW_PROFILE` is not `true`. Call sites in `voice.py`, `tier_router.py`, `orchestrator.py`, `ollama_tool_loop.py`, and `container_manager.py` wrap their work in `stage(...)`. `main.py` (voice loop) and `orchestrator.process_message` open the `turn()` scope.
+**Architecture:** A small `core/profiling.py` exposes two context managers — `turn()` opens a per-turn scope (a `ContextVar[dict]`) that collects stage durations and logs the summary on exit, and `stage(name)` measures a single block. Both are no-ops when `KAIZEN_PROFILE` is not `true`. Call sites in `voice.py`, `tier_router.py`, `orchestrator.py`, `ollama_tool_loop.py`, and `container_manager.py` wrap their work in `stage(...)`. `main.py` (voice loop) and `orchestrator.process_message` open the `turn()` scope.
 
 **Tech Stack:** Python 3.12, `contextvars.ContextVar`, `time.perf_counter`, stdlib `logging`, pytest.
 
@@ -44,7 +44,7 @@ from core import profiling
 
 
 def test_disabled_by_default(monkeypatch, caplog):
-    monkeypatch.delenv("MINICLAW_PROFILE", raising=False)
+    monkeypatch.delenv("KAIZEN_PROFILE", raising=False)
     profiling._refresh_enabled()  # re-read env after monkeypatch
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -54,7 +54,7 @@ def test_disabled_by_default(monkeypatch, caplog):
 
 
 def test_records_stage_when_enabled(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -65,7 +65,7 @@ def test_records_stage_when_enabled(monkeypatch, caplog):
 
 
 def test_repeat_stage_is_suffixed(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -81,7 +81,7 @@ def test_repeat_stage_is_suffixed(monkeypatch, caplog):
 
 
 def test_stage_outside_turn_is_silent(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.stage("orphan"):
@@ -91,7 +91,7 @@ def test_stage_outside_turn_is_silent(monkeypatch, caplog):
 
 
 def test_empty_turn_emits_no_line(monkeypatch, caplog):
-    monkeypatch.setenv("MINICLAW_PROFILE", "true")
+    monkeypatch.setenv("KAIZEN_PROFILE", "true")
     profiling._refresh_enabled()
     with caplog.at_level(logging.INFO, logger="core.profiling"):
         with profiling.turn():
@@ -110,7 +110,7 @@ Expected: FAIL — `core.profiling` module does not exist (`ModuleNotFoundError`
 """
 Per-turn stage timing for the voice pipeline.
 
-Gated by MINICLAW_PROFILE=true. When disabled, both context managers are
+Gated by KAIZEN_PROFILE=true. When disabled, both context managers are
 true no-ops and add zero measurable overhead. When enabled, each turn
 emits a single INFO log line of the form:
 
@@ -132,10 +132,10 @@ _current_turn: ContextVar["dict[str, int] | None"] = ContextVar(
 
 
 def _refresh_enabled() -> None:
-    """Re-read MINICLAW_PROFILE from the environment. Called at import
+    """Re-read KAIZEN_PROFILE from the environment. Called at import
     time and exposed so tests can flip the flag via monkeypatch."""
     global _enabled
-    _enabled = os.environ.get("MINICLAW_PROFILE", "").strip().lower() == "true"
+    _enabled = os.environ.get("KAIZEN_PROFILE", "").strip().lower() == "true"
 
 
 _refresh_enabled()
@@ -192,7 +192,7 @@ git add core/profiling.py tests/test_profiling.py
 git commit -m "feat(profiling): per-turn stage timer module
 
 Adds core/profiling.turn() and core/profiling.stage() context
-managers gated by MINICLAW_PROFILE=true. No-ops when disabled."
+managers gated by KAIZEN_PROFILE=true. No-ops when disabled."
 ```
 
 ---
@@ -569,18 +569,18 @@ rsync -av --relative \
   core/container_manager.py \
   main.py \
   tests/test_profiling.py \
-  pi:/home/archimedes/miniclaw/
+  pi:/home/archimedes/kaizen/
 ```
 
 - [ ] **Step 2: Enable profiling on the Pi**
 
 ```bash
-ssh pi 'echo "MINICLAW_PROFILE=true" >> ~/miniclaw/.env'
+ssh pi 'echo "KAIZEN_PROFILE=true" >> ~/kaizen/.env'
 ```
 
-- [ ] **Step 3: Restart MiniClaw on the Pi (per current run procedure)**
+- [ ] **Step 3: Restart Kaizen on the Pi (per current run procedure)**
 
-If MiniClaw is running under systemd or a tmux session, restart it. If running manually: kill and rerun `./run.sh --voice`.
+If Kaizen is running under systemd or a tmux session, restart it. If running manually: kill and rerun `./run.sh --voice`.
 
 - [ ] **Step 4: Run three voice turns**
 
@@ -591,8 +591,8 @@ If MiniClaw is running under systemd or a tmux session, restart it. If running m
 - [ ] **Step 5: Read back the three summary lines**
 
 ```bash
-ssh pi 'tail -n 200 ~/miniclaw/miniclaw.log | grep TIMING-SUMMARY'
-# (or wherever logs go — check `journalctl --user -u miniclaw` if systemd)
+ssh pi 'tail -n 200 ~/kaizen/kaizen.log | grep TIMING-SUMMARY'
+# (or wherever logs go — check `journalctl --user -u kaizen` if systemd)
 ```
 
 Paste the three lines into the next conversation. They become the input to the follow-up brainstorm on actual fixes.

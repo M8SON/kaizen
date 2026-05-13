@@ -7,7 +7,7 @@
 
 ## Motivation
 
-MiniClaw today is reactive — it waits for a wake word, responds, goes quiet. A home assistant should also be *proactive*: morning briefings, hourly dashboard refreshes, daily logs. Hermes Agent ships a natural-language cron scheduler and it's the feature that most obviously maps onto MiniClaw's voice + native-skill model.
+Kaizen today is reactive — it waits for a wake word, responds, goes quiet. A home assistant should also be *proactive*: morning briefings, hourly dashboard refreshes, daily logs. Hermes Agent ships a natural-language cron scheduler and it's the feature that most obviously maps onto Kaizen's voice + native-skill model.
 
 ## Goals
 
@@ -20,7 +20,7 @@ MiniClaw today is reactive — it waits for a wake word, responds, goes quiet. A
 
 - Not a medical-grade reminder system. Missed fires are skipped silently (see §5).
 - Not a task queue for one-shot delayed jobs (no "remind me in 10 minutes"). Recurring cron only. One-shots can come later as a separate skill if demanded.
-- Not distributed. Single-process, single-host, matches MiniClaw's Pi deployment model.
+- Not distributed. Single-process, single-host, matches Kaizen's Pi deployment model.
 - Not user-facing cron syntax. Users speak natural language; Claude translates to cron at creation time.
 
 ## Architecture
@@ -30,7 +30,7 @@ MiniClaw today is reactive — it waits for a wake word, responds, goes quiet. A
 │ main.py                                                 │
 │ ├─ voice loop (existing)                                │
 │ └─ SchedulerThread (new, daemon thread)                 │
-│     ├─ reads ~/.miniclaw/schedules.yaml on start        │
+│     ├─ reads ~/.kaizen/schedules.yaml on start        │
 │     ├─ every 30s: mtime check + compute due schedules   │
 │     └─ on fire → enqueues ScheduledFire                 │
 │                                                         │
@@ -85,7 +85,7 @@ The cost of a Claude round-trip per fire is mitigated by the existing `TierRoute
 
 ## Storage
 
-Single YAML file: `~/.miniclaw/schedules.yaml` (same root as the memory vault, Obsidian-friendly).
+Single YAML file: `~/.kaizen/schedules.yaml` (same root as the memory vault, Obsidian-friendly).
 
 ```yaml
 schedules:
@@ -151,7 +151,7 @@ Three values for `delivery`:
 |---|---|---|---|
 | `immediate` | Speak via TTS | Downgrade to `next_wake` | Queue, speak after current TTS completes |
 | `next_wake` | Append to `pending_next_wake_announcements` | Append | Append |
-| `silent` | Write to `~/.miniclaw/scheduler.log` | Same | Same |
+| `silent` | Write to `~/.kaizen/scheduler.log` | Same | Same |
 
 **Concurrency rule:** if the orchestrator detects an active conversation session (i.e., within `CONVERSATION_IDLE_TIMEOUT`), `immediate` downgrades to `next_wake` automatically. This preserves the "never interrupt" guarantee without user configuration.
 
@@ -229,7 +229,7 @@ Voice loop integration (`main.py`): between each wake/listen iteration, drain an
 | Clock skew / NTP jump | `croniter.get_next()` handles it. Worst case: one delayed or skipped fire. |
 | Schedule cap exceeded (>50) | Skill returns `{"status": "error", "message": "schedule limit reached"}`. |
 
-Logs live at `~/.miniclaw/scheduler.log`, rotated by size (keep last 1MB).
+Logs live at `~/.kaizen/scheduler.log`, rotated by size (keep last 1MB).
 
 ## Testing
 
@@ -271,14 +271,14 @@ Wired into `./scripts/test.sh` alongside the existing `test_voice_mode_harness.p
 These were considered and deliberately deferred:
 
 - **One-shot "remind me in 10 minutes" timers.** Different data shape, different UX. Revisit after cron is stable.
-- **Cross-device schedules.** Only relevant if MiniClaw grows a multi-device deployment model.
+- **Cross-device schedules.** Only relevant if Kaizen grows a multi-device deployment model.
 - **Web UI for schedule management.** The yaml file + Obsidian is enough for now.
 - **Catch-up policy per schedule.** Current skip-silently behavior is the right default; revisit only if a user explicitly asks.
 
 ## Success criteria
 
 - User can say *"every morning at 8 tell me the weather"* and it works end-to-end within a single conversation.
-- `schedules.yaml` is hand-editable and survives MiniClaw restarts.
+- `schedules.yaml` is hand-editable and survives Kaizen restarts.
 - A scheduled fire never interrupts an active voice conversation.
 - Failed fires never crash the main voice loop.
 - `./scripts/test.sh` covers creation, firing, cancellation, and missed-fire semantics without touching voice hardware or Docker.

@@ -1,13 +1,13 @@
 #!/bin/bash
-# install_systemd_service.sh — Install MiniClaw as a user systemd service.
+# install_systemd_service.sh — Install Kaizen as a user systemd service.
 #
-# Idempotent. Run on the Pi (or any Linux box where you want MiniClaw on boot).
+# Idempotent. Run on the Pi (or any Linux box where you want Kaizen on boot).
 #
 # What it does:
-#   1. Copies config/systemd/miniclaw.service -> ~/.config/systemd/user/
+#   1. Copies config/systemd/kaizen.service -> ~/.config/systemd/user/
 #   2. Ensures /var/log/journal exists so logs survive reboot
 #   3. Ensures `loginctl enable-linger $USER` so the user manager runs at boot
-#   4. systemctl --user daemon-reload && enable --now miniclaw.service
+#   4. systemctl --user daemon-reload && enable --now kaizen.service
 #   5. Verifies a wait-online service is enabled (NetworkManager or systemd-networkd)
 
 set -euo pipefail
@@ -23,8 +23,8 @@ fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-UNIT_SRC="$REPO_ROOT/config/systemd/miniclaw.service"
-UNIT_DEST="$HOME/.config/systemd/user/miniclaw.service"
+UNIT_SRC="$REPO_ROOT/config/systemd/kaizen.service"
+UNIT_DEST="$HOME/.config/systemd/user/kaizen.service"
 
 [ -f "$REPO_ROOT/run.sh" ] || fail "run.sh not found at $REPO_ROOT/run.sh — wrong repo layout"
 [ -f "$UNIT_SRC" ] || fail "unit file not found at $UNIT_SRC"
@@ -56,8 +56,8 @@ fi
 
 # 4. Reload + enable
 systemctl --user daemon-reload
-systemctl --user enable --now miniclaw.service
-ok "miniclaw.service enabled and started"
+systemctl --user enable --now kaizen.service
+ok "kaizen.service enabled and started"
 
 # 5. Verify wait-online service
 if systemctl is-enabled NetworkManager-wait-online.service &>/dev/null; then
@@ -70,9 +70,9 @@ else
 fi
 
 echo ""
-systemctl --user --no-pager status miniclaw.service || true
+systemctl --user --no-pager status kaizen.service || true
 echo ""
-echo "Live logs: journalctl --user -u miniclaw -f"
-echo "Start:     systemctl --user start miniclaw"
-echo "Stop:      systemctl --user stop miniclaw"
+echo "Live logs: journalctl --user -u kaizen -f"
+echo "Start:     systemctl --user start kaizen"
+echo "Stop:      systemctl --user stop kaizen"
 echo "Disable:   ./scripts/uninstall_systemd_service.sh"

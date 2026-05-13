@@ -76,7 +76,7 @@ escalate:
 - [ ] **Step 2: Commit**
 
 ```bash
-cd miniclaw
+cd kaizen
 git add config/intent_patterns.yaml
 git commit -m "feat: add intent_patterns.yaml for tiered routing dispatch and escalate rules"
 ```
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to confirm they fail**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_tier_router.py -v 2>&1 | head -20
 ```
 
@@ -192,7 +192,7 @@ Expected: `ModuleNotFoundError: No module named 'core.tier_router'`
 
 ```python
 """
-TierRouter - Fast pre-LLM routing for MiniClaw's tiered intelligence system.
+TierRouter - Fast pre-LLM routing for Kaizen's tiered intelligence system.
 
 Classifies each STT transcript as direct | ollama | claude in <5ms before
 any LLM is invoked. Checked in order:
@@ -285,7 +285,7 @@ class TierRouter:
 - [ ] **Step 4: Run dispatch tests**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_tier_router.py::TestDispatchPatterns -v
 ```
 
@@ -377,7 +377,7 @@ class TestSkillPrediction(unittest.TestCase):
 - [ ] **Step 2: Run to confirm new tests fail**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_tier_router.py::TestEscalatePatterns tests/test_tier_router.py::TestSkillPrediction -v 2>&1 | tail -15
 ```
 
@@ -426,7 +426,7 @@ Replace the `route()` method's stub comment block with:
 - [ ] **Step 4: Run all TierRouter tests**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_tier_router.py -v
 ```
 
@@ -562,7 +562,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run to confirm failure**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_ollama_tool_loop.py -v 2>&1 | head -20
 ```
 
@@ -572,7 +572,7 @@ Expected: `ModuleNotFoundError: No module named 'core.ollama_tool_loop'`
 
 ```python
 """
-OllamaToolLoop - Ollama-backed tool loop for MiniClaw.
+OllamaToolLoop - Ollama-backed tool loop for Kaizen.
 
 Mirrors ToolLoop's interface but calls Ollama's OpenAI-compatible API
 (/v1/chat/completions with tools parameter).
@@ -765,7 +765,7 @@ class OllamaToolLoop:
 - [ ] **Step 4: Run all ollama loop tests**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_ollama_tool_loop.py -v
 ```
 
@@ -909,7 +909,7 @@ class TestEscalateTriggers(unittest.TestCase):
 - [ ] **Step 2: Run to confirm new tests fail**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_ollama_tool_loop.py::TestEscalateTriggers -v 2>&1 | tail -20
 ```
 
@@ -981,7 +981,7 @@ Replace the `run()` method body (from `data = response.json()` to end of while l
 - [ ] **Step 4: Run all OllamaToolLoop tests**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_ollama_tool_loop.py -v
 ```
 
@@ -1140,7 +1140,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run to confirm failure**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/test_orchestrator_routing.py -v 2>&1 | tail -20
 ```
 
@@ -1263,7 +1263,7 @@ Add after the `SKILL_SELECT_TOP_K` block:
 - [ ] **Step 5: Run all tests**
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/ -v --ignore=tests/test_voice_mode.py
 ```
 
@@ -1330,14 +1330,14 @@ git commit -m "docs: update WORKING_MEMORY with tiered intelligence architecture
 After all tasks complete, run the full test suite:
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -m pytest tests/ -v --ignore=tests/test_voice_mode.py
 ```
 
 Expected: all tests pass. `OLLAMA_ENABLED` is unset so the existing assistant behaviour is completely unchanged. To smoke-test the routing logic in isolation:
 
 ```bash
-cd miniclaw && source .venv/bin/activate
+cd kaizen && source .venv/bin/activate
 python -c "
 from pathlib import Path
 from core.tier_router import TierRouter

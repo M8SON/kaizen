@@ -11,7 +11,7 @@ import subprocess
 
 def write_now_playing(title: str) -> None:
     try:
-        with open("/miniclaw/now_playing.json", "w") as f:
+        with open("/kaizen/now_playing.json", "w") as f:
             json.dump({"title": title, "timestamp": time.time()}, f)
     except OSError:
         pass

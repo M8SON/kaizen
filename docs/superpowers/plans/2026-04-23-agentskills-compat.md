@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan. Batch tasks within a phase; checkpoint at phase boundaries. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make MiniClaw skills agentskills.io-spec-compliant (bidirectional), introduce per-tier trust policy (`bundled` / `authored` / `imported`), and add a single install pipeline shared by voice, CLI, and future mobile entry points.
+**Goal:** Make Kaizen skills agentskills.io-spec-compliant (bidirectional), introduce per-tier trust policy (`bundled` / `authored` / `imported`), and add a single install pipeline shared by voice, CLI, and future mobile entry points.
 
 **Architecture:** Refactor the validator + loader to be tier-aware, migrate the 12 existing skills to kebab-case single-directory layout in one mechanical pass, then build the install pipeline + CLI on top of the new model. Dev mode is a symlink escape hatch. Self-update is scaffolded (frontmatter flag reserved) but not implemented — that's roadmap #4.
 
@@ -21,7 +21,7 @@
 | `core/skill_policy.py` | Per-tier constants: memory/timeout/cpus clamps, device allowlist, apt-get allowlist, credential patterns |
 | `core/install_metadata.py` | `.install.json` read/write; SHA256 computation over a skill directory |
 | `core/install_pipeline.py` | Fetch → validate → summarize → confirm → install → build → reload. Shared by CLI + `install_skill` voice path |
-| `core/skill_cli.py` | `miniclaw skill <subcommand>` argparse dispatch (install/uninstall/list/validate/dev) |
+| `core/skill_cli.py` | `kaizen skill <subcommand>` argparse dispatch (install/uninstall/list/validate/dev) |
 | `scripts/migrate-to-agentskills.py` | One-shot migration script (deleted in final commit) |
 | `tests/test_skill_policy.py` | Policy constants + credential pattern matcher |
 | `tests/test_dockerfile_validator_tiered.py` | Per-tier Dockerfile allowlist |
@@ -37,13 +37,13 @@
 
 | Path | Change |
 |---|---|
-| `core/skill_validator.py` | Kebab-case name regex, parent-dir match, metadata.miniclaw.requires, tier-aware `validate_execution_config`, spec-field validation |
-| `core/skill_eligibility.py` | Read requires from `metadata.miniclaw.requires` instead of top-level |
+| `core/skill_validator.py` | Kebab-case name regex, parent-dir match, metadata.kaizen.requires, tier-aware `validate_execution_config`, spec-field validation |
+| `core/skill_eligibility.py` | Read requires from `metadata.kaizen.requires` instead of top-level |
 | `core/dockerfile_validator.py` | Tier parameter + per-tier allowlists + apt-get package allowlist |
 | `core/skill_loader.py` | New `DEFAULT_SEARCH_PATHS`, tier inference by path, dev-mode symlink detection, cross-tier collision rejection, load `.install.json` |
 | `core/container_manager.py` | Rename `_native_handlers` dispatch keys to kebab-case; add imported-tier `read_only=false` confirmation path |
 | `core/meta_skill.py` | Delegate voice install to shared install pipeline for the URL-install branch |
-| `main.py` | Add `miniclaw skill …` subcommand dispatch |
+| `main.py` | Add `kaizen skill …` subcommand dispatch |
 | `run.sh` | Discovery path `containers/*/Dockerfile` → `skills/*/scripts/Dockerfile` |
 | `scripts/port-skill.py` | Rename to `port-openclaw-skill.py`; emit single-directory layout |
 | `CLAUDE.md` | Rewrite "Skill Structure" and skill listings to new layout |
@@ -132,9 +132,9 @@ class TestCredentialPattern(unittest.TestCase):
 
 
 class TestScopedVolume(unittest.TestCase):
-    def test_miniclaw_scoped_path_ok(self):
+    def test_kaizen_scoped_path_ok(self):
         home = "/home/user"
-        self.assertTrue(is_scoped_volume("~/.miniclaw/foo:/data", "foo", home))
+        self.assertTrue(is_scoped_volume("~/.kaizen/foo:/data", "foo", home))
 
     def test_root_mount_rejected(self):
         self.assertFalse(is_scoped_volume("/:/rootfs", "foo", "/home/user"))
@@ -143,7 +143,7 @@ class TestScopedVolume(unittest.TestCase):
         self.assertFalse(is_scoped_volume("~:/host", "foo", "/home/user"))
 
     def test_wrong_skill_name_rejected(self):
-        self.assertFalse(is_scoped_volume("~/.miniclaw/bar:/data", "foo", "/home/user"))
+        self.assertFalse(is_scoped_volume("~/.kaizen/bar:/data", "foo", "/home/user"))
 
 
 class TestDeviceAllowlist(unittest.TestCase):
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_policy.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_policy.py -v`
 Expected: `ModuleNotFoundError: No module named 'core.skill_policy'`
 
 - [ ] **Step 3: Write the implementation**
@@ -174,7 +174,7 @@ Expected: `ModuleNotFoundError: No module named 'core.skill_policy'`
 ```python
 # core/skill_policy.py
 """
-Per-tier trust policy for MiniClaw skills.
+Per-tier trust policy for Kaizen skills.
 
 Trust tier is inferred from the directory a skill was loaded from; never
 from the skill's own frontmatter. Each tier has a policy object that says
@@ -271,7 +271,7 @@ DEVICE_ALLOWLIST_PATTERNS = [
 def is_scoped_volume(volume_spec: str, skill_name: str, home: str | None = None) -> bool:
     """
     Return True when a docker `-v <host>:<container>` volume's host-side path
-    resolves inside ~/.miniclaw/<skill_name>/.
+    resolves inside ~/.kaizen/<skill_name>/.
 
     Reject any mount that escapes to / or ~ wholesale, or that scopes under a
     different skill's directory.
@@ -287,7 +287,7 @@ def is_scoped_volume(volume_spec: str, skill_name: str, home: str | None = None)
         resolved = Path(expanded).resolve()
     except (OSError, ValueError):
         return False
-    scoped_root = Path(home_dir) / ".miniclaw" / skill_name
+    scoped_root = Path(home_dir) / ".kaizen" / skill_name
     try:
         resolved.relative_to(scoped_root)
     except ValueError:
@@ -297,7 +297,7 @@ def is_scoped_volume(volume_spec: str, skill_name: str, home: str | None = None)
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_policy.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_policy.py -v`
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -399,7 +399,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py -v`
 Expected: multiple failures (name not enforced, parent-dir match not enforced, length not enforced).
 
 - [ ] **Step 3: Update `core/skill_validator.py`**
@@ -568,7 +568,7 @@ class SkillValidator:
 
 - [ ] **Step 4: Run tests to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py -v`
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -578,7 +578,7 @@ git add core/skill_validator.py tests/test_skill_validator_tiered.py
 git commit -m "feat(skills): enforce agentskills.io name regex + description length + parent-dir match"
 ```
 
-### Task 3: Move `requires` to `metadata.miniclaw.requires`
+### Task 3: Move `requires` to `metadata.kaizen.requires`
 
 **Files:**
 - Modify: `core/skill_eligibility.py`
@@ -596,12 +596,12 @@ class TestRequiresLocation(unittest.TestCase):
     def setUp(self):
         self.elig = SkillEligibility()
 
-    def test_requires_read_from_metadata_miniclaw(self):
+    def test_requires_read_from_metadata_kaizen(self):
         fm = {
             "name": "foo",
             "description": "x",
             "metadata": {
-                "miniclaw": {"requires": {"env": ["NEVER_SET_XYZ_VAR"]}}
+                "kaizen": {"requires": {"env": ["NEVER_SET_XYZ_VAR"]}}
             },
         }
         reason, missing = self.elig.check(fm)
@@ -619,7 +619,7 @@ class TestRequiresLocation(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(missing, [])
 
-    def test_empty_metadata_miniclaw_is_fine(self):
+    def test_empty_metadata_kaizen_is_fine(self):
         fm = {"name": "foo", "description": "x", "metadata": {}}
         reason, missing = self.elig.check(fm)
         self.assertIsNone(reason)
@@ -628,19 +628,19 @@ class TestRequiresLocation(unittest.TestCase):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py::TestRequiresLocation -v`
-Expected: `test_requires_read_from_metadata_miniclaw` fails (top-level still read); `test_top_level_requires_ignored_after_migration` may fail depending on current behavior.
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py::TestRequiresLocation -v`
+Expected: `test_requires_read_from_metadata_kaizen` fails (top-level still read); `test_top_level_requires_ignored_after_migration` may fail depending on current behavior.
 
 - [ ] **Step 3: Update `core/skill_eligibility.py`**
 
 ```python
 """
-Skill eligibility checks for MiniClaw.
+Skill eligibility checks for Kaizen.
 
 Evaluates whether a structurally valid skill can run on the current system
 based on environment variables, binaries, and OS constraints.
 
-The `requires` block lives under `metadata.miniclaw.requires` per the
+The `requires` block lives under `metadata.kaizen.requires` per the
 agentskills.io compat spec. The old top-level `requires:` key is ignored.
 """
 
@@ -663,7 +663,7 @@ class SkillEligibility:
         """
         requires = (
             frontmatter.get("metadata", {})
-            .get("miniclaw", {})
+            .get("kaizen", {})
             .get("requires", {})
         )
         if not requires:
@@ -698,14 +698,14 @@ class SkillEligibility:
 
 - [ ] **Step 4: Run tests to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py::TestRequiresLocation -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py::TestRequiresLocation -v`
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add core/skill_eligibility.py tests/test_skill_validator_tiered.py
-git commit -m "feat(skills): read requires from metadata.miniclaw.requires only"
+git commit -m "feat(skills): read requires from metadata.kaizen.requires only"
 ```
 
 ### Task 4: Tier-aware `validate_execution_config` with clamps
@@ -729,7 +729,7 @@ class TestTieredConfigValidation(unittest.TestCase):
     def _base_config(self):
         return {
             "type": "docker",
-            "image": "miniclaw/foo:latest",
+            "image": "kaizen/foo:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
@@ -800,14 +800,14 @@ class TestTieredConfigValidation(unittest.TestCase):
 
     def test_scoped_volume_imported(self):
         cfg = self._base_config()
-        cfg["volumes"] = ["~/.miniclaw/foo:/data"]
+        cfg["volumes"] = ["~/.kaizen/foo:/data"]
         result = self.v.validate_execution_config(cfg, tier=TIER_IMPORTED, skill_name="foo")
-        self.assertEqual(result["volumes"], ["~/.miniclaw/foo:/data"])
+        self.assertEqual(result["volumes"], ["~/.kaizen/foo:/data"])
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py::TestTieredConfigValidation -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py::TestTieredConfigValidation -v`
 Expected: many failures — method signature mismatch (`tier` not accepted).
 
 - [ ] **Step 3: Replace `validate_execution_config` and helpers**
@@ -919,7 +919,7 @@ from core.skill_policy import (
                 if not is_scoped_volume(vol, skill_name, home):
                     raise ValueError(
                         f"volume {vol!r} is out of scope for skill {skill_name!r} "
-                        f"(must resolve under ~/.miniclaw/{skill_name}/)"
+                        f"(must resolve under ~/.kaizen/{skill_name}/)"
                     )
 
         return config
@@ -949,7 +949,7 @@ from core.skill_policy import (
 
 - [ ] **Step 4: Run tests to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py::TestTieredConfigValidation -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py::TestTieredConfigValidation -v`
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1002,7 +1002,7 @@ class TestAptAllowlist(unittest.TestCase):
 
     def test_user_file_extends_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cfg_dir = Path(tmp) / ".miniclaw" / "config"
+            cfg_dir = Path(tmp) / ".kaizen" / "config"
             cfg_dir.mkdir(parents=True)
             (cfg_dir / "apt-allowlist.txt").write_text("wget\nlibssl-dev\n# comment\n\n")
             with patch.dict(os.environ, {"HOME": tmp}):
@@ -1018,7 +1018,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_apt_allowlist.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_apt_allowlist.py -v`
 Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Create `core/apt_allowlist.py`**
@@ -1028,7 +1028,7 @@ Expected: `ModuleNotFoundError`.
 apt-get package allowlist for imported skills.
 
 Default list is the minimum set that cover common needs; users can extend
-by editing ~/.miniclaw/config/apt-allowlist.txt (one package per line,
+by editing ~/.kaizen/config/apt-allowlist.txt (one package per line,
 lines starting with # are ignored).
 
 Extending the allowlist is a deliberate, keyboard-only trust decision and
@@ -1051,7 +1051,7 @@ DEFAULT_APT_ALLOWLIST: frozenset[str] = frozenset({
 
 
 def _user_allowlist_path() -> Path:
-    return Path(os.path.expanduser("~")) / ".miniclaw" / "config" / "apt-allowlist.txt"
+    return Path(os.path.expanduser("~")) / ".kaizen" / "config" / "apt-allowlist.txt"
 
 
 def load_apt_allowlist() -> frozenset[str]:
@@ -1068,7 +1068,7 @@ def load_apt_allowlist() -> frozenset[str]:
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_apt_allowlist.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_apt_allowlist.py -v`
 Expected: all pass.
 
 - [ ] **Step 5: Write failing tests for tiered Dockerfile validator**
@@ -1093,8 +1093,8 @@ def _write(content: str) -> Path:
 
 
 class TestAuthoredTier(unittest.TestCase):
-    def test_miniclaw_base_ok(self):
-        df = _write("FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n")
+    def test_kaizen_base_ok(self):
+        df = _write("FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n")
         validate(df, tier=TIER_AUTHORED)
 
     def test_ubuntu_base_rejected(self):
@@ -1104,7 +1104,7 @@ class TestAuthoredTier(unittest.TestCase):
 
     def test_pip_install_ok(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN pip install requests\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -1112,7 +1112,7 @@ class TestAuthoredTier(unittest.TestCase):
 
     def test_arbitrary_run_rejected(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN echo hello > /tmp/x\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -1123,7 +1123,7 @@ class TestAuthoredTier(unittest.TestCase):
 class TestImportedTier(unittest.TestCase):
     def test_allowed_apt_package(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN apt-get update && apt-get -y install curl\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -1131,7 +1131,7 @@ class TestImportedTier(unittest.TestCase):
 
     def test_disallowed_apt_package(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN apt-get -y install bitcoind\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -1140,7 +1140,7 @@ class TestImportedTier(unittest.TestCase):
 
     def test_pip_index_url_rejected(self):
         df = _write(
-            "FROM miniclaw/base:latest\n"
+            "FROM kaizen/base:latest\n"
             "RUN pip install --index-url http://pypi.evil.com/ requests\n"
             "CMD [\"python\", \"app.py\"]\n"
         )
@@ -1161,18 +1161,18 @@ if __name__ == "__main__":
 
 - [ ] **Step 6: Run to verify they fail**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_dockerfile_validator_tiered.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_dockerfile_validator_tiered.py -v`
 Expected: failures (validate doesn't accept `tier`).
 
 - [ ] **Step 7: Rewrite `core/dockerfile_validator.py`**
 
 ```python
 """
-Dockerfile validator for MiniClaw skills.
+Dockerfile validator for Kaizen skills.
 
 Per-tier allowlist:
   bundled  — no validation (trusted; repo-reviewed)
-  authored — FROM must be miniclaw/base:latest; RUN only pip/apt prefixes; no ADD; no USER
+  authored — FROM must be kaizen/base:latest; RUN only pip/apt prefixes; no ADD; no USER
   imported — everything authored allows, PLUS apt-get packages must be in
              the allowlist (core.apt_allowlist), and pip install must not use
              --index-url / --extra-index-url
@@ -1256,9 +1256,9 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
                 )
             parts = line.split()
             image_ref = parts[1] if len(parts) > 1 else ""
-            if image_ref.lower() != "miniclaw/base:latest":
+            if image_ref.lower() != "kaizen/base:latest":
                 raise DockerfileValidationError(
-                    f"Line {lineno}: base image must be 'miniclaw/base:latest', got {image_ref!r}"
+                    f"Line {lineno}: base image must be 'kaizen/base:latest', got {image_ref!r}"
                 )
 
         elif instruction == "RUN":
@@ -1327,7 +1327,7 @@ def _validate_run_imported(run_body: str, apt_allowlist: frozenset[str], lineno:
                     continue
                 raise DockerfileValidationError(
                     f"Line {lineno}: apt package {pkg!r} is not in the allowlist "
-                    "(extend via ~/.miniclaw/config/apt-allowlist.txt)"
+                    "(extend via ~/.kaizen/config/apt-allowlist.txt)"
                 )
 
 
@@ -1340,7 +1340,7 @@ def _is_relative_copy_source(src: str) -> bool:
 
 - [ ] **Step 8: Run to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_dockerfile_validator_tiered.py tests/test_apt_allowlist.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_dockerfile_validator_tiered.py tests/test_apt_allowlist.py -v`
 Expected: all pass.
 
 Also run the existing dockerfile validator tests (if any) to make sure nothing regressed:
@@ -1447,7 +1447,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_metadata.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_metadata.py -v`
 Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Implement `core/install_metadata.py`**
@@ -1543,7 +1543,7 @@ def write_metadata(skill_dir: Path, meta: InstallMetadata) -> None:
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_metadata.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_metadata.py -v`
 Expected: all pass.
 
 - [ ] **Step 5: Commit**
@@ -1594,7 +1594,7 @@ def _write_skill(
     (skill_dir / "config.yaml").write_text(
         yaml.dump({
             "type": "docker",
-            "image": f"miniclaw/{name}:latest",
+            "image": f"kaizen/{name}:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
@@ -1602,7 +1602,7 @@ def _write_skill(
     )
     if with_dockerfile:
         (skill_dir / "scripts" / "Dockerfile").write_text(
-            "FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n"
+            "FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n"
         )
         (skill_dir / "scripts" / "app.py").write_text("print('ok')\n")
     if with_install_json:
@@ -1673,7 +1673,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run to verify failures**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_loader_tiered.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_loader_tiered.py -v`
 Expected: failures (Skill has no `tier` attribute, collision not rejected, no dev detection).
 
 - [ ] **Step 3: Rewrite `core/skill_loader.py`**
@@ -1685,8 +1685,8 @@ definitions.
 
 Search paths (highest precedence first):
   1. bundled   — ./skills
-  2. authored  — ~/.miniclaw/authored
-  3. imported  — ~/.miniclaw/imported
+  2. authored  — ~/.kaizen/authored
+  3. imported  — ~/.kaizen/imported
 
 A skill's tier is inferred from which search path matched. If the skill's
 directory is a symlink, it is treated as tier=dev (security clamps bypassed,
@@ -1746,8 +1746,8 @@ class SkillLoader:
 
     DEFAULT_SEARCH_PATHS = [
         _REPO_ROOT / "skills",                       # bundled
-        Path.home() / ".miniclaw" / "authored",
-        Path.home() / ".miniclaw" / "imported",
+        Path.home() / ".kaizen" / "authored",
+        Path.home() / ".kaizen" / "imported",
     ]
 
     # Map search-path-index to tier. Index is the position in
@@ -1891,7 +1891,7 @@ class SkillLoader:
                 if current_sha != meta.sha256:
                     reason = (
                         "skill changed on disk since install (SHA256 mismatch); "
-                        "reinstall via `miniclaw skill install` to approve"
+                        "reinstall via `kaizen skill install` to approve"
                     )
                     logger.warning("Drift for skill '%s': %s", name, reason)
                     self._record_invalid_skill(name, description, reason)
@@ -1918,7 +1918,7 @@ class SkillLoader:
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_loader_tiered.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_loader_tiered.py -v`
 Expected: all pass.
 
 - [ ] **Step 5: Commit**
@@ -1969,7 +1969,7 @@ def _write_old_skill(root: Path, old_dir_name: str, *, declared_name: str,
         "---\n" + yaml.dump(fm, sort_keys=False) + "---\n\nBody.\n"
     )
     (skill_dir / "config.yaml").write_text(yaml.dump({
-        "image": f"miniclaw/{declared_name}:latest",
+        "image": f"kaizen/{declared_name}:latest",
         "env_passthrough": requires_env or [],
         "timeout_seconds": 15,
         "devices": [],
@@ -1978,7 +1978,7 @@ def _write_old_skill(root: Path, old_dir_name: str, *, declared_name: str,
         container_dir = root / "containers" / old_dir_name
         container_dir.mkdir(parents=True)
         (container_dir / "Dockerfile").write_text(
-            "FROM miniclaw/base:latest\nCOPY app.py /app/app.py\nCMD [\"python\", \"/app/app.py\"]\n"
+            "FROM kaizen/base:latest\nCOPY app.py /app/app.py\nCMD [\"python\", \"/app/app.py\"]\n"
         )
         (container_dir / "app.py").write_text("print('ok')\n")
 
@@ -2010,7 +2010,7 @@ class TestMigration(unittest.TestCase):
             self.assertIn("name: web-search", skill_md)
             self.assertNotIn("search_web", skill_md)
             self.assertIn("metadata:", skill_md)
-            self.assertIn("miniclaw:", skill_md)
+            self.assertIn("kaizen:", skill_md)
             self.assertIn("BRAVE_API_KEY", skill_md)
             # Old top-level requires should be gone.
             fm_body = skill_md.split("---")[1]
@@ -2029,7 +2029,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_migration_script.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_migration_script.py -v`
 Expected: script not found / FileNotFoundError.
 
 - [ ] **Step 3: Create `scripts/migrate-to-agentskills.py`**
@@ -2037,7 +2037,7 @@ Expected: script not found / FileNotFoundError.
 ```python
 #!/usr/bin/env python3
 """
-migrate-to-agentskills.py — one-shot migration of MiniClaw skills to the
+migrate-to-agentskills.py — one-shot migration of Kaizen skills to the
 agentskills.io-compliant single-directory layout.
 
 Run from repo root:
@@ -2048,7 +2048,7 @@ Per skill:
   2. Move containers/<old>/ into skills/<new>/scripts/
   3. Rewrite SKILL.md frontmatter:
      - set name: <kebab-case> (matches new dir)
-     - move top-level requires: under metadata.miniclaw.requires
+     - move top-level requires: under metadata.kaizen.requires
   4. Delete top-level containers/ directory entirely when empty
 
 Idempotent: running twice leaves things unchanged.
@@ -2095,12 +2095,12 @@ def migrate_frontmatter(raw: str, new_name: str) -> str:
 
     fm["name"] = new_name
 
-    # Move top-level requires under metadata.miniclaw.requires.
+    # Move top-level requires under metadata.kaizen.requires.
     old_requires = fm.pop("requires", None)
     if old_requires is not None:
         metadata = fm.setdefault("metadata", {}) or {}
-        miniclaw = metadata.setdefault("miniclaw", {}) or {}
-        miniclaw["requires"] = old_requires
+        kaizen = metadata.setdefault("kaizen", {}) or {}
+        kaizen["requires"] = old_requires
         fm["metadata"] = metadata  # in case setdefault returned the existing
 
     # Stable key order: name, description, license, compatibility, metadata, then rest.
@@ -2160,7 +2160,7 @@ def main() -> int:
     parser.add_argument(
         "--repo-root",
         default=".",
-        help="Path to the MiniClaw repo root (default: current directory)",
+        help="Path to the Kaizen repo root (default: current directory)",
     )
     args = parser.parse_args()
 
@@ -2198,7 +2198,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_migration_script.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_migration_script.py -v`
 Expected: pass.
 
 - [ ] **Step 5: Commit**
@@ -2213,7 +2213,7 @@ git commit -m "feat(migrate): add one-shot migration script with fixture test"
 - [ ] **Step 1: Run the migration**
 
 ```bash
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 python3 scripts/migrate-to-agentskills.py
 ```
 
@@ -2332,10 +2332,10 @@ Replace them in the test files. These are pure string replacements. Verify no ot
 - [ ] **Step 4: Run the full test suite**
 
 ```bash
-cd ~/linux/miniclaw && python3 -m pytest tests/ -v
+cd ~/linux/kaizen && python3 -m pytest tests/ -v
 ```
 
-Expected: all tests pass. If a test fails because it references an old SKILL.md path or image name, update accordingly. Specifically the docker image names are unchanged (`miniclaw/web-search:latest` etc. — kebab-case already), so no test should reference old image names.
+Expected: all tests pass. If a test fails because it references an old SKILL.md path or image name, update accordingly. Specifically the docker image names are unchanged (`kaizen/web-search:latest` etc. — kebab-case already), so no test should reference old image names.
 
 - [ ] **Step 5: Commit**
 
@@ -2405,7 +2405,7 @@ Body.
 EOF
 echo 'print("hi")' > /tmp/openclaw_test/scripts/main.py
 
-cd ~/linux/miniclaw
+cd ~/linux/kaizen
 python3 scripts/port-openclaw-skill.py /tmp/openclaw_test/
 ls skills/openclaw-test/
 ls skills/openclaw-test/scripts/
@@ -2430,7 +2430,7 @@ skills/<name>/
     config.yaml           ← Container execution config (optional for native)
     scripts/
         app.py            ← Entrypoint (Docker skills only)
-        Dockerfile        ← Builds FROM miniclaw/base:latest (Docker skills only)
+        Dockerfile        ← Builds FROM kaizen/base:latest (Docker skills only)
     references/           ← Optional, agentskills.io convention
     assets/               ← Optional, agentskills.io convention
     .install.json         ← Provenance sidecar (authored/imported tiers only)
@@ -2439,8 +2439,8 @@ skills/<name>/
 Skill names are lowercase kebab-case (e.g. `web-search`, `recall-session`) and must match the parent directory. Execution tier is inferred from the search path the skill was loaded from:
 
 - `./skills/` → bundled (full trust; native execution allowed)
-- `~/.miniclaw/authored/` → voice-installed via `install-skill`
-- `~/.miniclaw/imported/` → community-sourced (stricter: Dockerfile allowlist + config clamps)
+- `~/.kaizen/authored/` → voice-installed via `install-skill`
+- `~/.kaizen/imported/` → community-sourced (stricter: Dockerfile allowlist + config clamps)
 
 `SKILL.md` frontmatter:
 
@@ -2451,7 +2451,7 @@ description: Search the web using Brave Search. Use when the user asks for curre
   information or anything that needs a live lookup.
 license: MIT                          # optional
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env: [BRAVE_API_KEY]
       bins: [curl]
@@ -2475,7 +2475,7 @@ Append under the Hermes roadmap item #3 (which is currently bullet 3 under the "
 
 ```markdown
 3. ~~agentskills.io compat — align skill loader / manifest format with the agentskills.io registry so community skills are drop-in installable.~~ Done 2026-04-23.
-   Skills now live as single directories with `scripts/` subfolders, kebab-case names matching parent dirs, and `metadata.miniclaw.requires` in SKILL.md. Imports run through a per-tier install pipeline with Dockerfile allowlists and config clamps.
+   Skills now live as single directories with `scripts/` subfolders, kebab-case names matching parent dirs, and `metadata.kaizen.requires` in SKILL.md. Imports run through a per-tier install pipeline with Dockerfile allowlists and config clamps.
 ```
 
 And under "Recent milestones" add:
@@ -2524,7 +2524,7 @@ cat > tests/fixtures/agentskills/good-skill/SKILL.md <<'EOF'
 name: good-skill
 description: Good test skill. Use when tests need a valid skill fixture.
 metadata:
-  miniclaw:
+  kaizen:
     requires: {}
 ---
 
@@ -2544,13 +2544,13 @@ Body.
 EOF
 cat > tests/fixtures/agentskills/good-skill/config.yaml <<'EOF'
 type: docker
-image: miniclaw/good-skill:latest
+image: kaizen/good-skill:latest
 env_passthrough: []
 timeout_seconds: 15
 memory: 128m
 EOF
 cat > tests/fixtures/agentskills/good-skill/scripts/Dockerfile <<'EOF'
-FROM miniclaw/base:latest
+FROM kaizen/base:latest
 COPY app.py /app/app.py
 WORKDIR /app
 CMD ["python", "app.py"]
@@ -2696,14 +2696,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: Run to verify failures**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_pipeline.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_pipeline.py -v`
 Expected: `ModuleNotFoundError: No module named 'core.install_pipeline'`.
 
 - [ ] **Step 4: Implement `core/install_pipeline.py`**
 
 ```python
 """
-Shared install pipeline for MiniClaw skills.
+Shared install pipeline for Kaizen skills.
 
 Entry points (voice via install_skill, CLI via core.skill_cli, future mobile
 HTTP) all funnel through InstallPipeline.install_from_path or
@@ -2962,7 +2962,7 @@ class InstallPipeline:
 
 - [ ] **Step 5: Run to verify tests pass**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_pipeline.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_pipeline.py -v`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -3004,7 +3004,7 @@ class TestFetch(unittest.TestCase):
 
 - [ ] **Step 2: Run to verify failure (method missing)**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_pipeline.py::TestFetch -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_pipeline.py::TestFetch -v`
 Expected: `AttributeError: 'InstallPipeline' object has no attribute 'install_from_url'`.
 
 - [ ] **Step 3: Add `install_from_url` to `InstallPipeline`**
@@ -3029,7 +3029,7 @@ Add this method to `InstallPipeline`:
             logger.error("install_from_url: unsupported scheme %r", parsed.scheme)
             return InstallDecision.FAILED
 
-        with tempfile.TemporaryDirectory(prefix="miniclaw-install-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="kaizen-install-") as tmp:
             staging = Path(tmp) / "staging"
             if url.endswith(".git") or parsed.netloc.endswith("github.com"):
                 result = subprocess.run(
@@ -3064,7 +3064,7 @@ Add this method to `InstallPipeline`:
 
 - [ ] **Step 4: Run the appended tests**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_install_pipeline.py::TestFetch -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_install_pipeline.py::TestFetch -v`
 Expected: pass.
 
 - [ ] **Step 5: Commit**
@@ -3080,7 +3080,7 @@ git commit -m "feat(skills): install pipeline fetch step supports https git + ta
 
 Phase-boundary checkpoint: `pytest tests/` (full suite) plus manual dry-run of the CLI.
 
-### Task 14: `miniclaw skill` CLI subcommand dispatch
+### Task 14: `kaizen skill` CLI subcommand dispatch
 
 **Files:**
 - Create: `core/skill_cli.py`
@@ -3091,7 +3091,7 @@ Phase-boundary checkpoint: `pytest tests/` (full suite) plus manual dry-run of t
 
 ```python
 # tests/test_skill_cli.py
-"""Tests for the miniclaw skill CLI."""
+"""Tests for the kaizen skill CLI."""
 
 import tempfile
 import unittest
@@ -3143,14 +3143,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_cli.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_cli.py -v`
 Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Create `core/skill_cli.py`**
 
 ```python
 """
-`miniclaw skill` CLI — subcommand dispatch for skill management.
+`kaizen skill` CLI — subcommand dispatch for skill management.
 
 Subcommands:
   install <url|path> [--tier imported|authored]   install a skill
@@ -3200,7 +3200,7 @@ class TextConfirmer:
 class OrchestratorReloader:
     """Production reloader — triggers a file-based reload signal."""
     def __init__(self):
-        self.flag_path = Path.home() / ".miniclaw" / "reload.flag"
+        self.flag_path = Path.home() / ".kaizen" / "reload.flag"
 
     def reload(self) -> None:
         self.flag_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3208,7 +3208,7 @@ class OrchestratorReloader:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="miniclaw skill", description="Manage MiniClaw skills")
+    parser = argparse.ArgumentParser(prog="kaizen skill", description="Manage Kaizen skills")
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
     p_install = sub.add_parser("install", help="install a skill")
@@ -3254,7 +3254,7 @@ def dispatch(args: argparse.Namespace) -> int:
 
 
 def _install_root(tier: str) -> Path:
-    return Path.home() / ".miniclaw" / tier
+    return Path.home() / ".kaizen" / tier
 
 
 def _cmd_install(args) -> int:
@@ -3386,7 +3386,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "skill":
 
 - [ ] **Step 5: Run tests**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_cli.py -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_cli.py -v`
 Expected: pass.
 
 Also smoke test the CLI:
@@ -3402,7 +3402,7 @@ Expected: table-like listing of skills with their tier and description.
 
 ```bash
 git add core/skill_cli.py main.py tests/test_skill_cli.py
-git commit -m "feat(skills): add miniclaw skill CLI (install/uninstall/list/validate/dev)"
+git commit -m "feat(skills): add kaizen skill CLI (install/uninstall/list/validate/dev)"
 ```
 
 ### Task 15: Voice `install-skill` URL-install branch
@@ -3471,7 +3471,7 @@ Add the new method to `MetaSkillExecutor`:
             def reload(self):
                 self.orch.reload_skills()
 
-        install_root = Path.home() / ".miniclaw" / TIER_IMPORTED
+        install_root = Path.home() / ".kaizen" / TIER_IMPORTED
         install_root.mkdir(parents=True, exist_ok=True)
         pipeline = InstallPipeline(
             confirmer=VoiceConfirmer(self),
@@ -3512,7 +3512,7 @@ Also add a "How to use" paragraph explaining both modes so Claude picks the righ
 - [ ] **Step 3: Verify the existing tests still pass**
 
 ```bash
-cd ~/linux/miniclaw && python3 -m pytest tests/test_install_skill_integration.py tests/test_meta_skill.py -v
+cd ~/linux/kaizen && python3 -m pytest tests/test_install_skill_integration.py tests/test_meta_skill.py -v
 ```
 
 Expected: pass. The existing tests exercise the `description` flow, which is unchanged; the new `source` flow is guarded by the new test in the next task.
@@ -3530,7 +3530,7 @@ git commit -m "feat(install-skill): add voice branch for installing from URL/pat
 
 Phase-boundary checkpoint: final `pytest tests/ -v`.
 
-### Task 16: Recognize `metadata.miniclaw.self_update.allow_body`
+### Task 16: Recognize `metadata.kaizen.self_update.allow_body`
 
 **Files:**
 - Modify: `core/skill_validator.py`
@@ -3548,11 +3548,11 @@ class TestSelfUpdateScaffolding(unittest.TestCase):
     def test_self_update_flag_parsed(self):
         raw = (
             "---\nname: foo\ndescription: x\n"
-            "metadata:\n  miniclaw:\n    self_update:\n      allow_body: true\n---\n\nBody.\n"
+            "metadata:\n  kaizen:\n    self_update:\n      allow_body: true\n---\n\nBody.\n"
         )
         fm, _ = self.v.validate_markdown(raw, Path("/tmp/foo"))
         self.assertTrue(
-            fm["metadata"]["miniclaw"]["self_update"]["allow_body"]
+            fm["metadata"]["kaizen"]["self_update"]["allow_body"]
         )
 
     def test_self_update_flag_defaults_to_missing(self):
@@ -3566,18 +3566,18 @@ class TestSelfUpdateScaffolding(unittest.TestCase):
         # and warn. For now, just assert the field is parsed as-is.
         raw = (
             "---\nname: foo\ndescription: x\n"
-            "metadata:\n  miniclaw:\n    self_update:\n      allow_body: maybe\n---\n\nBody.\n"
+            "metadata:\n  kaizen:\n    self_update:\n      allow_body: maybe\n---\n\nBody.\n"
         )
         fm, _ = self.v.validate_markdown(raw, Path("/tmp/foo"))
         self.assertEqual(
-            fm["metadata"]["miniclaw"]["self_update"]["allow_body"],
+            fm["metadata"]["kaizen"]["self_update"]["allow_body"],
             "maybe",
         )
 ```
 
 - [ ] **Step 2: Run to verify the test behavior**
 
-Run: `cd ~/linux/miniclaw && python3 -m pytest tests/test_skill_validator_tiered.py::TestSelfUpdateScaffolding -v`
+Run: `cd ~/linux/kaizen && python3 -m pytest tests/test_skill_validator_tiered.py::TestSelfUpdateScaffolding -v`
 Expected: should already pass — the validator returns the raw frontmatter dict. No code change needed; this task is a formal acceptance test for the scaffolding.
 
 - [ ] **Step 3: Confirm scaffolding documented in SKILL.md template**
@@ -3586,7 +3586,7 @@ If `scripts/port-openclaw-skill.py` emits a SKILL.md template, ensure it writes:
 
 ```yaml
 metadata:
-  miniclaw:
+  kaizen:
     self_update:
       allow_body: false
 ```
@@ -3681,7 +3681,7 @@ Spec coverage: validated below against each section of the design spec.
 
 - ✅ **Directory layout** — Tasks 8-10 (migration) + Task 14 (CLI dev mode assumes new layout).
 - ✅ **Trust tiers** — Task 1 (policy), Task 7 (loader tier inference), Task 14 (CLI tier argument).
-- ✅ **Frontmatter** — Task 2 (name regex + parent-dir match), Task 3 (metadata.miniclaw.requires), Task 16 (self_update scaffolding), Task 4 (metadata shape implicitly preserved).
+- ✅ **Frontmatter** — Task 2 (name regex + parent-dir match), Task 3 (metadata.kaizen.requires), Task 16 (self_update scaffolding), Task 4 (metadata shape implicitly preserved).
 - ✅ **Config.yaml per-tier clamps** — Task 4.
 - ✅ **Dockerfile validator** — Task 5.
 - ✅ **Apt allowlist** — Task 5.

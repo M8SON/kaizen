@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan. Batch tasks within a phase; checkpoint at phase boundaries. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the `update_skill_hints` native skill, prompt-builder hooks, and a 15-tool-call checkpoint nudge in the tool loop so skills with `metadata.miniclaw.self_update.allow_body: true` autonomously gain additive routing hints from observed conversation patterns.
+**Goal:** Add the `update_skill_hints` native skill, prompt-builder hooks, and a 15-tool-call checkpoint nudge in the tool loop so skills with `metadata.kaizen.self_update.allow_body: true` autonomously gain additive routing hints from observed conversation patterns.
 
 **Architecture:** A new pure module (`core/skill_self_update.py`) owns the handler pipeline (validate addition, find/append the auto-section, FIFO trim at 30, rewrite SKILL.md atomically, git commit, reload). `ContainerManager` registers the new native handler and tracks per-turn rate limits. `ToolLoop` counts tool-use blocks per turn and injects a checkpoint nudge into the per-round system prompt when the count crosses a multiple of 15. `PromptBuilder` adds standing self-update guidance only when at least one loaded skill is opted in.
 
-**Tech Stack:** Python 3.11+, stdlib `subprocess` (for `git`), pytest, existing MiniClaw modules.
+**Tech Stack:** Python 3.11+, stdlib `subprocess` (for `git`), pytest, existing Kaizen modules.
 
 **Related spec:** `docs/superpowers/specs/2026-04-24-self-improving-skills-design.md`
 
@@ -31,7 +31,7 @@
 |---|---|
 | `core/container_manager.py` | Register `update-skill-hints` in `_native_handlers`; add `_execute_update_skill_hints`; add per-turn tracking for the rate limit; expose `start_turn()` for the tool loop to call. |
 | `core/tool_loop.py` | Call `container_manager.start_turn()` at the top of `run()`. Count tool-use blocks per turn. Inject the checkpoint nudge into per-round system prompt when count crosses a multiple of 15. |
-| `core/prompt_builder.py` | When any loaded skill has `metadata.miniclaw.self_update.allow_body: true`, append the standing self-update guidance to the assembled system prompt. |
+| `core/prompt_builder.py` | When any loaded skill has `metadata.kaizen.self_update.allow_body: true`, append the standing self-update guidance to the assembled system prompt. |
 | `WORKING_MEMORY.md` | Mark Hermes roadmap item #4 done. |
 
 ---
@@ -72,7 +72,7 @@ def _write_skill(parent: Path, name: str, *, allow_body: bool, body: str = None)
         "name": name,
         "description": f"Test skill {name}.",
         "metadata": {
-            "miniclaw": {
+            "kaizen": {
                 "self_update": {"allow_body": allow_body},
             }
         },
@@ -82,7 +82,7 @@ def _write_skill(parent: Path, name: str, *, allow_body: bool, body: str = None)
         "---\n" + yaml.dump(fm, sort_keys=False) + "---\n\n" + body
     )
     (skill_dir / "config.yaml").write_text(
-        yaml.dump({"type": "docker", "image": f"miniclaw/{name}:latest"})
+        yaml.dump({"type": "docker", "image": f"kaizen/{name}:latest"})
     )
     return skill_dir
 
@@ -107,7 +107,7 @@ class _StubSkill:
 
 def _make_loader(tmp: Path, name: str, *, tier: str, allow_body: bool):
     skill_dir = _write_skill(tmp, name, allow_body=allow_body)
-    fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}}}
+    fm = {"metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}}}
     skill = _StubSkill(name, tier, skill_dir, fm)
     return _StubLoader({name: skill}), skill_dir
 
@@ -200,7 +200,7 @@ class TestAlreadyCovered(unittest.TestCase):
                 "- already there phrasing\n"
             )
             skill_dir = _write_skill(Path(tmp), "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
             r = apply_hint(loader, "foo", "- already there phrasing", "rat", turn_id="t1")
@@ -215,7 +215,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py -v 2>&1 | tail -10
 ```
 
 Expected: `ModuleNotFoundError: No module named 'core.skill_self_update'`.
@@ -288,7 +288,7 @@ def apply_hint(
 
     fm = getattr(skill, "frontmatter", None) or {}
     allow_body = (
-        fm.get("metadata", {}).get("miniclaw", {})
+        fm.get("metadata", {}).get("kaizen", {})
           .get("self_update", {}).get("allow_body")
     )
     if allow_body is not True:
@@ -439,7 +439,7 @@ def _git_commit_safe(repo_root: Path, file_path: Path, skill_name: str, rational
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py -v 2>&1 | tail -25
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py -v 2>&1 | tail -25
 ```
 
 Expected: all tests pass.
@@ -447,7 +447,7 @@ Expected: all tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/skill_self_update.py tests/test_skill_self_update.py && git commit -m "feat(skills): add self-update handler with structural validation"
+cd ~/linux/kaizen && git add core/skill_self_update.py tests/test_skill_self_update.py && git commit -m "feat(skills): add self-update handler with structural validation"
 ```
 
 ### Task 2: FIFO + section management
@@ -465,7 +465,7 @@ class TestSectionManagement(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_p = Path(tmp)
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -484,7 +484,7 @@ class TestSectionManagement(unittest.TestCase):
                 "- existing hint\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -506,7 +506,7 @@ class TestSectionManagement(unittest.TestCase):
                 f"{existing}\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -533,7 +533,7 @@ class TestSectionManagement(unittest.TestCase):
                 "tail content\n"
             )
             skill_dir = _write_skill(tmp_p, "foo", allow_body=True, body=body)
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _StubSkill("foo", "bundled", skill_dir, fm)
             loader = _StubLoader({"foo": skill})
 
@@ -549,7 +549,7 @@ class TestSectionManagement(unittest.TestCase):
 - [ ] **Step 2: Run tests**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py::TestSectionManagement -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update.py::TestSectionManagement -v 2>&1 | tail -10
 ```
 
 Expected: all 4 tests pass (handler logic in Task 1 already covers FIFO + section creation).
@@ -559,7 +559,7 @@ Expected: all 4 tests pass (handler logic in Task 1 already covers FIFO + sectio
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add tests/test_skill_self_update.py && git commit -m "test(skills): cover FIFO + section management for self-update"
+cd ~/linux/kaizen && git add tests/test_skill_self_update.py && git commit -m "test(skills): cover FIFO + section management for self-update"
 ```
 
 ---
@@ -582,9 +582,9 @@ name: update-skill-hints
 description: Add an additive routing hint to a skill's SKILL.md so it learns
   from observed user phrasings. Use when you notice a skill was routed on a
   novel successful phrasing or when you corrected a misroute. Updates only
-  skills with metadata.miniclaw.self_update.allow_body set to true.
+  skills with metadata.kaizen.self_update.allow_body set to true.
 metadata:
-  miniclaw:
+  kaizen:
     self_update:
       allow_body: false
 ---
@@ -649,7 +649,7 @@ type: native
 - [ ] **Step 3: Verify the skill loads (it should not be in `_native_handlers` yet, so it'll register as invalid)**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -c "
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -c "
 from core.skill_loader import SkillLoader
 loader = SkillLoader()
 loader.load_all()
@@ -663,7 +663,7 @@ Expected: `loaded: True tier: bundled` (the skill structure is valid; the dispat
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add skills/update-skill-hints/ && git commit -m "feat(skills): bundled update-skill-hints native skill"
+cd ~/linux/kaizen && git add skills/update-skill-hints/ && git commit -m "feat(skills): bundled update-skill-hints native skill"
 ```
 
 ### Task 4: Container manager handler + per-turn rate limit
@@ -770,7 +770,7 @@ def test_update_skill_hints_rate_limit_resets_on_new_turn():
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_container_manager.py::test_update_skill_hints_dispatches_to_handler -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_container_manager.py::test_update_skill_hints_dispatches_to_handler -v 2>&1 | tail -10
 ```
 
 Expected: failure (`AttributeError: 'ContainerManager' object has no attribute '_execute_update_skill_hints'` or `start_turn`).
@@ -871,7 +871,7 @@ Add these methods to the `ContainerManager` class (after `_execute_recall_sessio
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_container_manager.py -k "update_skill_hints or rate_limit" -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_container_manager.py -k "update_skill_hints or rate_limit" -v 2>&1 | tail -10
 ```
 
 Expected: 3 tests pass.
@@ -879,7 +879,7 @@ Expected: 3 tests pass.
 - [ ] **Step 5: Verify nothing else regressed**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -887,7 +887,7 @@ Expected: all tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/container_manager.py tests/test_container_manager.py && git commit -m "feat(skills): wire update-skill-hints native handler with per-turn rate limit"
+cd ~/linux/kaizen && git add core/container_manager.py tests/test_container_manager.py && git commit -m "feat(skills): wire update-skill-hints native handler with per-turn rate limit"
 ```
 
 ---
@@ -917,19 +917,19 @@ def test_skill_exposes_frontmatter_dict():
         (skill_dir / "scripts").mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
             "---\nname: alpha\ndescription: x.\n"
-            "metadata:\n  miniclaw:\n    self_update:\n      allow_body: true\n"
+            "metadata:\n  kaizen:\n    self_update:\n      allow_body: true\n"
             "---\n\n"
             "## Inputs\n\n```yaml\ntype: object\nproperties: {}\nrequired: []\n```\n\nBody.\n"
         )
         (skill_dir / "config.yaml").write_text(yaml.dump({
             "type": "docker",
-            "image": "miniclaw/alpha:latest",
+            "image": "kaizen/alpha:latest",
             "env_passthrough": [],
             "timeout_seconds": 15,
             "devices": [],
         }))
         (skill_dir / "scripts" / "Dockerfile").write_text(
-            "FROM miniclaw/base:latest\nCMD [\"python\", \"app.py\"]\n"
+            "FROM kaizen/base:latest\nCMD [\"python\", \"app.py\"]\n"
         )
         (skill_dir / "scripts" / "app.py").write_text("print('ok')\n")
 
@@ -937,13 +937,13 @@ def test_skill_exposes_frontmatter_dict():
         skills = loader.load_all()
         s = skills["alpha"]
         assert hasattr(s, "frontmatter")
-        assert s.frontmatter["metadata"]["miniclaw"]["self_update"]["allow_body"] is True
+        assert s.frontmatter["metadata"]["kaizen"]["self_update"]["allow_body"] is True
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_loader_tiered.py::test_skill_exposes_frontmatter_dict -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_loader_tiered.py::test_skill_exposes_frontmatter_dict -v 2>&1 | tail -10
 ```
 
 Expected: `AttributeError: 'Skill' object has no attribute 'frontmatter'`.
@@ -998,7 +998,7 @@ In `_load_skill`, find the `return Skill(...)` at the end and add the `frontmatt
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_loader_tiered.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_loader_tiered.py -v 2>&1 | tail -10
 ```
 
 Expected: all loader tests pass.
@@ -1016,7 +1016,7 @@ container_manager._skill_loader_for_self_update = orchestrator.skill_loader
 - [ ] **Step 6: Run full suite**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all tests pass.
@@ -1024,7 +1024,7 @@ Expected: all tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/skill_loader.py tests/test_skill_loader_tiered.py main.py && git commit -m "feat(skills): expose frontmatter on Skill; wire loader into container_manager"
+cd ~/linux/kaizen && git add core/skill_loader.py tests/test_skill_loader_tiered.py main.py && git commit -m "feat(skills): expose frontmatter on Skill; wire loader into container_manager"
 ```
 
 ---
@@ -1060,11 +1060,11 @@ class _StubSkill:
 
 
 def _opted_in(name):
-    return _StubSkill(name, {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}})
+    return _StubSkill(name, {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}})
 
 
 def _opted_out(name):
-    return _StubSkill(name, {"metadata": {"miniclaw": {"self_update": {"allow_body": False}}}})
+    return _StubSkill(name, {"metadata": {"kaizen": {"self_update": {"allow_body": False}}}})
 
 
 class TestSelfUpdateGuidance(unittest.TestCase):
@@ -1091,7 +1091,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_prompt_builder_self_update.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_prompt_builder_self_update.py -v 2>&1 | tail -10
 ```
 
 Expected: `AttributeError: 'PromptBuilder' object has no attribute 'add_self_update_guidance'`.
@@ -1136,7 +1136,7 @@ take effort to clean up.
         any_opted_in = any(
             (
                 getattr(s, "frontmatter", {}) or {}
-            ).get("metadata", {}).get("miniclaw", {}).get("self_update", {}).get("allow_body") is True
+            ).get("metadata", {}).get("kaizen", {}).get("self_update", {}).get("allow_body") is True
             for s in skills.values()
         )
         if not any_opted_in:
@@ -1157,7 +1157,7 @@ prompt = self.add_self_update_guidance(prompt, skills=skill_loader.skills)
 - [ ] **Step 5: Run tests**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_prompt_builder_self_update.py tests/test_prompt_builder_selector.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_prompt_builder_self_update.py tests/test_prompt_builder_selector.py -v 2>&1 | tail -10
 ```
 
 Expected: all pass.
@@ -1165,7 +1165,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/prompt_builder.py tests/test_prompt_builder_self_update.py && git commit -m "feat(skills): PromptBuilder injects self-update guidance for opted-in skills"
+cd ~/linux/kaizen && git add core/prompt_builder.py tests/test_prompt_builder_self_update.py && git commit -m "feat(skills): PromptBuilder injects self-update guidance for opted-in skills"
 ```
 
 ### Task 7: ToolLoop tracks tool-use count + 15-call checkpoint
@@ -1219,7 +1219,7 @@ class _Loader:
     def __init__(self, opted_in: bool):
         from unittest.mock import MagicMock
         s = MagicMock()
-        s.frontmatter = {"metadata": {"miniclaw": {"self_update": {"allow_body": opted_in}}}}
+        s.frontmatter = {"metadata": {"kaizen": {"self_update": {"allow_body": opted_in}}}}
         self.skills = {"weather": s}
 
     def get_tool_definitions(self):
@@ -1309,7 +1309,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_orchestrator_checkpoint.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_orchestrator_checkpoint.py -v 2>&1 | tail -10
 ```
 
 Expected: tests fail because no nudge is currently injected.
@@ -1370,7 +1370,7 @@ Add the helper method to `ToolLoop`:
         for s in self.skill_loader.skills.values():
             fm = getattr(s, "frontmatter", None) or {}
             allow = (
-                fm.get("metadata", {}).get("miniclaw", {})
+                fm.get("metadata", {}).get("kaizen", {})
                   .get("self_update", {}).get("allow_body")
             )
             if allow is True:
@@ -1396,7 +1396,7 @@ Also at the very top of `run`, call `start_turn` on the container manager so the
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_orchestrator_checkpoint.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_orchestrator_checkpoint.py -v 2>&1 | tail -10
 ```
 
 Expected: 3 tests pass.
@@ -1404,7 +1404,7 @@ Expected: 3 tests pass.
 - [ ] **Step 5: Run full suite to catch regressions in tool-loop tests**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all pass.
@@ -1412,7 +1412,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/tool_loop.py tests/test_orchestrator_checkpoint.py && git commit -m "feat(skills): 15-tool-call checkpoint nudge in tool loop"
+cd ~/linux/kaizen && git add core/tool_loop.py tests/test_orchestrator_checkpoint.py && git commit -m "feat(skills): 15-tool-call checkpoint nudge in tool loop"
 ```
 
 ---
@@ -1478,17 +1478,17 @@ def _setup_repo(tmp: Path, *, allow_body: bool = True) -> tuple[Path, _Loader]:
         + yaml.dump({
             "name": "foo",
             "description": "Test skill foo.",
-            "metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}},
+            "metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}},
         }, sort_keys=False)
         + "---\n\n## When to use\n- existing\n"
     )
     (skill_dir / "config.yaml").write_text(
-        yaml.dump({"type": "docker", "image": "miniclaw/foo:latest"})
+        yaml.dump({"type": "docker", "image": "kaizen/foo:latest"})
     )
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "initial")
 
-    fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": allow_body}}}}
+    fm = {"metadata": {"kaizen": {"self_update": {"allow_body": allow_body}}}}
     skill = _Skill("foo", "bundled", skill_dir, fm)
     return repo, _Loader({"foo": skill})
 
@@ -1547,14 +1547,14 @@ class TestGitCommit(unittest.TestCase):
                 + yaml.dump({
                     "name": "foo",
                     "description": "x.",
-                    "metadata": {"miniclaw": {"self_update": {"allow_body": True}}},
+                    "metadata": {"kaizen": {"self_update": {"allow_body": True}}},
                 }, sort_keys=False)
                 + "---\n\n## When to use\n- existing\n"
             )
             (skill_dir / "config.yaml").write_text(
-                yaml.dump({"type": "docker", "image": "miniclaw/foo:latest"})
+                yaml.dump({"type": "docker", "image": "kaizen/foo:latest"})
             )
-            fm = {"metadata": {"miniclaw": {"self_update": {"allow_body": True}}}}
+            fm = {"metadata": {"kaizen": {"self_update": {"allow_body": True}}}}
             skill = _Skill("foo", "bundled", skill_dir, fm)
             loader = _Loader({"foo": skill})
 
@@ -1574,7 +1574,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update_git.py -v 2>&1 | tail -10
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/test_skill_self_update_git.py -v 2>&1 | tail -10
 ```
 
 Expected: 4 tests pass.
@@ -1582,7 +1582,7 @@ Expected: 4 tests pass.
 - [ ] **Step 3: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add tests/test_skill_self_update_git.py && git commit -m "test(skills): cover self-update git commit side effects"
+cd ~/linux/kaizen && git add tests/test_skill_self_update_git.py && git commit -m "test(skills): cover self-update git commit side effects"
 ```
 
 ### Task 9: WORKING_MEMORY.md update
@@ -1593,7 +1593,7 @@ cd ~/linux/miniclaw && git add tests/test_skill_self_update_git.py && git commit
 - [ ] **Step 1: Locate the Hermes roadmap section**
 
 ```bash
-grep -n "Self-improving skills" ~/linux/miniclaw/WORKING_MEMORY.md
+grep -n "Self-improving skills" ~/linux/kaizen/WORKING_MEMORY.md
 ```
 
 Expected output: a line like `4. Self-improving skills — let skills record their own usage outcomes...`
@@ -1610,7 +1610,7 @@ with:
 
 ```
 4. ~~Self-improving skills — let skills record their own usage outcomes and refine their SKILL.md routing hints over time.~~ Done 2026-04-24.
-   Skills with `metadata.miniclaw.self_update.allow_body: true` autonomously gain additive routing hints via the new `update-skill-hints` native skill. Two trigger paths: Claude's in-the-moment judgment plus a 15-tool-call checkpoint nudge. Each change is a path-restricted git commit; rollback is `git revert`. Tier 2/3 changes (rewording, removal) remain manual. Imported-tier skills are blocked regardless of frontmatter.
+   Skills with `metadata.kaizen.self_update.allow_body: true` autonomously gain additive routing hints via the new `update-skill-hints` native skill. Two trigger paths: Claude's in-the-moment judgment plus a 15-tool-call checkpoint nudge. Each change is a path-restricted git commit; rollback is `git revert`. Tier 2/3 changes (rewording, removal) remain manual. Imported-tier skills are blocked regardless of frontmatter.
 ```
 
 Also append under "Recent milestones":
@@ -1625,7 +1625,7 @@ Also append under "Recent milestones":
 - [ ] **Step 3: Run full suite**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ 2>&1 | tail -3
 ```
 
 Expected: all pass.
@@ -1633,7 +1633,7 @@ Expected: all pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add WORKING_MEMORY.md && git commit -m "docs: mark Hermes roadmap #4 (self-improving skills) done"
+cd ~/linux/kaizen && git add WORKING_MEMORY.md && git commit -m "docs: mark Hermes roadmap #4 (self-improving skills) done"
 ```
 
 ### Task 10: Final integration sanity
@@ -1641,7 +1641,7 @@ cd ~/linux/miniclaw && git add WORKING_MEMORY.md && git commit -m "docs: mark He
 - [ ] **Step 1: Manual end-to-end smoke (against a fresh fixture, not a real bundled skill)**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -c "
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -c "
 import tempfile, subprocess, yaml
 from pathlib import Path
 from core.skill_self_update import apply_hint
@@ -1660,13 +1660,13 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(['git','-C',str(repo),'config','user.name','t'])
     skd = repo / 'skills' / 'demo'; skd.mkdir(parents=True)
     (skd / 'SKILL.md').write_text(
-        '---\n' + yaml.dump({'name':'demo','description':'d.','metadata':{'miniclaw':{'self_update':{'allow_body':True}}}}, sort_keys=False)
+        '---\n' + yaml.dump({'name':'demo','description':'d.','metadata':{'kaizen':{'self_update':{'allow_body':True}}}}, sort_keys=False)
         + '---\n\n## When to use\n- a\n'
     )
-    (skd / 'config.yaml').write_text(yaml.dump({'type':'docker','image':'miniclaw/demo:latest'}))
+    (skd / 'config.yaml').write_text(yaml.dump({'type':'docker','image':'kaizen/demo:latest'}))
     subprocess.run(['git','-C',str(repo),'add','.'])
     subprocess.run(['git','-C',str(repo),'commit','-q','-m','init'])
-    fm={'metadata':{'miniclaw':{'self_update':{'allow_body':True}}}}
+    fm={'metadata':{'kaizen':{'self_update':{'allow_body':True}}}}
     loader = L({'demo': S('demo','bundled',skd,fm)})
     r = apply_hint(loader, 'demo', '- forecast', 'novel phrasing', turn_id='t', repo_root=repo)
     print('result:', r)
@@ -1682,7 +1682,7 @@ Expected: result status=`ok`, SKILL.md gains a `## Auto-learned routing hints` s
 - [ ] **Step 2: Full suite**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python3 -m pytest tests/ -v 2>&1 | tail -5
+cd ~/linux/kaizen && source .venv/bin/activate && python3 -m pytest tests/ -v 2>&1 | tail -5
 ```
 
 Expected: all pass.
@@ -1692,7 +1692,7 @@ Expected: all pass.
 If the smoke test surfaces something:
 
 ```bash
-cd ~/linux/miniclaw && git add <files> && git commit -m "fix(skills): <reason>"
+cd ~/linux/kaizen && git add <files> && git commit -m "fix(skills): <reason>"
 ```
 
 Otherwise, this task is verification-only and produces no commit.

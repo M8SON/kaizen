@@ -1,5 +1,5 @@
 """
-Tool loop for MiniClaw.
+Tool loop for Kaizen.
 
 Owns the Anthropic request cycle, tool execution, and response extraction for
 one user message.
@@ -217,7 +217,7 @@ class ToolLoop:
         for s in self.skill_loader.skills.values():
             fm = getattr(s, "frontmatter", None) or {}
             allow = (
-                fm.get("metadata", {}).get("miniclaw", {})
+                fm.get("metadata", {}).get("kaizen", {})
                   .get("self_update", {}).get("allow_body")
             )
             if allow is True:

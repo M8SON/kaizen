@@ -1,5 +1,5 @@
 """
-Orchestrator - Central coordinator for MiniClaw.
+Orchestrator - Central coordinator for Kaizen.
 
 Connects the voice interface, skill system, container execution,
 and Claude API into a single loop:
@@ -44,7 +44,7 @@ def _parse_float(value: str | None, default: float) -> float:
 
 class Orchestrator:
     """
-    Main coordinator for MiniClaw.
+    Main coordinator for Kaizen.
 
     Responsibilities:
       - Load and manage skills
@@ -117,7 +117,7 @@ class Orchestrator:
         # Injected from main.py — None in text/test mode means "don't speak".
         self.speak_callback = None
         self.is_conversation_active = lambda: False
-        self.scheduler_log_path: Path = Path.home() / ".miniclaw" / "scheduler.log"
+        self.scheduler_log_path: Path = Path.home() / ".kaizen" / "scheduler.log"
 
         # Static prompt for internal calls (greet, close_session) that
         # have no user_message to drive semantic selection.

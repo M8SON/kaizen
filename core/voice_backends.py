@@ -1,5 +1,5 @@
 """
-Voice backend implementations for MiniClaw.
+Voice backend implementations for Kaizen.
 
 These classes isolate concrete STT and TTS providers from the microphone and
 conversation control logic in VoiceInterface.
@@ -22,7 +22,7 @@ from core.hailo_whisper_runtime import HailoTranscriptionRuntime
 logger = logging.getLogger(__name__)
 
 KOKORO_SAMPLE_RATE = 24000
-HAILO_WHISPER_ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "hailo-whisper"
+HAILO_WHISPER_ASSET_ROOT = Path.home() / ".kaizen" / "models" / "hailo-whisper"
 SUPPORTED_HAILO_WHISPER_TRANSCRIPTION_VARIANTS = {"base", "tiny", "tiny.en", "base.en"}
 
 
@@ -108,7 +108,7 @@ class VadBackend(Protocol):
 
 
 class RmsVadBackend:
-    """Fallback VAD — amplitude threshold. Preserves current MiniClaw behavior
+    """Fallback VAD — amplitude threshold. Preserves current Kaizen behavior
     when VAD_BACKEND=rms or when Silero VAD fails to load."""
 
     def __init__(self, threshold: int = 1000):
@@ -373,7 +373,7 @@ def build_wake_backend(
     return backend, f"Wake backend: openwakeword ({model_name}, threshold={threshold})"
 
 
-KOKORO_ONNX_ASSET_ROOT = Path.home() / ".miniclaw" / "models" / "kokoro-onnx"
+KOKORO_ONNX_ASSET_ROOT = Path.home() / ".kaizen" / "models" / "kokoro-onnx"
 
 try:
     from kokoro_onnx import Kokoro as _KokoroONNXImpl

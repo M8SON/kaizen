@@ -2,7 +2,7 @@
 name: spotify
 description: Play music or saved playlists from Spotify. Default music backend — use this for "play X" / "play [artist]" / "play my [playlist]" requests unless explicitly asked for SoundCloud or for remixes/bootlegs/mashups.
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env:
         - SPOTIFY_CLIENT_ID

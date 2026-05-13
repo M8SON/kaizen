@@ -1,5 +1,5 @@
 """
-Skill validation helpers for MiniClaw.
+Skill validation helpers for Kaizen.
 
 Agentskills.io-compliant: kebab-case names matching parent directory,
 description capped at 1024 chars, unknown frontmatter fields permitted.
@@ -213,7 +213,7 @@ class SkillValidator:
                 if not is_scoped_volume(vol, skill_name, home):
                     raise ValueError(
                         f"volume {vol!r} is out of scope for skill {skill_name!r} "
-                        f"(must resolve under ~/.miniclaw/{skill_name}/)"
+                        f"(must resolve under ~/.kaizen/{skill_name}/)"
                     )
 
         return config

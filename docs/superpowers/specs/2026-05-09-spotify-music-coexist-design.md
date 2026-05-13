@@ -153,10 +153,10 @@ This spec adds Spotify as a music backend alongside SoundCloud. Both coexist; Sp
   - Spins up a tiny local HTTP server on the redirect URI's port.
   - Prints the Spotify authorize URL with required scopes (`user-modify-playback-state user-read-playback-state user-read-private playlist-read-private user-library-read`).
   - User opens the URL in any browser, approves, gets redirected to `http://localhost:8888/callback?code=…`.
-  - Server catches the redirect, exchanges the code for tokens, writes `~/.miniclaw/spotify-tokens.json` (atomic: write to `.tmp` + rename).
+  - Server catches the redirect, exchanges the code for tokens, writes `~/.kaizen/spotify-tokens.json` (atomic: write to `.tmp` + rename).
   - Prints success message and exits.
 - `core/spotify_auth.get_spotify_client()`:
-  - Reads `~/.miniclaw/spotify-tokens.json`.
+  - Reads `~/.kaizen/spotify-tokens.json`.
   - Returns a `spotipy.Spotify` instance with auth managed by `spotipy.SpotifyOAuth(open_browser=False, cache_handler=…)` so refresh is automatic on every call.
   - Raises `SpotifyAuthMissing` if env vars or token cache are missing — caller surfaces a friendly message.
 
@@ -184,9 +184,9 @@ This spec adds Spotify as a music backend alongside SoundCloud. Both coexist; Sp
    - Mason opens URL in browser, approves consent.
    - Spotify redirects to `localhost:8888/callback?code=…`.
    - Script exchanges code → access + refresh tokens.
-   - Writes `~/.miniclaw/spotify-tokens.json` atomically.
+   - Writes `~/.kaizen/spotify-tokens.json` atomically.
 4. On Pi: `apt install librespot`. Open phone Spotify, tap Connect icon, tap Pi as device once.
-5. Restart MiniClaw — `spotify` skill is now in eligible skills, no longer in `skipped_skills`.
+5. Restart Kaizen — `spotify` skill is now in eligible skills, no longer in `skipped_skills`.
 
 ### B. "Play me country music"
 
@@ -349,7 +349,7 @@ Live credentials make CI flaky and risk token leaks. Pi smoke test serves as int
 5. Run `python scripts/spotify_login.py` once. Browser auth flow, ~30 seconds.
 6. On the Pi: `sudo apt install librespot`. Optionally enable as a systemd user service.
 7. Open phone Spotify → tap Connect icon → tap Pi to pair librespot once.
-8. Restart MiniClaw.
+8. Restart Kaizen.
 
 ### Migration impact
 

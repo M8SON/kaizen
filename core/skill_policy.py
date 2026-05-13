@@ -1,5 +1,5 @@
 """
-Per-tier trust policy for MiniClaw skills.
+Per-tier trust policy for Kaizen skills.
 
 Trust tier is inferred from the directory a skill was loaded from; never
 from the skill's own frontmatter. Each tier has a policy object that says
@@ -96,7 +96,7 @@ DEVICE_ALLOWLIST_PATTERNS = [
 def is_scoped_volume(volume_spec: str, skill_name: str, home: str | None = None) -> bool:
     """
     Return True when a docker `-v <host>:<container>` volume's host-side path
-    resolves inside ~/.miniclaw/<skill_name>/.
+    resolves inside ~/.kaizen/<skill_name>/.
 
     Reject any mount that escapes to / or ~ wholesale, or that scopes under a
     different skill's directory.
@@ -112,7 +112,7 @@ def is_scoped_volume(volume_spec: str, skill_name: str, home: str | None = None)
         resolved = Path(expanded).resolve()
     except (OSError, ValueError):
         return False
-    scoped_root = Path(home_dir) / ".miniclaw" / skill_name
+    scoped_root = Path(home_dir) / ".kaizen" / skill_name
     try:
         resolved.relative_to(scoped_root)
     except ValueError:

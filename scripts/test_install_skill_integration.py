@@ -92,7 +92,7 @@ def _cleanup(skill_name: str):
             shutil.rmtree(path)
             print(f"[cleanup] removed {path}")
 
-    image_name = f"miniclaw/{skill_name.replace('_', '-')}:latest"
+    image_name = f"kaizen/{skill_name.replace('_', '-')}:latest"
     subprocess.run(
         ["docker", "image", "rm", "-f", image_name],
         capture_output=True,

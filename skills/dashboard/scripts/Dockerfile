@@ -1,4 +1,4 @@
-FROM miniclaw/base:latest
+FROM kaizen/base:latest
 
 RUN pip install --no-cache-dir flask yfinance feedparser requests
 

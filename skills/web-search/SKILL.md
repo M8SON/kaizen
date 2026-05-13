@@ -2,7 +2,7 @@
 name: web-search
 description: Search the web for current information, news, facts, or answers to questions
 metadata:
-  miniclaw:
+  kaizen:
     requires:
       env:
       - BRAVE_API_KEY

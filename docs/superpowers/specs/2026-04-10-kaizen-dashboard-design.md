@@ -1,4 +1,4 @@
-# MiniClaw 2.0 — Dashboard Display Skill Design
+# Kaizen 2.0 — Dashboard Display Skill Design
 
 **Date:** 2026-04-10
 **Author:** Mason Misch
@@ -57,14 +57,14 @@ Two actions registered with Claude:
 
 - `panels`: list from `["news", "weather", "stocks", "music"]`
 - `timeout_minutes`: auto-close after this many minutes since opening (default 10); the container runs an internal countdown and self-exits when it expires
-- Checks `~/.miniclaw/dashboard.lock` — if dashboard already running, sends a `GET /refresh?panels=...` request to the running Flask server to update the display without relaunching Chromium
+- Checks `~/.kaizen/dashboard.lock` — if dashboard already running, sends a `GET /refresh?panels=...` request to the running Flask server to update the display without relaunching Chromium
 - Starts Docker container, Flask server, launches Chromium on host in kiosk mode
-- Writes `~/.miniclaw/dashboard.lock` (host Chromium PID + container ID + port)
+- Writes `~/.kaizen/dashboard.lock` (host Chromium PID + container ID + port)
 
 ### `close_dashboard()`
 
 - Reads lock file, kills Chromium PID, stops container
-- Removes `~/.miniclaw/dashboard.lock`
+- Removes `~/.kaizen/dashboard.lock`
 - Claude calls this on explicit close requests or when auto-timeout fires
 
 **Claude uses natural language understanding** — no verbatim commands required. "Throw up the news", "show me what's happening", "get rid of that" all map correctly.
@@ -82,7 +82,7 @@ Two actions registered with Claude:
 ### Weather
 - **Source:** `open-meteo.com` free API — no API key required
 - **Output:** Current temp + condition, tonight's low, tomorrow's forecast
-- **Config:** Reads `WEATHER_LOCATION` env var (already used in MiniClaw startup context)
+- **Config:** Reads `WEATHER_LOCATION` env var (already used in Kaizen startup context)
 
 ### Stocks
 - **Source:** `yfinance` Python library (Yahoo Finance unofficial API, free, no key)
@@ -90,7 +90,7 @@ Two actions registered with Claude:
 - **Config:** Watchlist defined in `config.yaml`
 
 ### Music / Now Playing
-- **Source:** Shared state file `~/.miniclaw/now_playing.json` — the SoundCloud skill container will need to be updated to write this file on play/pause/stop events (new requirement on that skill)
+- **Source:** Shared state file `~/.kaizen/now_playing.json` — the SoundCloud skill container will need to be updated to write this file on play/pause/stop events (new requirement on that skill)
 - **Output:** Track name, artist, playback position
 - **Fallback:** "Nothing playing" if file absent or stale (>60s old)
 

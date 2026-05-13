@@ -1,5 +1,5 @@
 #!/bin/bash
-# Standard MiniClaw test entry point.
+# Standard Kaizen test entry point.
 #
 # Usage:
 #   ./scripts/test.sh                 # fast suite

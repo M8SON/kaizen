@@ -1,5 +1,5 @@
 """
-`miniclaw skill` CLI — subcommand dispatch for skill management.
+`kaizen skill` CLI — subcommand dispatch for skill management.
 
 Subcommands:
   install <url|path> [--tier imported|authored]   install a skill
@@ -48,7 +48,7 @@ class TextConfirmer:
 class OrchestratorReloader:
     """File-based reload signal picked up by the running orchestrator."""
     def __init__(self):
-        self.flag_path = Path.home() / ".miniclaw" / "reload.flag"
+        self.flag_path = Path.home() / ".kaizen" / "reload.flag"
 
     def reload(self) -> None:
         self.flag_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ class OrchestratorReloader:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="miniclaw skill", description="Manage MiniClaw skills")
+    parser = argparse.ArgumentParser(prog="kaizen skill", description="Manage Kaizen skills")
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
     p_install = sub.add_parser("install", help="install a skill")
@@ -102,7 +102,7 @@ def dispatch(args: argparse.Namespace) -> int:
 
 
 def _install_root(tier: str) -> Path:
-    return Path.home() / ".miniclaw" / tier
+    return Path.home() / ".kaizen" / tier
 
 
 def _cmd_install(args) -> int:

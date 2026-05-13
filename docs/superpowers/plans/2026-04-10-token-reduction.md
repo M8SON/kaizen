@@ -291,7 +291,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /home/daedalus/linux/miniclaw
+cd /home/daedalus/linux/kaizen
 python -m pytest tests/test_skill_selector.py -v 2>&1 | head -20
 ```
 
@@ -528,7 +528,7 @@ Replace the file with this updated version:
 
 ```python
 """
-Prompt builder for MiniClaw.
+Prompt builder for Kaizen.
 
 Assembles the system prompt from static assistant policy, persisted memories,
 and skill instructions.
@@ -800,7 +800,7 @@ Replace the file with this updated version:
 
 ```python
 """
-Orchestrator - Central coordinator for MiniClaw.
+Orchestrator - Central coordinator for Kaizen.
 
 Connects the voice interface, skill system, container execution,
 and Claude API into a single loop:
@@ -829,7 +829,7 @@ logger = logging.getLogger(__name__)
 
 class Orchestrator:
     """
-    Main coordinator for MiniClaw.
+    Main coordinator for Kaizen.
 
     Responsibilities:
       - Load and manage skills

@@ -1,5 +1,5 @@
 """
-Prompt builder for MiniClaw.
+Prompt builder for Kaizen.
 
 Assembles the system prompt from static assistant policy, persisted memories,
 and skill instructions.
@@ -187,7 +187,7 @@ class PromptBuilder:
         any_opted_in = any(
             (
                 getattr(s, "frontmatter", {}) or {}
-            ).get("metadata", {}).get("miniclaw", {}).get("self_update", {}).get("allow_body") is True
+            ).get("metadata", {}).get("kaizen", {}).get("self_update", {}).get("allow_body") is True
             for s in skills.values()
         )
         if not any_opted_in:

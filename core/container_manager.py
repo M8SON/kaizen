@@ -33,7 +33,7 @@ from core.scheduler import ScheduleEntry, ScheduleValidationError
 logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_PORT = 7860
-DASHBOARD_LOCK = Path.home() / ".miniclaw" / "dashboard.lock"
+DASHBOARD_LOCK = Path.home() / ".kaizen" / "dashboard.lock"
 
 # Music-control transport success strings — exact-match set used to swap
 # verbal confirmations for a short ack chime in voice mode. Kept here next
@@ -104,8 +104,8 @@ class ContainerManager:
         self.docker_error = None
         self._dashboard_timer: threading.Timer | None = None
         self._mpv_process: subprocess.Popen | None = None
-        self._mpv_socket_path: str = "/tmp/miniclaw-mpv.sock"
-        self._mpv_log_path: Path = Path.home() / ".miniclaw" / "mpv.log"
+        self._mpv_socket_path: str = "/tmp/kaizen-mpv.sock"
+        self._mpv_log_path: Path = Path.home() / ".kaizen" / "mpv.log"
         self._mpv_log_fh = None  # opened on play, closed on stop
         # Mutual-exclusion: only one music backend plays at a time.
         # Set by play actions, cleared by _stop_all_music. Read by
@@ -293,7 +293,7 @@ class ContainerManager:
     def _execute_install_skill(self, tool_input: dict) -> str:
         """Delegate voice-driven skill installation to the meta skill executor."""
         if self._meta_skill_executor is None:
-            return "Meta skill executor not initialised — restart MiniClaw in voice mode."
+            return "Meta skill executor not initialised — restart Kaizen in voice mode."
         return self._meta_skill_executor.run(tool_input)
 
     def _execute_set_env_var(self, tool_input: dict) -> str:
@@ -365,7 +365,7 @@ class ContainerManager:
         if not topic or not content:
             return "Error: both topic and content are required."
 
-        vault_path = Path(os.environ.get("MEMORY_VAULT_PATH", Path.home() / ".miniclaw" / "memory"))
+        vault_path = Path(os.environ.get("MEMORY_VAULT_PATH", Path.home() / ".kaizen" / "memory"))
         try:
             vault_path.mkdir(parents=True, exist_ok=True)
         except OSError as e:
@@ -529,9 +529,9 @@ class ContainerManager:
         if not self.docker_available:
             return f"Dashboard unavailable: {self.docker_error or 'Docker is not running'}."
 
-        # Ensure ~/.miniclaw exists (volume mount target)
-        miniclaw_dir = Path.home() / ".miniclaw"
-        miniclaw_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure ~/.kaizen exists (volume mount target)
+        kaizen_dir = Path.home() / ".kaizen"
+        kaizen_dir.mkdir(parents=True, exist_ok=True)
 
         # --- Build RSS feed list from selected source groups ---
         rss_source_map = {
@@ -569,11 +569,11 @@ class ContainerManager:
             "--security-opt=no-new-privileges",
             "--tmpfs=/tmp:size=64m",
             "--tmpfs=/dev/shm:size=256m",
-            "-v", f"{miniclaw_dir}:/miniclaw",
+            "-v", f"{kaizen_dir}:/kaizen",
             "-e", f"SKILL_INPUT={json.dumps({'panels': panels, 'timeout_minutes': timeout_minutes})}",
             "-e", f"DASHBOARD_CONFIG={dashboard_config}",
             "-e", f"WEATHER_LOCATION={weather_loc}",
-            "miniclaw/dashboard:latest",
+            "kaizen/dashboard:latest",
         ]
         result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
@@ -755,7 +755,7 @@ class ContainerManager:
             start_new_session=True,
         )
 
-        now_playing_path = Path.home() / ".miniclaw" / "now_playing.json"
+        now_playing_path = Path.home() / ".kaizen" / "now_playing.json"
         try:
             import time as _time
             now_playing_path.parent.mkdir(parents=True, exist_ok=True)
@@ -804,7 +804,7 @@ class ContainerManager:
                 os.unlink(self._mpv_socket_path)
             except OSError:
                 pass
-        now_playing = Path.home() / ".miniclaw" / "now_playing.json"
+        now_playing = Path.home() / ".kaizen" / "now_playing.json"
         try:
             now_playing.unlink(missing_ok=True)
         except OSError:
@@ -855,7 +855,7 @@ class ContainerManager:
         """Probe Spotify for an active or paused-but-loaded session on the pinned device.
 
         Returns "spotify" if Spotify has a playback context (playing or paused)
-        on the device this MiniClaw owns — so "resume" works after the user
+        on the device this Kaizen owns — so "resume" works after the user
         paused from their phone with a track still loaded. Returns None if
         Spotify isn't set up, no playback context exists, or the context is
         on a different device.

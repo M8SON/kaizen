@@ -32,7 +32,7 @@ get a laugh.
   `sounddevice.OutputStream`.
 - **R2-D2 thinking chirp:** removed entirely from the voice loop. Music
   is the new "I heard you, hold on."
-- **Default state:** ON. Disable with `MINICLAW_ELEVATOR_MUSIC=false`.
+- **Default state:** ON. Disable with `KAIZEN_ELEVATOR_MUSIC=false`.
 - **Failure mode:** silent fallback. Asset missing or audio-out errors
   log a warning and disable the feature for the session — the assistant
   must never crash because the music failed.
@@ -48,7 +48,7 @@ def stop_thinking_music(self) -> None: ...
 
 Both are no-ops when:
 
-- `MINICLAW_ELEVATOR_MUSIC` is `false` (case-insensitive),
+- `KAIZEN_ELEVATOR_MUSIC` is `false` (case-insensitive),
 - `self.enable_tts` is false (existing master audio gate),
 - the asset failed to load at init.
 
@@ -65,7 +65,7 @@ thread with a short timeout. Idempotent — safe to call when not started.
   `_MUSIC_ASSET_PATH = Path(__file__).parent.parent / "assets" / "elevator.wav"`.
   Tests monkeypatch this constant to point at a fixture or to a
   nonexistent path.
-- Read `MINICLAW_ELEVATOR_MUSIC` from env (default `true`).
+- Read `KAIZEN_ELEVATOR_MUSIC` from env (default `true`).
 - If enabled and `enable_tts` is true: load `_MUSIC_ASSET_PATH`,
   decode to a numpy `float32` mono array, resample to
   `self._output_samplerate`, cache on `self._music_buffer`.
@@ -193,7 +193,7 @@ Audio device is owned by exactly one stream at a time:
 | `sd.stop` raises                           | Warn, continue; thread join still happens                |
 | Thread doesn't exit within 0.5s join       | Continue anyway; daemon thread won't block process exit  |
 | `process_message` raises                   | `try/finally` in main.py stops music                     |
-| Env-disabled (`MINICLAW_ELEVATOR_MUSIC=false`) | start/stop are unconditional no-ops; no thread, no audio |
+| Env-disabled (`KAIZEN_ELEVATOR_MUSIC=false`) | start/stop are unconditional no-ops; no thread, no audio |
 | TTS globally disabled (`enable_tts=False`) | Same as above                                            |
 
 ## Testing
@@ -203,7 +203,7 @@ Unit tests in `tests/test_voice_elevator_music.py` (new file). Use
 
 | Test                                              | Assertion                                                          |
 |---------------------------------------------------|--------------------------------------------------------------------|
-| `test_disabled_by_env_is_noop`                    | `MINICLAW_ELEVATOR_MUSIC=false` → `start_thinking_music` does nothing |
+| `test_disabled_by_env_is_noop`                    | `KAIZEN_ELEVATOR_MUSIC=false` → `start_thinking_music` does nothing |
 | `test_tts_disabled_is_noop`                       | `enable_tts=False` → `start_thinking_music` does nothing           |
 | `test_missing_asset_logs_and_disables`            | Monkeypatch `_MUSIC_ASSET_PATH` to a nonexistent file → init warns, `_music_buffer is None` |
 | `test_start_then_stop_no_raise`                   | Stub sd.play/wait/stop; full cycle completes cleanly               |
@@ -235,6 +235,6 @@ end-to-end on first install.
   brainstorm; hard cut only.
 - Multiple-clip pool / random selection.
 - Per-route music (different bed for Ollama vs Claude turns).
-- `MINICLAW_ELEVATOR_PATH` env var to override the bundled file —
+- `KAIZEN_ELEVATOR_PATH` env var to override the bundled file —
   rejected; one file is enough for v1, add later if asked.
 - Removing the now-unused `play_thinking_sound` method from `Voice`.

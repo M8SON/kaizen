@@ -4,8 +4,8 @@ definitions.
 
 Search paths (highest precedence first):
   1. bundled   — ./skills
-  2. authored  — ~/.miniclaw/authored
-  3. imported  — ~/.miniclaw/imported
+  2. authored  — ~/.kaizen/authored
+  3. imported  — ~/.kaizen/imported
 
 A skill's tier is inferred from which search path matched. If the skill's
 directory is a symlink, it is treated as tier=dev (security clamps bypassed,
@@ -67,8 +67,8 @@ class SkillLoader:
 
     DEFAULT_SEARCH_PATHS = [
         _REPO_ROOT / "skills",                       # bundled
-        Path.home() / ".miniclaw" / "authored",
-        Path.home() / ".miniclaw" / "imported",
+        Path.home() / ".kaizen" / "authored",
+        Path.home() / ".kaizen" / "imported",
     ]
 
     # Map search-path-index to tier. Index 0 = highest precedence.
@@ -207,7 +207,7 @@ class SkillLoader:
                 if current_sha != meta.sha256:
                     reason = (
                         "skill changed on disk since install (SHA256 mismatch); "
-                        "reinstall via `miniclaw skill install` to approve"
+                        "reinstall via `kaizen skill install` to approve"
                     )
                     logger.warning("Drift for skill '%s': %s", name, reason)
                     self._record_invalid_skill(name, description, reason)

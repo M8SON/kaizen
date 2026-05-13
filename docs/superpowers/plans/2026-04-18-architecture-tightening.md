@@ -111,7 +111,7 @@ After the replacement the file should have zero bare `return EscalateSignal` ins
 - [ ] **Step 5: Verify the module imports cleanly**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python -c "from core.ollama_tool_loop import OllamaToolLoop, EscalateSignal, EscalateWithContext; print('OK')"
+cd ~/linux/kaizen && source .venv/bin/activate && python -c "from core.ollama_tool_loop import OllamaToolLoop, EscalateSignal, EscalateWithContext; print('OK')"
 ```
 
 Expected output: `OK`
@@ -119,7 +119,7 @@ Expected output: `OK`
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/ollama_tool_loop.py && git commit -m "feat: add EscalateWithContext for safe Ollama escalation after tool execution"
+cd ~/linux/kaizen && git add core/ollama_tool_loop.py && git commit -m "feat: add EscalateWithContext for safe Ollama escalation after tool execution"
 ```
 
 ---
@@ -240,7 +240,7 @@ Replace with:
 - [ ] **Step 3: Verify the orchestrator imports cleanly**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python -c "from core.orchestrator import Orchestrator; print('OK')"
+cd ~/linux/kaizen && source .venv/bin/activate && python -c "from core.orchestrator import Orchestrator; print('OK')"
 ```
 
 Expected output: `OK`
@@ -248,7 +248,7 @@ Expected output: `OK`
 - [ ] **Step 4: Smoke test with OLLAMA_ENABLED=false (Claude-only path untouched)**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && echo "what is 2 plus 2" | python main.py --text
+cd ~/linux/kaizen && source .venv/bin/activate && echo "what is 2 plus 2" | python main.py --text
 ```
 
 Expected: normal Claude response. No errors or tracebacks.
@@ -256,7 +256,7 @@ Expected: normal Claude response. No errors or tracebacks.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/orchestrator.py && git commit -m "feat: handle EscalateWithContext — commit Ollama tool activity before Claude finalization"
+cd ~/linux/kaizen && git add core/orchestrator.py && git commit -m "feat: handle EscalateWithContext — commit Ollama tool activity before Claude finalization"
 ```
 
 ---
@@ -360,7 +360,7 @@ With:
 - [ ] **Step 3: Verify clean import and smoke test**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python -c "from core.orchestrator import Orchestrator; print('OK')" && echo "what time is it" | python main.py --text
+cd ~/linux/kaizen && source .venv/bin/activate && python -c "from core.orchestrator import Orchestrator; print('OK')" && echo "what time is it" | python main.py --text
 ```
 
 Expected: `OK` then a normal response. No errors.
@@ -368,7 +368,7 @@ Expected: `OK` then a normal response. No errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add core/orchestrator.py && git commit -m "refactor: defer system prompt construction to after route resolution"
+cd ~/linux/kaizen && git add core/orchestrator.py && git commit -m "refactor: defer system prompt construction to after route resolution"
 ```
 
 ---
@@ -430,7 +430,7 @@ Replace with:
 - [ ] **Step 3: Verify clean import**
 
 ```bash
-cd ~/linux/miniclaw && source .venv/bin/activate && python -c "from core.prompt_builder import PromptBuilder; print('OK')"
+cd ~/linux/kaizen && source .venv/bin/activate && python -c "from core.prompt_builder import PromptBuilder; print('OK')"
 ```
 
 Expected: `OK`
@@ -438,7 +438,7 @@ Expected: `OK`
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add skills/save_memory/SKILL.md core/prompt_builder.py && git commit -m "docs: unify memory saving policy — proactive in both BASE_PROMPT and SKILL.md"
+cd ~/linux/kaizen && git add skills/save_memory/SKILL.md core/prompt_builder.py && git commit -m "docs: unify memory saving policy — proactive in both BASE_PROMPT and SKILL.md"
 ```
 
 ---
@@ -455,7 +455,7 @@ In `CLAUDE.md`, find the `### Skill Structure` heading. Immediately before it, a
 ```markdown
 ### Execution Paths
 
-MiniClaw has two first-class execution paths:
+Kaizen has two first-class execution paths:
 
 **Docker** — default for stateless, sandboxed skills. Network/text transforms, web queries, API integrations. Isolated, memory-limited, torn down after each call.
 
@@ -469,7 +469,7 @@ When adding a new skill, choose Docker unless host access is genuinely required.
 - [ ] **Step 2: Commit**
 
 ```bash
-cd ~/linux/miniclaw && git add CLAUDE.md && git commit -m "docs: document native handlers as a first-class execution path alongside Docker"
+cd ~/linux/kaizen && git add CLAUDE.md && git commit -m "docs: document native handlers as a first-class execution path alongside Docker"
 ```
 
 ---

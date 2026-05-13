@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download Hailo Whisper assets into MiniClaw's user-scoped model store."""
+"""Download Hailo Whisper assets into Kaizen's user-scoped model store."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 
-DEFAULT_ASSETS_ROOT = Path.home() / ".miniclaw" / "models" / "hailo-whisper"
+DEFAULT_ASSETS_ROOT = Path.home() / ".kaizen" / "models" / "hailo-whisper"
 BASE_HEF = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper"
 BASE_DECODER_ASSETS = (
     "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets"
@@ -101,7 +101,7 @@ def download_manifest(assets_root: Path, manifest: list[tuple[str, Path]]) -> No
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Download Hailo Whisper assets into MiniClaw's model store."
+        description="Download Hailo Whisper assets into Kaizen's model store."
     )
     parser.add_argument(
         "--variant",

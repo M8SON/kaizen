@@ -226,7 +226,7 @@ the Pi.
 ## Validation
 
 1. Pull this on the Pi (`git pull && rsync` is fine since we deploy via rsync).
-2. Restart MiniClaw with `MINICLAW_PROFILE=true` already set.
+2. Restart Kaizen with `KAIZEN_PROFILE=true` already set.
 3. Run 10 routine voice queries Ollama should handle:
    - "tell me a joke"
    - "what's the weather"

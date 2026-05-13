@@ -1,5 +1,5 @@
 """
-Session archive for MiniClaw.
+Session archive for Kaizen.
 
 Persists every conversation turn to a local sqlite + FTS5 store so Claude
 can recall prior sessions by content via the `recall_session` skill.
@@ -77,7 +77,7 @@ class SessionArchive:
             db_path
             or os.environ.get(
                 "SESSION_ARCHIVE_PATH",
-                Path.home() / ".miniclaw" / "sessions.db",
+                Path.home() / ".kaizen" / "sessions.db",
             )
         )
         self._reranker = reranker

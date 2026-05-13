@@ -58,10 +58,11 @@ The system uses two layers for extensibility:
 ### Recommended Hardware
 
 - Raspberry Pi 5 (8GB or 16GB RAM)
-- NVMe SSD via M.2 HAT+
+- MicroSD for storage
 - Raspberry Pi AI HAT+ 2 (for Hailo-backed wake detection and transcription now, Kokoro offload later)
 - Active cooler
-- USB microphone
+- USB microphone 
+- USB Speaker
 
 ## Cost
 

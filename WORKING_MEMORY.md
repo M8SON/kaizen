@@ -13,7 +13,7 @@ Update this file when durable project context changes. Do not create overlapping
 ## What It Is
 
 - Modular Raspberry Pi voice assistant built around markdown-defined skills.
-- Main flow: Whisper STT -> TierRouter -> direct native skill or Ollama or Claude -> native or Docker skill execution -> Kokoro TTS.
+- Main flow: Whisper STT -> TierRouter -> direct native skill or Claude Haiku micro tier or Claude Sonnet -> native or Docker skill execution -> Kokoro TTS.
 
 ## Stable Decisions
 
@@ -24,10 +24,9 @@ Update this file when durable project context changes. Do not create overlapping
 - MemPalace is optional and not required for normal operation.
 - Kaizen remains vault-backed even when MemPalace is installed: markdown vault is canonical storage, chromadb is the local semantic index, and MemPalace is an optional local API/CLI and wake-up/search layer over that store.
 - Tiered routing gate: `TierRouter` classifies each transcript (<5ms, no LLM) as
-  direct | ollama | claude. Ollama handles routine tool calls; Claude handles complex,
-  ambiguous, and meta requests. Feature-flagged via `OLLAMA_ENABLED`.
+  direct | micro | claude. The Haiku micro tier handles routine tool calls; Sonnet handles complex,
+  ambiguous, and meta requests. Feature-flagged via `MICRO_TIER_ENABLED`.
 - Direct routes now avoid building the full Claude system prompt first.
-- If Ollama runs tools and then cannot finish the turn, Kaizen now commits that tool activity into `ConversationState` and asks Claude to finalize the response without re-running the tools.
 - Native handlers are a first-class execution path alongside Docker, not just a temporary exception.
 - Hailo STT rollout is intentionally hybrid in V1: wake detection stays CPU Whisper, full post-wake transcription can offload to Hailo when runtime + assets are present.
 - Memory policy is intentionally proactive: save durable, useful long-term facts even without an explicit "remember this" request; avoid trivial or one-turn context.
@@ -49,9 +48,9 @@ Update this file when durable project context changes. Do not create overlapping
 - Preferred config: `SKILL_SELECT_TOP_K=1`
 - Dashboard skill instructions were trimmed as part of token reduction.
 - Dashboard now includes ranked NASA EONET priority hazards in the news panel and has hardened live-refresh behavior.
-- Tiered intelligence architecture implemented (behind `OLLAMA_ENABLED=false`).
-  Three tiers: deterministic → Ollama → Claude. Activate when Pi hardware arrives.
-- The major Ollama/Claude handoff seam has been hardened: escalation after tool execution no longer requires re-executing the same side effects.
+- Tiered intelligence architecture implemented (behind `MICRO_TIER_ENABLED=false`).
+  Three tiers: deterministic → Claude Haiku micro tier → Claude Sonnet. The Ollama tier
+  was replaced by the Haiku micro tier on 2026-05-08.
 - Hailo-backed full transcription path is implemented behind startup auto-detection.
   Kaizen selects `HybridWhisperBackend` when `/dev/hailo0`, `hailo_platform`, and `~/.kaizen/models/hailo-whisper/<variant>` assets are present.
 
@@ -76,7 +75,7 @@ Update this file when durable project context changes. Do not create overlapping
   — `OpenWakeWordBackend.reset()` now clears all of them in place.
   Spec at `docs/superpowers/specs/2026-05-04-kaizen-voice-pipeline-design.md`,
   plan at `docs/superpowers/plans/2026-05-04-kaizen-voice-pipeline.md`. Wave 2
-  (Silero VAD), Wave 3 (faster-whisper + small), Wave 4 (Ollama→Kokoro streaming)
+  (Silero VAD), Wave 3 (faster-whisper + small), Wave 4 (Sonnet→Kokoro streaming)
   are the remaining waves.
 - 2026-05-05: voice-pipeline Wave 2 shipped — Silero VAD endpointing
   replaces RMS amplitude threshold in `_record_until_silence` with `VadBackend`
@@ -90,12 +89,14 @@ Update this file when durable project context changes. Do not create overlapping
   1024-sample chunks. `reset()` clears both that buffer and the model's LSTM
   state via `model.reset_states()`. Pi-tuning settled on
   `VAD_MIN_SILENCE_MS=1200` (default 700 was too aggressive for halting speech
-  / spelling). Wave 3 (faster-whisper + small) and Wave 4 (Ollama → Kokoro
+  / spelling). Wave 3 (faster-whisper + small) and Wave 4 (Sonnet → Kokoro
   streaming) are the remaining waves.
 - 2026-04-26: voice latency tuning Phase 1 + 3 (Phase 2 pending)
   user reported 7-10s gap from end-of-speech to first audio in voice mode
   root cause: `orchestrator.process_message()` blocks for full LLM response before TTS starts in `main.py:194-196` — Kokoro's chunk streaming can't help because it never starts mid-LLM
-  Phase 1 (shipped): `.env` `SILENCE_DURATION` 1.5→0.8 saves ~0.7s per turn; `OLLAMA_KEEP_ALIVE=-1` added; `core/ollama_tool_loop.py` reads that env var and passes `keep_alive` in the OpenAI-compat request body so phi4-mini stays pinned in RAM (no 7s cold reload)
+  Phase 1 (shipped): `.env` `SILENCE_DURATION` 1.5→0.8 saves ~0.7s per turn.
+  (Historical: `OLLAMA_KEEP_ALIVE=-1` once pinned phi4-mini in RAM via the
+  now-removed `core/ollama_tool_loop.py`; obsoleted by the Haiku swap on 2026-05-08.)
   Phase 3 (shipped): per-turn `[timing] listen=Xs llm=Ys tts=Zs total=Ws` line in `main.py` voice loop using `time.monotonic()` around `voice.listen` / `process_message` / `voice.speak`
   Phase 2 (pending): stream LLM tokens to Kokoro per sentence — see Likely Next Direction
 - 2026-04-25: shipped Hailo-backed full transcription (hybrid STT)
@@ -127,7 +128,9 @@ Update this file when durable project context changes. Do not create overlapping
 - 2026-04-11: token reduction shipped via semantic skill selection and `main.py --skill-select "QUERY"`
 - 2026-04-16: designed and implemented tiered intelligence: deterministic → Ollama → Claude
   TierRouter, OllamaToolLoop, config/intent_patterns.yaml
-  all gated behind OLLAMA_ENABLED=false; zero behaviour change until activated
+  all gated behind OLLAMA_ENABLED=false; zero behaviour change until activated.
+  (Ollama tier later replaced by Claude Haiku micro tier on 2026-05-08; this
+  entry kept for historical context.)
 - 2026-04-18: clarified MemPalace integration and tightened routing architecture
   direct routes now defer prompt building until needed
   Ollama escalation with tool activity now finalizes through Claude without replaying tools
@@ -138,15 +141,14 @@ Update this file when durable project context changes. Do not create overlapping
 - `ContainerManager` still uses post-construction injection for `_orchestrator` and `_meta_skill_executor`.
 - Dashboard end-to-end validation on real Pi hardware is still pending.
 - ~~Voice stop/pause control for music is still incomplete.~~ Closed 2026-04-25.
-  soundcloud handler now supports play / stop / pause / resume / skip / volume_up / volume_down via mpv IPC. play queues 20 tracks; transport actions are regex-dispatched through TierRouter (no LLM round-trip). On-Pi validation pending Ollama setup so TierRouter activates.
+  soundcloud handler now supports play / stop / pause / resume / skip / volume_up / volume_down via mpv IPC. play queues 20 tracks; transport actions are regex-dispatched through TierRouter (no LLM round-trip).
 - Hailo-backed wake detection and full transcription are both implemented; on-device Pi validation is still pending.
 - Memory behavior is structurally aligned now, but still worth validating in practice once more real conversations accumulate.
 - Weather/location memory capture by voice is still skill-prompt driven; there is not yet a dedicated first-class "set my location" tool.
 
 ## Open Technical Notes
 
-- Ollama tier not yet validated on real Pi hardware — `OLLAMA_ENABLED=false` until Pi 5 + AI HAT+ arrives.
-- Ollama model size (phi4-mini default) should be revisited once RAM tier (8GB vs 16GB) is confirmed.
+- Haiku micro tier replaced the Ollama tier on 2026-05-08; gate is now `MICRO_TIER_ENABLED`.
 
 ## Likely Next Direction
 
@@ -154,7 +156,7 @@ Update this file when durable project context changes. Do not create overlapping
 - Focus next on behavioral polish: real-world memory quality, voice flow smoothness, and routine-command reliability.
 - **Voice latency Phase 2 — stream LLM → TTS at sentence boundaries.** Test Phase 1+3 first on Pi to confirm the new `[timing]` line shows LLM as the dominant bucket; then implement:
   1. `core/tool_loop.py` — replace `client.messages.create(...)` (line ~100) with `client.messages.stream(...)`. Add `speak_callback: Callable[[str], None] | None = None` to `run()`. As text deltas arrive, accumulate buffer; flush completed sentences (split on `[.!?]\s+` and `\n\n`) via `speak_callback`. Flush remainder when stream closes.
-  2. `core/orchestrator.py` — thread `speak_callback=self.speak_callback` into the three `tool_loop.run()` call sites in `process_message` (lines ~282/297/310). Convert `_claude_finalize_ollama_turn` (line ~371) to streaming the same way.
+  2. `core/orchestrator.py` — thread `speak_callback=self.speak_callback` into the three `tool_loop.run()` call sites in `process_message` (lines ~282/297/310).
   3. `main.py` — drop the trailing `voice.speak(response)` at line ~196 since `speak_callback` is already wired at line ~119; otherwise audio plays twice.
   Tradeoffs: tool-use rounds may emit preamble that gets spoken before the tool runs (UX win, not a bug). Each `KokoroTTSBackend.speak()` opens a fresh `sd.OutputStream` (~50ms gap between sentences) — acceptable; promote to a persistent stream only if it sounds choppy.
 - **Hygiene:** real API keys (`ANTHROPIC_API_KEY`, `BRAVE_API_KEY`, `OPENWEATHER_API_KEY`) in `.env` were exposed in a Claude Code conversation transcript on 2026-04-26 when the file was read. Rotate `ANTHROPIC_API_KEY` (billing exposure); other two optional. Going forward, grep `.env` for specific keys instead of full reads.

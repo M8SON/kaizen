@@ -1,10 +1,10 @@
 # config/intent_patterns.yaml
 #
 # dispatch: patterns that bypass all LLMs and call a skill or session action directly.
-# escalate: patterns that bypass Ollama and go straight to Claude.
+# escalate: patterns that bypass the Haiku micro tier and go straight to Sonnet.
 #
 # Patterns are matched case-insensitively against the full transcript.
-# Dispatch is checked first, then escalate, then Ollama is used as default.
+# Dispatch is checked first, then escalate, then the Haiku micro tier handles the rest.
 
 dispatch:
   - pattern: "^(stop|halt)(\\s+(the\\s+)?(music|playing|audio))?[.!?]?$"

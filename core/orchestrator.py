@@ -443,14 +443,17 @@ class Orchestrator:
             self.end_session()
             return "Goodbye!"
 
+        close_message = (
+            "The user is ending this conversation. "
+            "If anything worth remembering came up — a preference, a project detail, "
+            "something to keep in mind for next time — use save-memory to save it now. "
+            "Then say a brief, warm goodbye."
+        )
+        stable, dynamic = self._build_system_prompt_split(user_message=close_message)
         response = self.tool_loop.run(
-            user_message=(
-                "The user is ending this conversation. "
-                "If anything worth remembering came up — a preference, a project detail, "
-                "something to keep in mind for next time — use save-memory to save it now. "
-                "Then say a brief, warm goodbye."
-            ),
-            system_prompt=self.system_prompt,
+            user_message=close_message,
+            system_prompt=stable,
+            system_prompt_dynamic=dynamic,
             archive_callback=self._archive_callback,
         )
         self.end_session()

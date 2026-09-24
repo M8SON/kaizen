@@ -1,0 +1,63 @@
+# config/filler_phrases.yaml
+#
+# Filler-phrase library for the Jev-classified "speak while Claude thinks"
+# feature. Each category has:
+#   criteria — the natural-language description handed to Jev's Choice
+#              primitive so it can classify a transcript against this label.
+#   phrases  — one or more spoken lines; a random one is picked each turn so
+#              repeated fillers don't sound robotic.
+#
+# Run scripts/build_filler_audio.py after editing this file to (re)generate
+# the cached ElevenLabs audio at ~/.kaizen/filler_audio/.
+#
+# See docs/superpowers/specs/2026-09-23-jev-filler-response-design.md.
+
+categories:
+  weather:
+    criteria: "Questions about current or forecast weather, temperature, rain, snow, or other conditions."
+    phrases:
+      - "Let me check the weather for you."
+      - "One moment, pulling up the forecast."
+
+  music:
+    criteria: "Requests to play, pause, skip, or otherwise control music or audio."
+    phrases:
+      - "On it."
+      - "Sure thing, one second."
+
+  web_search:
+    criteria: "General knowledge questions or requests to look something up online."
+    phrases:
+      - "Let me look that up."
+      - "Give me a second to search for that."
+
+  memory:
+    criteria: "Requests to remember, recall, or forget something."
+    phrases:
+      - "Got it, one moment."
+      - "Sure, let me pull that up."
+
+  skill_install:
+    criteria: "Requests to add, build, or install a new skill or capability."
+    phrases:
+      - "Let's set that up — one moment."
+      - "Okay, give me a second to build that."
+
+  schedule:
+    criteria: "Requests about calendars, schedules, reminders, or recurring tasks."
+    phrases:
+      - "Let me check your schedule."
+      - "One moment, checking your calendar."
+
+  smalltalk:
+    criteria: "Greetings, chit-chat, or requests with no specific task."
+    phrases:
+      - "Mm-hm, one sec."
+
+  general:
+    # Fallback bucket for anything that doesn't clearly match another
+    # category, or when Jev's confidence is below the configured threshold.
+    criteria: "Anything that doesn't clearly match another category."
+    phrases:
+      - "One moment."
+      - "Let me think about that."

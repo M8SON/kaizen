@@ -69,6 +69,7 @@ class FakeVoice:
         self.prebuffer_cue_starts = 0
         self.prebuffer_cue_stops = 0
         self.shutdown_calls = 0
+        self.fillers_played = []
 
     def shutdown(self):
         self.shutdown_calls += 1
@@ -128,6 +129,9 @@ class FakeVoice:
 
     def play_ack_sound(self):
         pass
+
+    def play_filler(self, category):
+        self.fillers_played.append(category)
 
 
 class VoiceModeTests(unittest.TestCase):
@@ -189,6 +193,56 @@ class VoiceModeTests(unittest.TestCase):
         self.assertEqual(orchestrator.processed, [])
         self.assertEqual(voice.spoken, ["Good morning."])  # greeting fires before wake loop
         self.assertEqual(voice.thinking_sounds, 0)
+
+    def test_voice_mode_plays_filler_when_classifier_matches(self):
+        orchestrator = FakeOrchestrator(["Response one"])
+        voice = FakeVoice(
+            wake_results=[True, False],
+            listen_results=["what's the weather", None],
+        )
+
+        class FakeClassifier:
+            def classify(self, transcript):
+                self.last_transcript = transcript
+                return "weather"
+
+        classifier = FakeClassifier()
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=classifier)
+
+        self.assertEqual(voice.fillers_played, ["weather"])
+        self.assertEqual(classifier.last_transcript, "what's the weather")
+
+    def test_voice_mode_skips_filler_when_classifier_returns_none(self):
+        orchestrator = FakeOrchestrator(["Response one"])
+        voice = FakeVoice(
+            wake_results=[True, False],
+            listen_results=["some ambiguous thing", None],
+        )
+
+        class FakeClassifier:
+            def classify(self, transcript):
+                return None
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=FakeClassifier())
+
+        self.assertEqual(voice.fillers_played, [])
+
+    def test_voice_mode_skips_filler_classification_when_no_classifier(self):
+        """No filler_classifier passed => no classify call, no filler played
+        — the existing thinking-sound cue is the only cue for this turn."""
+        orchestrator = FakeOrchestrator(["Response one"])
+        voice = FakeVoice(
+            wake_results=[True, False],
+            listen_results=["tell me something", None],
+        )
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=None)
+
+        self.assertEqual(voice.fillers_played, [])
 
     def test_text_mode_prints_immediate_schedule_output_before_prompt(self):
         orchestrator = FakeOrchestrator([])

@@ -56,5 +56,54 @@ class PlayThinkingSoundNonBlocking(unittest.TestCase):
         mock_wait.assert_not_called()
 
 
+class PlayFillerSound(unittest.TestCase):
+    def test_no_op_when_tts_disabled(self):
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = False
+        with patch("core.voice.sd.play") as mock_play:
+            v.play_filler("weather")
+        mock_play.assert_not_called()
+
+    def test_no_op_when_category_has_no_cached_audio(self):
+        """A category with no cached .npy files must not raise or call
+        sd.play — the feature degrades silently until
+        scripts/build_filler_audio.py has been run for that category."""
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = 48000
+        v._output_device_index = 0
+        with patch("pathlib.Path.is_dir", return_value=False), \
+             patch("core.voice.sd.play") as mock_play:
+            v.play_filler("nonexistent_category")
+        mock_play.assert_not_called()
+
+    def test_plays_cached_audio_when_present(self):
+        import numpy as np
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = 48000
+        v._output_device_index = 0
+
+        fake_path = Path("/fake/weather/phrase.npy")
+        with patch("pathlib.Path.is_dir", return_value=True), \
+             patch("pathlib.Path.glob", return_value=[fake_path]), \
+             patch("core.voice.np.load", return_value=np.zeros(100, dtype=np.float32)), \
+             patch("core.voice.sd.play") as mock_play:
+            v.play_filler("weather")
+        mock_play.assert_called_once()
+
+    def test_swallows_playback_errors(self):
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = 48000
+        v._output_device_index = 0
+        with patch("pathlib.Path.is_dir", side_effect=RuntimeError("disk gone")):
+            v.play_filler("weather")  # must not raise
+
+
 if __name__ == "__main__":
     unittest.main()

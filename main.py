@@ -280,8 +280,16 @@ def _display_wake_word() -> str:
     return os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
 
 
-def run_voice_mode(orchestrator, voice=None):
-    """Run the assistant in voice mode with microphone input."""
+def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
+    """Run the assistant in voice mode with microphone input.
+
+    filler_classifier: optional FillerClassifier (see core.filler_classifier).
+    When provided, each turn's transcript is classified into a filler
+    category and a pre-cached phrase is spoken via voice.play_filler()
+    while orchestrator.process_message() runs. Any classification miss
+    (disabled, timeout, error, low confidence) is silently skipped — the
+    existing on_speech_done thinking-sound cue already covers that gap.
+    """
     voice = voice or build_voice_interface()
     wake_word = _display_wake_word()
 
@@ -383,6 +391,17 @@ def run_voice_mode(orchestrator, voice=None):
                         voice.speak(response)
                         active_flag[0] = False
                         return
+
+                    if filler_classifier is not None:
+                        # Jev classification, hard-timeout bounded (see
+                        # FillerClassifier). A miss (disabled/timeout/error/
+                        # low confidence) returns None and is a silent no-op
+                        # — the on_speech_done thinking-sound cue above
+                        # already covers the dead-air gap for this turn.
+                        with profiling.stage("filler_classify"):
+                            category = filler_classifier.classify(transcription)
+                        if category is not None:
+                            voice.play_filler(category)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
                         # Fire the R2-D2 pre-buffer cue when the first delta
@@ -609,7 +628,13 @@ def main():
         elif args.text:
             run_text_mode(orchestrator)
         else:
-            run_voice_mode(orchestrator)
+            from core.filler_classifier import build_filler_classifier
+            filler_classifier = build_filler_classifier()
+            if filler_classifier is not None:
+                logger.info("Filler classifier: Jev enabled")
+            else:
+                logger.info("Filler classifier: disabled (no TYPESAFE_API_KEY or FILLER_CLASSIFIER_ENABLED=false)")
+            run_voice_mode(orchestrator, filler_classifier=filler_classifier)
     finally:
         try:
             scheduler_thread.stop()

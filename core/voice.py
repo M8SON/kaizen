@@ -529,6 +529,39 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("Ack sound error: %s", e)
 
+    def play_filler(self, category: str) -> None:
+        """Play a pre-cached filler phrase for `category`.
+
+        Picks a random cached phrase from ~/.kaizen/filler_audio/<category>/
+        (built by scripts/build_filler_audio.py) and plays it non-blocking,
+        same pattern as play_ack_sound. No-op (logged) if the category has
+        no cached audio — never raises, never blocks the caller.
+        """
+        if not self.enable_tts:
+            return
+        try:
+            import random
+            from pathlib import Path
+
+            cat_dir = Path.home() / ".kaizen" / "filler_audio" / category
+            candidates = sorted(cat_dir.glob("*.npy")) if cat_dir.is_dir() else []
+            if not candidates:
+                logger.warning(
+                    "play_filler: no cached audio for category %r (run "
+                    "scripts/build_filler_audio.py) — skipping", category,
+                )
+                return
+
+            audio = np.load(random.choice(candidates))
+            sd.play(
+                resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
+                samplerate=self._output_samplerate,
+                device=self._output_device_index,
+            )
+            # Intentionally no sd.wait — caller continues into process_message.
+        except Exception as e:
+            logger.warning("Filler playback error: %s", e)
+
     def speak(self, text: str, interruptible: bool = False) -> bool:
         """Speak text aloud using Kokoro TTS with streaming playback.
 

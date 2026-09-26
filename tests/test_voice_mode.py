@@ -166,6 +166,17 @@ class VoiceModeTests(unittest.TestCase):
         self.assertEqual(voice.prebuffer_cue_stops, 1)
         self.assertIsNotNone(orchestrator.container_manager._meta_skill_executor)
 
+    def test_voice_mode_skips_prebuffer_cue_when_disabled(self):
+        orchestrator = FakeOrchestrator(["Response one"])
+        voice = FakeVoice(wake_results=[True, False], listen_results=["tell me something", None])
+
+        with patch.dict("os.environ", {"PREBUFFER_CUE_ENABLED": "false"}), \
+             redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+
+        self.assertEqual(voice.spoken[-1], "Response one")
+        self.assertEqual(voice.prebuffer_cue_starts, 0)
+
     def test_voice_mode_plays_thinking_cue_when_speech_endpoints(self):
         orchestrator = FakeOrchestrator(["Response one"])
         voice = FakeVoice(

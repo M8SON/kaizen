@@ -320,6 +320,8 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
     # How long to wait for follow-up speech before returning to wake word detection
     conversation_idle_timeout = float(os.getenv("CONVERSATION_IDLE_TIMEOUT", "8"))
+    # Looping R2-D2 cue between the first LLM delta and first TTS audio.
+    prebuffer_cue = os.getenv("PREBUFFER_CUE_ENABLED", "true").lower() == "true"
 
     active_flag = getattr(orchestrator, "_conversation_active_flag", [False])
 
@@ -406,6 +408,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                             # audio falls through to a normal Claude turn.
                             answer = filler_classifier.pick_answer(category)
                             if answer and voice.play_answer(category, answer):
+                                logger.info("Canned answer (%s): %s", category, answer)
                                 print(f"Assistant: {answer}\n")
                                 orchestrator.record_local_turn(transcription, answer)
                                 print("Listening...")
@@ -417,10 +420,10 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         # Fire the R2-D2 pre-buffer cue when the first delta
                         # arrives; it plays in parallel while Kokoro primes its
                         # pre-buffer, covering that start-delay without adding
-                        # any dead air.
+                        # any dead air. PREBUFFER_CUE_ENABLED=false skips it.
                         push_raw, finalize = voice.speak_stream_feeder(
-                            on_first_chunk=voice.start_prebuffer_cue,
-                            on_first_audio=voice.stop_prebuffer_cue,
+                            on_first_chunk=voice.start_prebuffer_cue if prebuffer_cue else None,
+                            on_first_audio=voice.stop_prebuffer_cue if prebuffer_cue else None,
                             interruptible=True,
                         )
                         try:

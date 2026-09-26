@@ -22,6 +22,7 @@ import logging
 import random
 import re
 import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -148,6 +149,7 @@ class FillerClassifier:
             return None
 
         result: dict = {}
+        started = time.perf_counter()
 
         def _call():
             try:
@@ -204,11 +206,17 @@ class FillerClassifier:
             logger.warning("FillerClassifier: unexpected Jev response shape: %s", exc)
             return None
 
-        if confidence is not None and confidence < self._confidence_threshold:
-            logger.debug(
-                "FillerClassifier: category=%s confidence=%.2f below threshold %.2f — skipping",
-                category, confidence, self._confidence_threshold,
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        conf_str = "n/a" if confidence is None else f"{confidence:.2f}"
+
+        def _log(outcome: str) -> None:
+            logger.info(
+                "FillerClassifier: %r -> category=%s confidence=%s (%.0fms) -> %s",
+                transcript[:60], category, conf_str, elapsed_ms, outcome,
             )
+
+        if confidence is not None and confidence < self._confidence_threshold:
+            _log(f"skip (below {self._confidence_threshold:.2f})")
             return None
 
         if category not in self._categories:
@@ -221,12 +229,10 @@ class FillerClassifier:
         if self.is_answer(category) and (
             confidence is None or confidence < self._answer_confidence_threshold
         ):
-            logger.debug(
-                "FillerClassifier: answer category=%s confidence=%s below answer threshold %.2f — deferring to Claude",
-                category, confidence, self._answer_confidence_threshold,
-            )
+            _log(f"Claude (below answer threshold {self._answer_confidence_threshold:.2f})")
             return None
 
+        _log("answer" if self.is_answer(category) else "filler")
         return category
 
 

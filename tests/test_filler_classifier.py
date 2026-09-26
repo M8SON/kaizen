@@ -145,6 +145,17 @@ class AnswerCategoryTests(unittest.TestCase):
         self.assertFalse(clf.is_answer("weather"))
         self.assertIsNone(clf.pick_answer("weather"))
 
+    def test_logs_category_confidence_and_outcome(self):
+        with self.assertLogs("core.filler_classifier", level="INFO") as logs:
+            self._clf("identity", 0.9).classify("what's your name")
+            self._clf("identity", 0.7).classify("what's your name")
+            self._clf("weather", 0.3).classify("hmm")
+        joined = "\n".join(logs.output)
+        self.assertIn("category=identity confidence=0.90", joined)
+        self.assertIn("-> answer", joined)
+        self.assertIn("-> Claude (below answer threshold 0.85)", joined)
+        self.assertIn("-> skip (below 0.60)", joined)
+
     def test_phrase_slug_is_stable(self):
         # Changing this breaks every previously built cache file.
         self.assertEqual(phrase_slug("One moment."), "one-moment-" + __import__("hashlib").sha1(b"One moment.").hexdigest()[:8])

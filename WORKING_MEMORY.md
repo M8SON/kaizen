@@ -82,6 +82,19 @@ Update this file when durable project context changes. Do not create overlapping
     shuffled searched playlist (Spotify editorial playlists are hidden from newer dev apps).
   - Pi audio: speaker is the KT USB Audio adapter, pinned as PipeWire default sink;
     mic is the XVF3800.
+  - 2026-09-26 wake-word investigation (OPEN): speaker now on the XVF3800 jack
+    (16kHz output, echo-cancel reference); both XVF channels captured, channel 1
+    primary (ch0 suppresses speech during playback: 0/7 wakes over music vs 4/7).
+    Two-stage wake: WAKE_WORD_SOFT_THRESHOLD=0.15 on the Pi, soft wakes confirmed by
+    "jarv" in the transcript or Jev's addressed_to_assistant(). Key finding: stock
+    hey_jarvis scores Mason's *recorded* attempts 0.99-1.00 (18/18, arecord with
+    Kaizen stopped; clips in ~/.kaizen/wake_training on the Pi) and through every
+    Kaizen code path offline, but *live* attempts at 2ft score 0.1-0.4 — so live
+    capture differs. Leading (unproven) hypothesis: XVF3800 AEC/AGC state after
+    Kaizen plays audio through it. Live near-misses (>=0.08) now save 5s stereo WAVs
+    to ~/.kaizen/wake_debug/ — next step is to compare those with the training clips
+    (levels/spectrum/scores); likely fix is XVF tuning via xvf_host (not installed).
+    Heartbeat line "Wake loop alive" logs per-minute rms, max score, throughput.
   - 2026-09-26: Jev leaned on harder. (1) Its category/confidence goes to Claude as an
     uncached system hint so clipped transcripts get acted on, not clarified. (2) Tool-first
     (`TOOL_FIRST_ENABLED=true` on the Pi): weather runs before Claude, recorded as Claude's

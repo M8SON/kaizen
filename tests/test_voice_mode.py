@@ -12,6 +12,10 @@ class FakeContainerManager:
     def __init__(self):
         self._meta_skill_executor = None
 
+    def stop_music(self):
+        self.music_stops = getattr(self, "music_stops", 0) + 1
+        return "Stopped."
+
 
 class FakeOrchestrator:
     def __init__(self, responses):
@@ -360,6 +364,8 @@ class SessionEndTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             main.run_voice_mode(orchestrator, voice=voice)
         self.assertEqual(orchestrator.processed, ["first question", "second question"])
+        # Ending the conversation also stops any music.
+        self.assertEqual(orchestrator.container_manager.music_stops, 1)
 
 
 class VoiceModeShutdownTests(unittest.TestCase):

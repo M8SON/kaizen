@@ -424,6 +424,10 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                     # used to `return`, so "You can stop now" quit Kaizen and
                     # systemd's Restart=on-failure left it down.)
                     if _is_session_end(transcription):
+                        # "Stop" means stop responding *and* stop the music
+                        # (Mason, 2026-09-26): "Jarvis you can stop" over
+                        # music used to end the chat and leave it playing.
+                        logger.info("Session end: %s", orchestrator.container_manager.stop_music())
                         response = orchestrator.close_session()
                         print(f"\nAssistant: {response}")
                         voice.speak(response)

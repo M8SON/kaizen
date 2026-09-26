@@ -878,6 +878,10 @@ class ContainerManager:
             logger.exception("_detect_external_spotify_playback failed")
         return None
 
+    def stop_music(self) -> str:
+        """Stop whatever is playing (Kaizen-started or external Spotify)."""
+        return self._execute_music_control({"action": "stop"})
+
     def _execute_music_control(self, tool_input: dict) -> str:
         """Transport router — dispatches to the active music source's backend."""
         action = str(tool_input.get("action") or "").strip().lower()

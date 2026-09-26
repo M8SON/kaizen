@@ -105,6 +105,7 @@ class VoiceInterface:
         # out while the user talks; local Whisper remains the fallback.
         self._streaming_stt = streaming_stt
         self._stream_session = None
+        self._heard_speech = False
 
         # Active PyAudio resources tracked here so shutdown() (e.g. from a
         # SIGINT handler) can close them even if the wake/listen loop is
@@ -330,6 +331,14 @@ class VoiceInterface:
             on_speech_done=on_speech_done,
         )
         session, self._stream_session = self._stream_session, None
+        if not self._heard_speech:
+            # VAD never detected speech (idle timeout): nothing to transcribe,
+            # so don't spend ~1.8s of Whisper CPU on silence.
+            try:
+                os.unlink(audio_file)
+            except OSError:
+                pass
+            return None
         try:
             transcription = None
             if session is not None:
@@ -887,6 +896,7 @@ class VoiceInterface:
         finally:
             # Hand the session to listen() only when speech was captured;
             # otherwise (idle timeout, Ctrl+C) drop it.
+            self._heard_speech = recording
             if session is not None:
                 if recording and ended_normally:
                     self._stream_session = session

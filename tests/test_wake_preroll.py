@@ -84,7 +84,7 @@ def test_listen_strips_only_when_preroll_used(voice, monkeypatch):
 
     def record(used):
         def _rec(**kw):
-            voice._used_preroll = used
+            voice._used_preroll, voice._heard_speech = used, True
             return "/nonexistent.wav"
         return _rec
 
@@ -141,7 +141,7 @@ def test_listen_uses_streamed_text_and_skips_whisper(voice, monkeypatch):
     monkeypatch.setattr(voice, "_transcribe", whisper)
 
     def rec(**kw):
-        voice._stream_session, voice._used_preroll = session, True
+        voice._stream_session, voice._used_preroll, voice._heard_speech = session, True, True
         return "/nonexistent.wav"
 
     monkeypatch.setattr(voice, "_record_until_silence", rec)
@@ -153,8 +153,28 @@ def test_listen_falls_back_to_whisper_when_streaming_fails(voice, monkeypatch):
     monkeypatch.setattr(voice, "_transcribe", lambda path: "whisper text")
 
     def rec(**kw):
-        voice._stream_session, voice._used_preroll = _FakeSession(text=None), False
+        voice._stream_session, voice._used_preroll, voice._heard_speech = _FakeSession(text=None), False, True
         return "/nonexistent.wav"
 
     monkeypatch.setattr(voice, "_record_until_silence", rec)
     assert voice.listen() == "whisper text"
+
+
+def test_listen_skips_transcription_when_no_speech(voice, monkeypatch):
+    whisper = MagicMock(return_value="thanks for watching")  # Whisper's classic silence hallucination
+    monkeypatch.setattr(voice, "_transcribe", whisper)
+
+    def rec(**kw):
+        voice._heard_speech = False
+        return "/nonexistent.wav"
+
+    monkeypatch.setattr(voice, "_record_until_silence", rec)
+    assert voice.listen(max_wait_seconds=8) is None
+    whisper.assert_not_called()
+
+
+def test_record_reports_whether_speech_was_heard(voice):
+    _record_with_session(voice, _FakeSession(), speech=True)
+    assert voice._heard_speech is True
+    _record_with_session(voice, _FakeSession(), speech=False)
+    assert voice._heard_speech is False

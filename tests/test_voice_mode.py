@@ -376,6 +376,8 @@ class StopIntentTests(unittest.TestCase):
 
         self.assertEqual(orchestrator.container_manager.music_stops, 1)
         self.assertEqual(voice.acks, 1)
+        # Claude's history learns the music was stopped.
+        self.assertEqual(orchestrator.local_turns, [("hey jarvis stop", "Stopped the music.")])
         self.assertEqual(orchestrator.processed, [])            # no Claude
         self.assertEqual(voice.spoken, ["Good morning."])       # no goodbye speech
         self.assertEqual(voice.fillers_played, [])

@@ -439,8 +439,16 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         # "Stop" = stop the music and/or stop responding, never
                         # "done for the day" (Mason, 2026-09-26): no Claude, no
                         # goodbye speech — chime and back to idle wake listening.
-                        logger.info("Stop intent: %s", orchestrator.container_manager.stop_music())
+                        stopped = orchestrator.container_manager.stop_music()
+                        logger.info("Stop intent: %s", stopped)
                         voice.play_ack_sound()
+                        # Claude never saw this turn; record it so its history
+                        # doesn't still say music is playing (it told Mason
+                        # "music is going" after a Jev stop on the Pi).
+                        orchestrator.record_local_turn(
+                            transcription,
+                            "Stopped the music." if stopped == "Stopped." else "Okay, stopping.",
+                        )
                         orchestrator.end_session()
                         active_flag[0] = False
                         break

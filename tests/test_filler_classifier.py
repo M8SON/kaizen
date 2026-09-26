@@ -223,6 +223,19 @@ class AnswerCategoryTests(unittest.TestCase):
         self.assertEqual(clf(0.95).action_for("stop"), "stop")
         self.assertIsNone(clf(0.95).action_for("weather"))
 
+    def test_per_category_min_confidence_override(self):
+        client = MagicMock()
+        client.system_one.return_value = _fake_response("stop", 0.82)
+        clf = FillerClassifier(
+            api_key="k", categories={"stop": "Stop."}, client=client,
+            actions={"stop": "stop"}, min_confidence={"stop": 0.75},
+        )
+        self.assertEqual(clf.classify("hey Jarvis can you stop the EDM now?"), "stop")
+
+    def test_real_config_stop_min_confidence(self):
+        from core.filler_classifier import load_min_confidence
+        self.assertEqual(load_min_confidence(DEFAULT_PATTERNS_PATH), {"stop": 0.75})
+
     def test_phrase_slug_is_stable(self):
         # Changing this breaks every previously built cache file.
         self.assertEqual(phrase_slug("One moment."), "one-moment-" + __import__("hashlib").sha1(b"One moment.").hexdigest()[:8])

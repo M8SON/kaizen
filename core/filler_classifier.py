@@ -114,6 +114,22 @@ def load_actions(path: Path) -> dict[str, str]:
     }
 
 
+def load_min_confidence(path: Path) -> dict[str, float]:
+    """Per-category `min_confidence` overrides for answer/action categories."""
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        return {}
+    return {
+        name: float(entry["min_confidence"])
+        for name, entry in (data.get("categories") or {}).items()
+        if isinstance(entry, dict) and entry.get("min_confidence") is not None
+    }
+
+
 def load_prefetch(path: Path) -> dict[str, dict]:
     """Load {category: {"tool": str, "input": dict}} for categories with a
     `prefetch` block. Never raises; malformed entries are skipped."""
@@ -152,6 +168,7 @@ class FillerClassifier:
         answer_confidence_threshold: float = 0.85,
         prefetch: dict[str, dict] | None = None,
         actions: dict[str, str] | None = None,
+        min_confidence: dict[str, float] | None = None,
     ):
         self._categories = dict(categories)
         self._timeout_s = timeout_s
@@ -161,6 +178,7 @@ class FillerClassifier:
         self.last_confidence: float | None = None
         self._prefetch = dict(prefetch or {})
         self._actions = dict(actions or {})
+        self._min_confidence = dict(min_confidence or {})
         self._client = client
         self._api_key = api_key
 
@@ -311,10 +329,11 @@ class FillerClassifier:
         # Answer and action categories replace Claude's reply entirely, so a
         # wrong match is worse than a slow right answer — require a stricter,
         # explicit confidence and otherwise let Claude handle the turn.
+        strict = self._min_confidence.get(category, self._answer_confidence_threshold)
         if (self.is_answer(category) or self.action_for(category)) and (
-            confidence is None or confidence < self._answer_confidence_threshold
+            confidence is None or confidence < strict
         ):
-            _log(f"Claude (below answer threshold {self._answer_confidence_threshold:.2f})")
+            _log(f"Claude (below answer threshold {strict:.2f})")
             return None
 
         _log(
@@ -360,6 +379,7 @@ def build_filler_classifier() -> "FillerClassifier | None":
         answer_phrases=load_answer_phrases(DEFAULT_PATTERNS_PATH, persona_name_from_env()),
         answer_confidence_threshold=answer_confidence_threshold,
         actions=load_actions(DEFAULT_PATTERNS_PATH),
+        min_confidence=load_min_confidence(DEFAULT_PATTERNS_PATH),
         prefetch=(
             load_prefetch(DEFAULT_PATTERNS_PATH)
             if os.getenv("TOOL_FIRST_ENABLED", "false").strip().lower() == "true"

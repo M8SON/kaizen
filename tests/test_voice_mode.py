@@ -11,6 +11,7 @@ import main
 class FakeContainerManager:
     def __init__(self):
         self._meta_skill_executor = None
+        self.music_active = False
 
     def stop_music(self):
         self.music_stops = getattr(self, "music_stops", 0) + 1
@@ -389,6 +390,33 @@ class StopIntentTests(unittest.TestCase):
             main.run_voice_mode(orchestrator, voice=voice, filler_classifier=clf)
 
         self.assertEqual(orchestrator.processed, ["what time is it"])
+
+
+class MusicClosesConversationTests(unittest.TestCase):
+    def _run(self, music_after_first_turn):
+        orchestrator = FakeOrchestrator(["Playing country", "Answer"])
+        # One wake only: anything after the first turn is only processed if
+        # the conversation stayed open for a follow-up listen.
+        voice = FakeVoice(wake_results=[True, False], listen_results=["play country music", "Ain't no helping you,", None])
+        real_process = orchestrator.process_message
+
+        def process(t, **kw):
+            out = real_process(t, **kw)
+            orchestrator.container_manager.music_active = music_after_first_turn
+            return out
+
+        orchestrator.process_message = process
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+        return orchestrator.processed
+
+    def test_music_playing_closes_conversation_so_lyrics_are_not_heard(self):
+        """Regression: with music on, the follow-up listen transcribed song
+        lyrics ("Ain't no helping you,") as user turns."""
+        self.assertEqual(self._run(True), ["play country music"])
+
+    def test_no_music_keeps_conversation_open(self):
+        self.assertEqual(self._run(False), ["play country music", "Ain't no helping you,"])
 
 
 class SessionEndTests(unittest.TestCase):

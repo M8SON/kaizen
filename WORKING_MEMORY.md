@@ -37,6 +37,9 @@ Update this file when durable project context changes. Do not create overlapping
   means stop responding (interrupt/end the conversation and return to idle wake
   listening) or stop the music. Powering down is only via the Pi itself
   (Mason, 2026-09-26). kaizen.service is `Restart=always`.
+- "Hey jarvis" is the only interrupt word while Jarvis is speaking (Mason,
+  2026-09-26). A Meta-streaming "stop" barge-in was considered and declined.
+  "Hey jarvis, stop" = wake-word barge-in, then Jev's `stop` action.
 
 ## Skill Split
 

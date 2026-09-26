@@ -878,6 +878,11 @@ class ContainerManager:
             logger.exception("_detect_external_spotify_playback failed")
         return None
 
+    @property
+    def music_active(self) -> bool:
+        """True while music Kaizen started (Spotify/SoundCloud) is playing."""
+        return self._active_music_source is not None
+
     def stop_music(self) -> str:
         """Stop whatever is playing (Kaizen-started or external Spotify)."""
         return self._execute_music_control({"action": "stop"})

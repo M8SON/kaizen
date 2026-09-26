@@ -519,6 +519,15 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 print("[barge-in — listening]")
                                 continue
 
+                if orchestrator.container_manager.music_active:
+                    # Music is playing: close the conversation rather than
+                    # keep an open mic for follow-ups — it transcribed the
+                    # song's lyrics as user turns on the Pi. Talking over
+                    # music always starts with the wake word.
+                    orchestrator.end_session()
+                    active_flag[0] = False
+                    break
+
                 print("Listening...")
 
     except KeyboardInterrupt:

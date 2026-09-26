@@ -74,6 +74,13 @@ Update this file when durable project context changes. Do not create overlapping
     shuffled searched playlist (Spotify editorial playlists are hidden from newer dev apps).
   - Pi audio: speaker is the KT USB Audio adapter, pinned as PipeWire default sink;
     mic is the XVF3800.
+  - 2026-09-26: Jev leaned on harder. (1) Its category/confidence goes to Claude as an
+    uncached system hint so clipped transcripts get acted on, not clarified. (2) Tool-first
+    (`TOOL_FIRST_ENABLED=true` on the Pi): weather runs before Claude, recorded as Claude's
+    own tool_use. Pi A/B: answer starts 2.7s vs 4.2-4.8s. Needs a `topic: location` memory
+    note (added `2026-09-26_location.md`; the older "default location" note is prose and
+    `resolve_location` can't read it). (3) `WAKE_PREROLL_MS=600` pre-roll fixes words
+    clipped when "hey jarvis, ..." is said in one breath.
 - 2026-07-18/19: first-answer voice-latency arc (all merged to `main`; specs/plans
   under `docs/superpowers/`). Root cause of felt latency: Kokoro synth runs
   ~1.15–1.4× **slower than real-time** on the Pi CPU (`kokoro-onnx` fp32 is the CPU

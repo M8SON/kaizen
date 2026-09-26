@@ -33,6 +33,11 @@ Update this file when durable project context changes. Do not create overlapping
 - Weather location is no longer an env-backed source of truth in the host runtime.
   Resolve location from explicit request override, then remembered memory (`topic: location`), then dashboard-only fallback.
 
+- Kaizen is an always-on appliance: no spoken phrase may shut it down. "Stop"
+  means stop responding (interrupt/end the conversation and return to idle wake
+  listening) or stop the music. Powering down is only via the Pi itself
+  (Mason, 2026-09-26). kaizen.service is `Restart=always`.
+
 ## Skill Split
 
 - Native: `dashboard`, `soundcloud`, `install-skill`, `set-env-var`, `save-memory`, `schedule`, `recall-session`

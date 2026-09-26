@@ -61,7 +61,7 @@ categories:
 
   identity:
     answer: true
-    criteria: "The user asks the assistant's own name, who or what the assistant is, or what the assistant's job is. Not questions about any other person or thing."
+    criteria: "The user asks about the assistant itself: its name, who or what it is, who they are talking to, or what the assistant does or what its job is (for example \"what is your name\", \"who are you\", \"what do you do\", \"who am I talking to\"). Not questions about any other person or thing."
     phrases:
       - "I'm {persona}, Mason's voice assistant. I run right here on a Raspberry Pi."
       - "My name is {persona}. I'm Mason's personal assistant, here to help around the house."

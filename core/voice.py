@@ -52,6 +52,8 @@ def _quiet_points(seg: "np.ndarray", min_run: int) -> "np.ndarray":
     return np.unique(np.concatenate(([0], points, [len(seg)])))
 
 
+SOFT_WAKE_MAX_RECORD_S = 8.0
+
 class _WakeDiagnostics:
     """Logs what the wake loop hears, so a missed "hey jarvis" can be told
     apart: a near-miss (peak score per channel), or silence/low scores.
@@ -193,6 +195,9 @@ class VoiceInterface:
         # (quiet or music) never exceeded 0.09 over hours. 0 disables.
         self._wake_soft_threshold = float(os.getenv("WAKE_WORD_SOFT_THRESHOLD", "0"))
         self._soft_wake = False
+        # Optional Callable[[str], bool]: second opinion for soft wakes whose
+        # transcript lacks the wake name (main wires Jev in here).
+        self.wake_confirmer = None
 
         # Active PyAudio resources tracked here so shutdown() (e.g. from a
         # SIGINT handler) can close them even if the wake/listen loop is
@@ -482,8 +487,13 @@ class VoiceInterface:
                 pass
 
         if soft and not self._mentions_wake_name(transcription):
-            logger.info("Soft wake rejected (no wake name in %r)", transcription)
-            return None
+            # Name may be misheard ("Hey Jarrett, ..."): let Jev judge whether
+            # the words were addressed to the assistant at all.
+            confirmer = self.wake_confirmer
+            if not (transcription and confirmer is not None and confirmer(transcription)):
+                logger.info("Soft wake rejected (not addressed to the assistant: %r)", transcription)
+                return None
+            logger.info("Soft wake confirmed by classifier: %r", transcription)
 
         if transcription and self._used_preroll:
             transcription = self._strip_wake_phrase(transcription)
@@ -971,6 +981,10 @@ class VoiceInterface:
         silence_frames = 0
         silence_limit = int(self.RATE / self.CHUNK * self.silence_duration)
         max_wait_chunks = int(self.RATE / self.CHUNK * max_wait_seconds) if max_wait_seconds else 0
+        # A soft (unconfirmed) wake may be a false trigger during music; cap
+        # the recording so song vocals can't hold the mic open.
+        max_record_chunks = int(self.RATE / self.CHUNK * SOFT_WAKE_MAX_RECORD_S) if self._soft_wake else 0
+        recorded_chunks = 0
         waited_chunks = 0
         recording = False
         chunk_ms = int(self.CHUNK / self.RATE * 1000)
@@ -1005,6 +1019,10 @@ class VoiceInterface:
                     endpoint = recording and silence_ms >= self.vad_min_silence_ms
                 else:
                     endpoint = recording and silence_frames > silence_limit
+                if recording:
+                    recorded_chunks += 1
+                    if max_record_chunks and recorded_chunks >= max_record_chunks:
+                        endpoint = True
 
                 if endpoint:
                     if on_speech_done is not None:

@@ -244,6 +244,51 @@ class FillerClassifier:
         self._client = TypeSafeClient(api_key=self._api_key)
         return self._client
 
+    def addressed_to_assistant(self, transcript: str, min_confidence: float = 0.8) -> bool:
+        """Jev judgement for an unconfirmed (soft) wake: was this speech
+        addressed to the voice assistant, or background (lyrics, TV, other
+        people)? Any failure or timeout counts as "no"."""
+        if not self.available or not transcript.strip():
+            return False
+        criteria = {
+            "addressed": (
+                "Someone is talking to the voice assistant named Jarvis — a request, "
+                "question or command for it (the name may be misheard, e.g. 'Jarrett', "
+                "'Travis', 'Jervis', or cut off)."
+            ),
+            "background": (
+                "Not directed at the assistant: song lyrics, TV or radio, people talking "
+                "to each other, or random words."
+            ),
+        }
+        result: dict = {}
+
+        def _call():
+            try:
+                from typesafe_sdk import Choice
+                result["r"] = self._get_client().system_one(
+                    state={"transcript": transcript},
+                    questions={"addressed": Choice(
+                        instructions="Was this speech addressed to the voice assistant?",
+                        criteria=criteria,
+                    )},
+                )
+            except Exception as exc:  # noqa: BLE001
+                result["e"] = exc
+
+        thread = threading.Thread(target=_call, daemon=True, name="jev-addressed")
+        thread.start()
+        thread.join(timeout=self._timeout_s)
+        try:
+            answer = result["r"].choices["addressed"]
+        except Exception:  # noqa: BLE001 - timeout, error, or odd shape
+            logger.info("FillerClassifier: addressed check unavailable (%s)", result.get("e", "timeout"))
+            return False
+        ok = answer.choice == "addressed" and (answer.confidence or 0) >= min_confidence
+        logger.info("FillerClassifier: addressed check %r -> %s (%.2f)",
+                    transcript[:60], answer.choice, answer.confidence or 0)
+        return ok
+
     def classify(self, transcript: str) -> str | None:
         """Return a category name, or None on timeout/error/low confidence."""
         self.last_confidence = None

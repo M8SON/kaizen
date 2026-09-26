@@ -265,3 +265,24 @@ class BuildFillerClassifierTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AddressedCheckTests(unittest.TestCase):
+    def _clf(self, choice, confidence, raise_exc=False):
+        answer = MagicMock(choice=choice, confidence=confidence)
+        client = MagicMock()
+        if raise_exc:
+            client.system_one.side_effect = RuntimeError("down")
+        else:
+            client.system_one.return_value = MagicMock(choices={"addressed": answer})
+        return FillerClassifier(api_key="k", categories={"general": "x"}, client=client)
+
+    def test_addressed_with_confidence(self):
+        self.assertTrue(self._clf("addressed", 0.9).addressed_to_assistant("Hey Jarrett, what's the weather"))
+
+    def test_background_or_low_confidence_is_no(self):
+        self.assertFalse(self._clf("background", 0.95).addressed_to_assistant("ain't no helping you"))
+        self.assertFalse(self._clf("addressed", 0.6).addressed_to_assistant("maybe"))
+
+    def test_failure_is_no(self):
+        self.assertFalse(self._clf(None, None, raise_exc=True).addressed_to_assistant("anything"))

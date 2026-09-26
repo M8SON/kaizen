@@ -324,6 +324,10 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     """
     voice = voice or build_voice_interface()
     wake_word = _display_wake_word()
+    confirmer = getattr(filler_classifier, "addressed_to_assistant", None)
+    if confirmer is not None:
+        # Jev judges soft wakes whose transcript lacks the (possibly misheard) name.
+        voice.wake_confirmer = confirmer
 
     from core.meta_skill import MetaSkillExecutor
     orchestrator.container_manager._meta_skill_executor = MetaSkillExecutor(

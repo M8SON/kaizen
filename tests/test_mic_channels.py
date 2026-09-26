@@ -185,3 +185,28 @@ def test_soft_wake_rejected_without_wake_name(stereo_voice, monkeypatch):
 
 def test_hard_wake_needs_no_confirmation(stereo_voice, monkeypatch):
     assert _listen_after(stereo_voice, monkeypatch, False, "what time is it?") == "what time is it?"
+
+
+def test_soft_wake_accepted_when_confirmer_says_addressed(stereo_voice, monkeypatch):
+    stereo_voice.wake_confirmer = lambda text: True
+    assert _listen_after(stereo_voice, monkeypatch, True, "Hey Jarrett, can you look up the news?") \
+        == "Hey Jarrett, can you look up the news?"
+
+
+def test_soft_wake_rejected_when_confirmer_says_background(stereo_voice, monkeypatch):
+    stereo_voice.wake_confirmer = lambda text: False
+    assert _listen_after(stereo_voice, monkeypatch, True, "ain't no helping you") is None
+
+
+def test_soft_wake_recording_is_capped(stereo_voice, monkeypatch):
+    """A soft wake during music must not record lyrics indefinitely."""
+    monkeypatch.setattr(voice_module, "SOFT_WAKE_MAX_RECORD_S", 0.5)
+    stream = MagicMock()
+    stream.read.side_effect = [_stereo(500, 500)] * 100          # continuous "vocals"
+    audio = MagicMock()
+    audio.get_sample_size.return_value = 2
+    stereo_voice._shared_audio, stereo_voice._shared_stream = audio, stream
+    stereo_voice.vad_backend = MagicMock(is_speech=MagicMock(return_value=True))
+    stereo_voice._soft_wake = True
+    stereo_voice._record_until_silence()
+    assert stream.read.call_count <= 10   # 0.5s = ~8 chunks, not all 100

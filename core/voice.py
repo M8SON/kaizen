@@ -31,6 +31,18 @@ from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBac
 logger = logging.getLogger(__name__)
 
 
+# A freshly opened output stream can drop its first few tens of ms while
+# PipeWire starts it; cached ElevenLabs phrases begin speaking within 0-40ms,
+# so without this the first syllable is clipped ("...et me check").
+PHRASE_LEAD_IN_S = 0.15
+
+
+def _with_lead_in(audio: "np.ndarray") -> "np.ndarray":
+    """Prepend PHRASE_LEAD_IN_S of silence (at KOKORO_SAMPLE_RATE)."""
+    pad = np.zeros(int(KOKORO_SAMPLE_RATE * PHRASE_LEAD_IN_S), dtype=np.float32)
+    return np.concatenate([pad, np.asarray(audio, dtype=np.float32)])
+
+
 def _quiet_points(seg: "np.ndarray", min_run: int) -> "np.ndarray":
     """Sorted sample offsets where `seg` is at rest: 0, the start of every
     silent run >= min_run samples, and len(seg). The pre-buffer cue stops at
@@ -594,7 +606,7 @@ class VoiceInterface:
                 )
                 return
 
-            audio = np.load(random.choice(candidates))
+            audio = _with_lead_in(np.load(random.choice(candidates)))
             sd.play(
                 resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
                 samplerate=self._output_samplerate,
@@ -625,7 +637,7 @@ class VoiceInterface:
                 )
                 return False
 
-            audio = np.load(path)
+            audio = _with_lead_in(np.load(path))
             sd.play(
                 resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
                 samplerate=self._output_samplerate,

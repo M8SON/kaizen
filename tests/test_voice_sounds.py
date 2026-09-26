@@ -151,3 +151,30 @@ class PlayAnswerSound(unittest.TestCase):
                 self.assertTrue(self._voice().play_answer("identity", "I am Jarvis."))
         mock_play.assert_called_once()
         mock_wait.assert_called_once()
+
+
+class PhraseLeadIn(unittest.TestCase):
+    def test_answer_playback_starts_with_silence(self):
+        """Cached phrases get a short silent lead-in so stream start-up
+        doesn't clip the first syllable."""
+        import tempfile
+        from pathlib import Path
+        import numpy as np
+        from core import voice as voice_mod
+        from core.filler_classifier import phrase_slug
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = voice_mod.KOKORO_SAMPLE_RATE
+        v._output_device_index = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            cat = Path(tmp) / "identity"
+            cat.mkdir()
+            np.save(cat / f"{phrase_slug('Hi.')}.npy", np.ones(100, dtype=np.float32))
+            with patch("core.filler_classifier.FILLER_AUDIO_ROOT", Path(tmp)), \
+                 patch("core.voice.sd.play") as mock_play, patch("core.voice.sd.wait"):
+                v.play_answer("identity", "Hi.")
+        played = mock_play.call_args.args[0]
+        lead = int(voice_mod.KOKORO_SAMPLE_RATE * voice_mod.PHRASE_LEAD_IN_S)
+        self.assertTrue(np.all(played[:lead] == 0))
+        self.assertTrue(np.all(played[lead:] == 1))

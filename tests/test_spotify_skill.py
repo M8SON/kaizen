@@ -266,6 +266,58 @@ class SpotifyPlaybackVerification(unittest.TestCase):
         )
 
 
+def _fake_playlist(name, total, uri=None):
+    return {"name": name, "uri": uri or f"spotify:playlist:{name}", "tracks": {"total": total}}
+
+
+class SpotifyPlayGenre(unittest.TestCase):
+    def _run(self, playlists, query="edm"):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.search.return_value = {"playlists": {"items": playlists}}
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_stop_all_music"), \
+             patch("core.container_manager.random.randrange", return_value=42):
+            result = m._execute_spotify({"action": "play_genre", "query": query})
+        return m, sp, result
+
+    def test_plays_first_big_enough_playlist_shuffled(self):
+        m, sp, result = self._run([
+            None,  # Spotify returns nulls for hidden playlists
+            _fake_playlist("Saxophone edm", 12),
+            _fake_playlist("EDM", 207, uri="spotify:playlist:edm"),
+            _fake_playlist("Other EDM", 300),
+        ])
+        sp.search.assert_called_once_with(q="edm", type="playlist", limit=10)
+        sp.start_playback.assert_called_once_with(
+            device_id="dev1", context_uri="spotify:playlist:edm", offset={"position": 42},
+        )
+        sp.shuffle.assert_called_once_with(True, device_id="dev1")
+        self.assertEqual(m._active_music_source, "spotify")
+        self.assertIn("EDM", result)
+
+    def test_no_usable_playlist_returns_message(self):
+        m, sp, result = self._run([_fake_playlist("tiny", 5)])
+        sp.start_playback.assert_not_called()
+        self.assertIn("Couldn't find a edm playlist", result)
+
+    def test_empty_query_returns_friendly_error(self):
+        result = _make_manager()._execute_spotify({"action": "play_genre", "query": ""})
+        self.assertIn("No genre", result)
+
+    def test_shuffle_failure_does_not_fail_playback(self):
+        m = _make_manager()
+        sp = MagicMock()
+        sp.search.return_value = {"playlists": {"items": [_fake_playlist("EDM", 50)]}}
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        sp.shuffle.side_effect = Exception("403")
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_stop_all_music"):
+            result = m._execute_spotify({"action": "play_genre", "query": "edm"})
+        self.assertIn("Playing edm", result)
+
+
 class FuzzyMatchPlaylistHelper(unittest.TestCase):
     def test_exact_case_insensitive(self):
         from core.container_manager import _fuzzy_match_playlist

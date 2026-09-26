@@ -12,6 +12,7 @@ should not persist between calls.
 import os
 import re
 import json
+import random
 import time
 import uuid
 import socket
@@ -951,7 +952,7 @@ class ContainerManager:
         return f"Unhandled action: {action}"
 
     def _execute_spotify(self, tool_input: dict) -> str:
-        """Native handler for the spotify skill. Two actions: play and play_playlist."""
+        """Native handler for the spotify skill: play, play_genre, play_playlist."""
         from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
 
         action = str(tool_input.get("action") or "play").strip().lower()
@@ -965,6 +966,16 @@ class ContainerManager:
             except SpotifyAuthMissing as exc:
                 return f"Spotify isn't set up: {exc}"
             return self._spotify_play_track(sp, query)
+
+        if action == "play_genre":
+            query = str(tool_input.get("query", "")).strip()
+            if not query:
+                return "No genre provided for Spotify."
+            try:
+                sp = get_spotify_client()
+            except SpotifyAuthMissing as exc:
+                return f"Spotify isn't set up: {exc}"
+            return self._spotify_play_genre(sp, query)
 
         if action == "play_playlist":
             name = str(tool_input.get("name", "")).strip()
@@ -1005,6 +1016,44 @@ class ContainerManager:
 
         self._active_music_source = "spotify"
         return f"Now playing: {title} by {artist}"
+
+    def _spotify_play_genre(self, sp, query: str) -> str:
+        """Play a genre/mood as continuous music: the top searched playlist with
+        enough tracks, shuffled from a random start. (Spotify's editorial
+        playlists are hidden from newer dev apps, so these are community or
+        the user's own playlists.)"""
+        try:
+            results = sp.search(q=query, type="playlist", limit=10)
+        except Exception as exc:
+            return f"Couldn't reach Spotify right now: {exc}"
+        playlists = [p for p in (results.get("playlists") or {}).get("items") or [] if p]
+        playlist = next(
+            (p for p in playlists if ((p.get("tracks") or {}).get("total") or 0) >= 20), None
+        )
+        if playlist is None:
+            return f"Couldn't find a {query} playlist on Spotify."
+
+        device_id = self._spotify_device_id(sp)
+        if device_id is None:
+            return ("Spotify is set up but no Connect device is available. "
+                    "Check that librespot is running on the Pi.")
+
+        self._stop_all_music()
+        total = playlist["tracks"]["total"]
+        error = self._spotify_start_verified(
+            sp, device_id,
+            context_uri=playlist["uri"],
+            offset={"position": random.randrange(total)},
+        )
+        if error:
+            return f"Couldn't start {query} music: {error}"
+        try:
+            sp.shuffle(True, device_id=device_id)
+        except Exception as exc:
+            logger.warning("Spotify shuffle failed: %s", exc)
+
+        self._active_music_source = "spotify"
+        return f"Playing {query} from the playlist {playlist['name']!r}, shuffled"
 
     def _spotify_play_playlist(self, sp, name: str) -> str:
         # Paginate through all of the user's saved playlists. Spotify caps at

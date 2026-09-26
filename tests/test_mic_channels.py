@@ -96,3 +96,28 @@ def test_mono_mic_ignores_alt_backend(monkeypatch):
     v = voice_module.VoiceInterface(enable_tts=True, wake_backend=MagicMock(), wake_backend_alt=MagicMock())
     assert v._primary_channel == 0 and v.wake_backend_alt is None
     assert len(v._split_channels(np.zeros(1024, np.int16).tobytes())) == 1
+
+
+def test_near_miss_is_logged_with_per_channel_peaks(stereo_voice, caplog):
+    import logging
+    diag = voice_module._WakeDiagnostics(stereo_voice)
+    stereo_voice.wake_backend.threshold = 0.7
+    chans = stereo_voice._split_channels(_stereo(0, 0))
+    with caplog.at_level(logging.INFO, logger="core.voice"):
+        for primary, alt in [(0.3, 0.1), (0.55, 0.2), (0.05, 0.02)]:  # rise, peak, fall — never fires
+            stereo_voice.wake_backend.last_score = primary   # channel 1
+            stereo_voice.wake_backend_alt.last_score = alt   # channel 0
+            diag.observe(chans, detected=False)
+    assert "Wake near-miss: peak score ch0=0.20 ch1=0.55 (threshold 0.70)" in caplog.text
+
+
+def test_detection_is_not_logged_as_near_miss(stereo_voice, caplog):
+    import logging
+    diag = voice_module._WakeDiagnostics(stereo_voice)
+    chans = stereo_voice._split_channels(_stereo(0, 0))
+    with caplog.at_level(logging.INFO, logger="core.voice"):
+        stereo_voice.wake_backend.last_score, stereo_voice.wake_backend_alt.last_score = 0.9, 0.3
+        diag.observe(chans, detected=True)
+        stereo_voice.wake_backend.last_score, stereo_voice.wake_backend_alt.last_score = 0.0, 0.0
+        diag.observe(chans, detected=False)
+    assert "near-miss" not in caplog.text

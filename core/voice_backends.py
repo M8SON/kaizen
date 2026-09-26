@@ -78,6 +78,7 @@ class OpenWakeWordBackend:
     def detect(self, audio_chunk: np.ndarray) -> bool:
         scores = self.model.predict(audio_chunk)
         score = scores.get(self._score_key, 0.0)
+        self.last_score = float(score)  # read by the wake loop's diagnostics
         return score >= self.threshold
 
     def reset(self) -> None:

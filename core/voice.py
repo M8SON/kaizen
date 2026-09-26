@@ -14,6 +14,7 @@ import collections
 import tempfile
 import logging
 import threading
+import time
 
 import numpy as np
 import pyaudio
@@ -49,6 +50,64 @@ def _quiet_points(seg: "np.ndarray", min_run: int) -> "np.ndarray":
     starts, ends = edges[0::2], edges[1::2]
     points = starts[(ends - starts) >= min_run]
     return np.unique(np.concatenate(([0], points, [len(seg)])))
+
+
+class _WakeDiagnostics:
+    """Logs what the wake loop hears, so a missed "hey jarvis" can be told
+    apart: a near-miss (peak score per channel), or silence/low scores.
+
+    - Near-miss: a score episode that rose above NEAR_MISS but ended without
+      a detection logs each channel's peak.
+    - Heartbeat every HEARTBEAT_S: per-channel mic RMS and the max score seen.
+    """
+
+    NEAR_MISS = 0.2
+    HEARTBEAT_S = 60.0
+
+    def __init__(self, voice):
+        self._voice = voice
+        self._episode_peaks = None
+        self._window_max = [0.0, 0.0]
+        self._window_sq = [0.0, 0.0]
+        self._window_n = 0
+        self._window_start = time.monotonic()
+
+    def _scores(self) -> list:
+        v = self._voice
+        primary = getattr(v.wake_backend, "last_score", 0.0)
+        alt = getattr(v.wake_backend_alt, "last_score", 0.0) if v.wake_backend_alt else 0.0
+        # index by channel number
+        return [alt, primary] if v._primary_channel == 1 else [primary, alt]
+
+    def observe(self, channels: list, detected: bool) -> None:
+        try:
+            scores = self._scores()
+            for c, ch in enumerate(channels[:2]):
+                a = ch.astype(np.float32) / 32768.0
+                self._window_sq[c] += float(np.mean(a * a))
+                self._window_max[c] = max(self._window_max[c], scores[c])
+            self._window_n += 1
+
+            if max(scores) >= self.NEAR_MISS:
+                peaks = self._episode_peaks or [0.0, 0.0]
+                self._episode_peaks = [max(p, s) for p, s in zip(peaks, scores)]
+            elif self._episode_peaks is not None:
+                if not detected:
+                    logger.info("Wake near-miss: peak score ch0=%.2f ch1=%.2f (threshold %.2f)",
+                                self._episode_peaks[0], self._episode_peaks[1],
+                                getattr(self._voice.wake_backend, "threshold", 0.0))
+                self._episode_peaks = None
+            if detected:
+                self._episode_peaks = None
+
+            if time.monotonic() - self._window_start >= self.HEARTBEAT_S and self._window_n:
+                rms = [10 * np.log10(sq / self._window_n + 1e-12) for sq in self._window_sq]
+                logger.info("Wake loop alive: mic rms ch0=%.0f ch1=%.0f dBFS, max score ch0=%.2f ch1=%.2f",
+                            rms[0], rms[1] if len(channels) > 1 else float("nan"),
+                            self._window_max[0], self._window_max[1])
+                self.__init__(self._voice)
+        except Exception:  # diagnostics must never break the wake loop
+            logger.debug("wake diagnostics failed", exc_info=True)
 
 
 class VoiceInterface:
@@ -320,6 +379,7 @@ class VoiceInterface:
 
         chunk_ms = self.CHUNK / self.RATE * 1000
         preroll = collections.deque(maxlen=max(0, int(-(-self._wake_preroll_ms // chunk_ms))))
+        diag = _WakeDiagnostics(self)
 
         try:
             while True:
@@ -327,7 +387,9 @@ class VoiceInterface:
                 channels = self._split_channels(data)
                 preroll.append(channels[self._primary_channel].tobytes())
 
-                if self._wake_detected(channels):
+                detected = self._wake_detected(channels)
+                diag.observe(channels, detected)
+                if detected:
                     logger.info("Wake detected")
                     self._wake_preroll = b"".join(preroll)
                     self._shared_audio = audio

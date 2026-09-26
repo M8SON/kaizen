@@ -10,7 +10,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def _make_manager():
     from core.container_manager import ContainerManager
-    return ContainerManager()
+    m = ContainerManager()
+    # Playback verification polls the live API and may restart raspotify via
+    # sudo; stub both so tests never sleep or shell out. Tests of that logic
+    # replace these explicitly.
+    m._spotify_confirm_playing = lambda sp, device_id: True
+    m._restart_spotify_connect = MagicMock(return_value=False)
+    return m
 
 
 def _fake_track(name="Cool Song", artist="Some Band", uri="spotify:track:abc"):
@@ -161,6 +167,103 @@ class SpotifyPlayPlaylist(unittest.TestCase):
         self.assertIn("Couldn't find", result)
         sp.start_playback.assert_not_called()
         self.assertIsNone(m._active_music_source)
+
+
+def _playback(device_id, progress, playing=True):
+    return {"device": {"id": device_id}, "is_playing": playing, "progress_ms": progress}
+
+
+class SpotifyPlaybackVerification(unittest.TestCase):
+    def _manager(self):
+        from core.container_manager import ContainerManager
+        return ContainerManager()
+
+    def test_confirm_true_when_progress_advances_on_device(self):
+        m = self._manager()
+        sp = MagicMock()
+        sp.current_playback.side_effect = [_playback("dev1", 300), _playback("dev1", 900)]
+        with patch("core.container_manager.time.sleep"):
+            self.assertTrue(m._spotify_confirm_playing(sp, "dev1"))
+
+    def test_confirm_false_when_progress_stuck(self):
+        """Accepted-but-silent (dead librespot session): progress never moves."""
+        m = self._manager()
+        sp = MagicMock()
+        sp.current_playback.return_value = _playback("dev1", 0)
+        with patch("core.container_manager.time.sleep"), \
+             patch("core.container_manager.time.monotonic", side_effect=[0, 0.5, 1.0, 1.5, 2.0, 99]):
+            self.assertFalse(m._spotify_confirm_playing(sp, "dev1"))
+
+    def test_confirm_false_when_playing_elsewhere_or_nothing(self):
+        m = self._manager()
+        sp = MagicMock()
+        sp.current_playback.side_effect = [_playback("phone", 100), _playback("phone", 700), None, None]
+        with patch("core.container_manager.time.sleep"), \
+             patch("core.container_manager.time.monotonic", side_effect=[0, 0.5, 1.0, 1.5, 2.0, 99]):
+            self.assertFalse(m._spotify_confirm_playing(sp, "dev1"))
+
+    def test_silent_start_restarts_raspotify_and_retries(self):
+        m = self._manager()
+        sp = MagicMock()
+        m._spotify_confirm_playing = MagicMock(side_effect=[False, True])
+        m._restart_spotify_connect = MagicMock(return_value=True)
+        m._wait_for_spotify_device = MagicMock(return_value="dev1")
+        self.assertIsNone(m._spotify_start_verified(sp, "dev1", uris=["u"]))
+        m._restart_spotify_connect.assert_called_once()
+        self.assertEqual(sp.start_playback.call_count, 2)
+
+    def test_rejected_start_restarts_raspotify_and_retries(self):
+        m = self._manager()
+        sp = MagicMock()
+        sp.start_playback.side_effect = [Exception("404 Not found"), None]
+        m._spotify_confirm_playing = MagicMock(return_value=True)
+        m._restart_spotify_connect = MagicMock(return_value=True)
+        m._wait_for_spotify_device = MagicMock(return_value="dev1")
+        self.assertIsNone(m._spotify_start_verified(sp, "dev1", uris=["u"]))
+        self.assertEqual(sp.start_playback.call_count, 2)
+
+    def test_still_silent_after_retry_reports_honestly(self):
+        m = self._manager()
+        sp = MagicMock()
+        m._spotify_confirm_playing = MagicMock(return_value=False)
+        m._restart_spotify_connect = MagicMock(return_value=True)
+        m._wait_for_spotify_device = MagicMock(return_value="dev1")
+        error = m._spotify_start_verified(sp, "dev1", uris=["u"])
+        self.assertIn("nothing is playing", error)
+        self.assertIn("raspotify", error)
+        m._restart_spotify_connect.assert_called_once()
+
+    def test_restart_not_permitted_reports_without_retry(self):
+        m = self._manager()
+        sp = MagicMock()
+        m._spotify_confirm_playing = MagicMock(return_value=False)
+        m._restart_spotify_connect = MagicMock(return_value=False)
+        error = m._spotify_start_verified(sp, "dev1", uris=["u"])
+        self.assertIn("nothing is playing", error)
+        sp.start_playback.assert_called_once()
+
+    def test_play_action_does_not_claim_now_playing_on_failure(self):
+        m = _make_manager()
+        m._spotify_confirm_playing = lambda sp, device_id: False
+        sp = MagicMock()
+        sp.search.return_value = {"tracks": {"items": [_fake_track()]}}
+        sp.devices.return_value = {"devices": [{"id": "dev1", "is_active": True}]}
+        with patch("core.spotify_auth.get_spotify_client", return_value=sp), \
+             patch.object(m, "_stop_all_music"):
+            result = m._execute_spotify({"action": "play", "query": "cool song"})
+        self.assertNotIn("Now playing", result)
+        self.assertIn("Couldn't start Spotify playback", result)
+        self.assertIsNone(getattr(m, "_active_music_source", None))
+
+    def test_restart_uses_exact_sudoers_command(self):
+        m = self._manager()
+        with patch("core.container_manager.subprocess.run") as run:
+            run.return_value = MagicMock(returncode=0, stderr="")
+            self.assertTrue(m._restart_spotify_connect())
+        self.assertEqual(
+            run.call_args.args[0],
+            ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "restart", "raspotify.service"],
+        )
 
 
 class FuzzyMatchPlaylistHelper(unittest.TestCase):

@@ -999,10 +999,9 @@ class ContainerManager:
                     "Check that librespot is running on the Pi.")
 
         self._stop_all_music()
-        try:
-            sp.start_playback(device_id=device_id, uris=[track_uri])
-        except Exception as exc:
-            return f"Couldn't start Spotify playback: {exc}"
+        error = self._spotify_start_verified(sp, device_id, uris=[track_uri])
+        if error:
+            return f"Couldn't start Spotify playback: {error}"
 
         self._active_music_source = "spotify"
         return f"Now playing: {title} by {artist}"
@@ -1041,13 +1040,86 @@ class ContainerManager:
                     "Check that librespot is running on the Pi.")
 
         self._stop_all_music()
-        try:
-            sp.start_playback(device_id=device_id, context_uri=playlist["uri"])
-        except Exception as exc:
-            return f"Couldn't start playlist: {exc}"
+        error = self._spotify_start_verified(sp, device_id, context_uri=playlist["uri"])
+        if error:
+            return f"Couldn't start playlist: {error}"
 
         self._active_music_source = "spotify"
         return f"Playing your {matched_name} playlist"
+
+    def _spotify_start_verified(self, sp, device_id: str, **play_kwargs) -> str | None:
+        """Start playback and confirm audio is actually progressing on the
+        device. Returns None on success, else an error for the user.
+
+        The Web API accepts a play command even when librespot's session is
+        dead (it then fails to load the track and plays nothing), so a clean
+        start_playback is not proof of sound. On a rejected or silent start,
+        restart raspotify once, wait for the device to re-register, retry.
+        """
+        for attempt in (1, 2):
+            try:
+                sp.start_playback(device_id=device_id, **play_kwargs)
+            except Exception as exc:
+                error = str(exc)
+            else:
+                if self._spotify_confirm_playing(sp, device_id):
+                    return None
+                error = "Spotify accepted the request but nothing is playing on the Pi"
+            if attempt == 2:
+                break
+            logger.warning("Spotify playback failed (%s) — restarting raspotify and retrying", error)
+            if not self._restart_spotify_connect():
+                break
+            device_id = self._wait_for_spotify_device(sp)
+            if device_id is None:
+                return "the Pi's Spotify device didn't come back after restarting raspotify"
+        return f"{error}. Restarting the Spotify connection didn't fix it; check raspotify on the Pi."
+
+    def _spotify_confirm_playing(self, sp, device_id: str, timeout_s: float = 3.0) -> bool:
+        """True once current_playback shows `device_id` playing with progress
+        advancing between two polls (a real start advances ~600ms per 0.6s)."""
+        deadline = time.monotonic() + timeout_s
+        last_progress = None
+        while time.monotonic() < deadline:
+            time.sleep(0.3)
+            try:
+                pb = sp.current_playback() or {}
+            except Exception:
+                continue
+            progress = pb.get("progress_ms")
+            if (pb.get("device") or {}).get("id") != device_id or not pb.get("is_playing") or progress is None:
+                last_progress = None
+                continue
+            if last_progress is not None and progress > last_progress:
+                return True
+            last_progress = progress
+        return False
+
+    def _restart_spotify_connect(self) -> bool:
+        """Restart raspotify via the sudoers rule installed by
+        scripts/install_systemd_service.sh. False if not permitted/available."""
+        try:
+            result = subprocess.run(
+                ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "restart", "raspotify.service"],
+                capture_output=True, text=True, timeout=20,
+            )
+        except Exception as exc:
+            logger.warning("raspotify restart failed: %s", exc)
+            return False
+        if result.returncode != 0:
+            logger.warning("raspotify restart failed: %s", result.stderr.strip())
+            return False
+        return True
+
+    def _wait_for_spotify_device(self, sp, timeout_s: float = 15.0) -> str | None:
+        """Poll until the Connect device is listed again after a restart."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            device_id = self._spotify_device_id(sp)
+            if device_id:
+                return device_id
+            time.sleep(0.5)
+        return None
 
     def _spotify_device_id(self, sp) -> str | None:
         """Return the Spotify Connect device id to play on.

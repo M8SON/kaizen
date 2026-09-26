@@ -31,16 +31,12 @@ from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBac
 logger = logging.getLogger(__name__)
 
 
-# A freshly opened output stream can drop its first few tens of ms while
-# PipeWire starts it; cached ElevenLabs phrases begin speaking within 0-40ms,
-# so without this the first syllable is clipped ("...et me check").
-PHRASE_LEAD_IN_S = 0.15
-
-
-def _with_lead_in(audio: "np.ndarray") -> "np.ndarray":
-    """Prepend PHRASE_LEAD_IN_S of silence (at KOKORO_SAMPLE_RATE)."""
-    pad = np.zeros(int(KOKORO_SAMPLE_RATE * PHRASE_LEAD_IN_S), dtype=np.float32)
-    return np.concatenate([pad, np.asarray(audio, dtype=np.float32)])
+# Output buffer for cached filler/answer phrases. They start while the main
+# thread runs CPU-heavy work (skill-selector ONNX embedding, docker tool
+# launch); with the default ~35ms buffer that starved the audio callback and
+# underran at ~240-270ms — right on the first syllable ("...et me check").
+# Measured on the Pi 5: 300ms buffer -> zero underruns under the same load.
+PHRASE_OUTPUT_LATENCY_S = 0.3
 
 
 def _quiet_points(seg: "np.ndarray", min_run: int) -> "np.ndarray":
@@ -606,11 +602,12 @@ class VoiceInterface:
                 )
                 return
 
-            audio = _with_lead_in(np.load(random.choice(candidates)))
+            audio = np.load(random.choice(candidates))
             sd.play(
                 resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
                 samplerate=self._output_samplerate,
                 device=self._output_device_index,
+                latency=PHRASE_OUTPUT_LATENCY_S,
             )
             # Intentionally no sd.wait — caller continues into process_message.
         except Exception as e:
@@ -637,11 +634,12 @@ class VoiceInterface:
                 )
                 return False
 
-            audio = _with_lead_in(np.load(path))
+            audio = np.load(path)
             sd.play(
                 resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
                 samplerate=self._output_samplerate,
                 device=self._output_device_index,
+                latency=PHRASE_OUTPUT_LATENCY_S,
             )
             sd.wait()
             return True

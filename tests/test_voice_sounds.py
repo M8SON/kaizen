@@ -153,10 +153,10 @@ class PlayAnswerSound(unittest.TestCase):
         mock_wait.assert_called_once()
 
 
-class PhraseLeadIn(unittest.TestCase):
-    def test_answer_playback_starts_with_silence(self):
-        """Cached phrases get a short silent lead-in so stream start-up
-        doesn't clip the first syllable."""
+class PhraseOutputBuffer(unittest.TestCase):
+    def test_filler_and_answer_play_with_large_output_buffer(self):
+        """Phrases start while the main thread is CPU-busy; a small output
+        buffer underran on the first syllable on the Pi."""
         import tempfile
         from pathlib import Path
         import numpy as np
@@ -168,13 +168,12 @@ class PhraseLeadIn(unittest.TestCase):
         v._output_samplerate = voice_mod.KOKORO_SAMPLE_RATE
         v._output_device_index = 0
         with tempfile.TemporaryDirectory() as tmp:
-            cat = Path(tmp) / "identity"
+            cat = Path(tmp) / "weather"
             cat.mkdir()
             np.save(cat / f"{phrase_slug('Hi.')}.npy", np.ones(100, dtype=np.float32))
             with patch("core.filler_classifier.FILLER_AUDIO_ROOT", Path(tmp)), \
+                 patch("pathlib.Path.home", return_value=Path(tmp).parent), \
                  patch("core.voice.sd.play") as mock_play, patch("core.voice.sd.wait"):
-                v.play_answer("identity", "Hi.")
-        played = mock_play.call_args.args[0]
-        lead = int(voice_mod.KOKORO_SAMPLE_RATE * voice_mod.PHRASE_LEAD_IN_S)
-        self.assertTrue(np.all(played[:lead] == 0))
-        self.assertTrue(np.all(played[lead:] == 1))
+                v.play_answer("weather", "Hi.")
+        self.assertEqual(mock_play.call_args.kwargs["latency"], voice_mod.PHRASE_OUTPUT_LATENCY_S)
+        self.assertGreaterEqual(voice_mod.PHRASE_OUTPUT_LATENCY_S, 0.3)

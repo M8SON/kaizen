@@ -221,6 +221,7 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `WHISPER_MODEL` | `base` | STT model size |
 | `WAKE_WORD_MODEL` | `hey_jarvis` | openWakeWord bundled model (`hey_jarvis`, `alexa`, `hey_mycroft`, `timer`, `weather`) |
 | `WAKE_WORD_THRESHOLD` | `0.5` | openWakeWord activation confidence (0.0–1.0); raise to reduce false fires |
+| `WAKE_PREROLL_MS` | `600` | Audio from just before the wake word fired, prepended to the recording so words said in the same breath as "hey jarvis" aren't clipped; leading wake phrase is stripped from the transcript. 0 disables |
 | `BARGE_IN_ENABLED` | `true` | Say the wake word during a response to interrupt playback and start listening; set false to disable |
 | `ENABLE_TTS` | `true` | Set false to disable speech output |
 | `TTS_BACKEND` | `kokoro` | `kokoro` \| `kokoro-onnx` \| `elevenlabs` |

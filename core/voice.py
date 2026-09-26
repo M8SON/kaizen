@@ -8,7 +8,9 @@ Whisper transcription model is only invoked after the wake word fires.
 """
 
 import os
+import re
 import wave
+import collections
 import tempfile
 import logging
 import threading
@@ -84,6 +86,12 @@ class VoiceInterface:
         # to avoid the teardown/setup gap between the two phases.
         self._shared_audio = None
         self._shared_stream = None
+        # Audio the wake detector consumed just before firing. openWakeWord
+        # fires a beat after "jarvis" ends, so words spoken straight after the
+        # wake word land here; listen() prepends it so they reach Whisper.
+        self._wake_preroll_ms = int(os.getenv("WAKE_PREROLL_MS", "600"))
+        self._wake_preroll = b""
+        self._used_preroll = False
 
         # Active PyAudio resources tracked here so shutdown() (e.g. from a
         # SIGINT handler) can close them even if the wake/listen loop is
@@ -260,13 +268,18 @@ class VoiceInterface:
 
         logger.info("Waiting for wake word: '%s'", self.display_wake_word)
 
+        chunk_ms = self.CHUNK / self.RATE * 1000
+        preroll = collections.deque(maxlen=max(0, int(-(-self._wake_preroll_ms // chunk_ms))))
+
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
+                preroll.append(data)
                 chunk_int16 = np.frombuffer(data, dtype=np.int16)
 
                 if self.wake_backend.detect(chunk_int16):
                     logger.info("Wake detected")
+                    self._wake_preroll = b"".join(preroll)
                     self._shared_audio = audio
                     self._shared_stream = stream
                     self._active_audio = None
@@ -311,10 +324,20 @@ class VoiceInterface:
             except OSError:
                 pass
 
+        if transcription and self._used_preroll:
+            transcription = self._strip_wake_phrase(transcription)
+
         if not transcription or len(transcription.strip()) < 3:
             return None
 
         return transcription.strip()
+
+    def _strip_wake_phrase(self, text: str) -> str:
+        """Drop a leading "hey jarvis" that the wake pre-roll let Whisper hear."""
+        name = self.display_wake_word.split()[-1] if self.display_wake_word else ""
+        if not name:
+            return text
+        return re.sub(rf"^\W*(?:hey\W+)?{re.escape(name)}\b\W*", "", text, flags=re.IGNORECASE)
 
     def _r2_chirp(self, freq_start, freq_end, duration, volume=0.45, vibrato_hz=0, vibrato_depth=0):
         """Frequency-sweep chirp with optional vibrato — the core R2-D2 building block.
@@ -749,11 +772,13 @@ class VoiceInterface:
         WAV is finalized. Not fired when max_wait elapses with no speech.
         """
         # Reuse the open stream from wake detection if available
+        preroll = b""
         if self._shared_stream is not None:
             audio = self._shared_audio
             stream = self._shared_stream
             self._shared_audio = None
             self._shared_stream = None
+            preroll, self._wake_preroll = self._wake_preroll, b""
         else:
             audio = pyaudio.PyAudio()
             stream = audio.open(
@@ -772,7 +797,10 @@ class VoiceInterface:
         if self.vad_backend is not None:
             self.vad_backend.reset()
 
-        frames = []
+        # Pre-roll is prepended but not fed to the VAD, so it never counts as
+        # the start of speech or affects the idle timeout.
+        frames = [preroll] if preroll else []
+        self._used_preroll = bool(preroll)
         silence_frames = 0
         silence_limit = int(self.RATE / self.CHUNK * self.silence_duration)
         max_wait_chunks = int(self.RATE / self.CHUNK * max_wait_seconds) if max_wait_seconds else 0

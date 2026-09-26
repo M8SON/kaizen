@@ -32,6 +32,11 @@ fi
 systemctl --user daemon-reload
 ok "daemon-reload complete"
 
+# 3b. Remove the raspotify restart rule added by the installer
+if [ -f /etc/sudoers.d/kaizen-raspotify ]; then
+    sudo rm -f /etc/sudoers.d/kaizen-raspotify && ok "removed /etc/sudoers.d/kaizen-raspotify"
+fi
+
 # 4. Optional: disable linger (other user services may depend on it)
 echo ""
 read -r -p "Also disable linger for $USER? Other user services will stop on logout. [y/N] " ans

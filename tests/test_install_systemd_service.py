@@ -40,6 +40,25 @@ class InstallSystemdServiceTests(unittest.TestCase):
     def test_is_executable(self):
         self.assertTrue(INSTALL_SH.stat().st_mode & 0o111, "install script not executable")
 
+    def test_raspotify_rule_is_narrow_and_validated(self):
+        self.assertIn("NOPASSWD: /usr/bin/systemctl restart raspotify.service", self.text)
+        self.assertIn("visudo -cf", self.text)
+        self.assertIn("/etc/sudoers.d/kaizen-raspotify", self.text)
+
+    def test_raspotify_rule_installed_before_unit_starts(self):
+        self.assertLess(
+            self.text.index("/etc/sudoers.d/kaizen-raspotify"),
+            self.text.index("systemctl --user enable --now kaizen.service"),
+        )
+
+    def test_unit_restarts_raspotify_best_effort(self):
+        unit = (REPO_ROOT / "config" / "systemd" / "kaizen.service").read_text()
+        # Leading "-" so a missing raspotify / sudo rule never blocks startup;
+        # command must match the sudoers rule exactly.
+        self.assertIn(
+            "ExecStartPre=-/usr/bin/sudo -n /usr/bin/systemctl restart raspotify.service", unit
+        )
+
 
 UNINSTALL_SH = REPO_ROOT / "scripts" / "uninstall_systemd_service.sh"
 

@@ -7,8 +7,11 @@
 #   1. Copies config/systemd/kaizen.service -> ~/.config/systemd/user/
 #   2. Ensures /var/log/journal exists so logs survive reboot
 #   3. Ensures `loginctl enable-linger $USER` so the user manager runs at boot
-#   4. systemctl --user daemon-reload && enable --now kaizen.service
-#   5. Verifies a wait-online service is enabled (NetworkManager or systemd-networkd)
+#   4. If raspotify is installed, allows passwordless `systemctl restart
+#      raspotify.service` (and nothing else) so kaizen.service's ExecStartPre
+#      can refresh the Spotify Connect session on every start
+#   5. systemctl --user daemon-reload && enable --now kaizen.service
+#   6. Verifies a wait-online service is enabled (NetworkManager or systemd-networkd)
 
 set -euo pipefail
 
@@ -54,12 +57,30 @@ else
     ok "linger already enabled for $USER"
 fi
 
-# 4. Reload + enable
+# 4. Raspotify restart rule (before the unit starts, so its ExecStartPre works)
+SUDOERS_FILE=/etc/sudoers.d/kaizen-raspotify
+if systemctl cat raspotify.service &>/dev/null; then
+    RULE="$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart raspotify.service"
+    if sudo test -f "$SUDOERS_FILE" && [ "$(sudo cat "$SUDOERS_FILE")" = "$RULE" ]; then
+        ok "raspotify restart rule already installed"
+    else
+        TMP="$(mktemp)"
+        echo "$RULE" > "$TMP"
+        /usr/sbin/visudo -cf "$TMP" >/dev/null || { rm -f "$TMP"; fail "generated sudoers rule failed visudo check"; }
+        sudo install -m 0440 -o root -g root "$TMP" "$SUDOERS_FILE"
+        rm -f "$TMP"
+        ok "installed $SUDOERS_FILE (passwordless raspotify restart only)"
+    fi
+else
+    ok "raspotify not installed — skipping restart rule"
+fi
+
+# 5. Reload + enable
 systemctl --user daemon-reload
 systemctl --user enable --now kaizen.service
 ok "kaizen.service enabled and started"
 
-# 5. Verify wait-online service
+# 6. Verify wait-online service
 if systemctl is-enabled NetworkManager-wait-online.service &>/dev/null; then
     ok "NetworkManager-wait-online enabled — network-online.target will gate startup"
 elif systemctl is-enabled systemd-networkd-wait-online.service &>/dev/null; then

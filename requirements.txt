@@ -43,3 +43,6 @@ elevenlabs>=2.59
 
 # Jev (TypeSafe AI) filler-phrase classifier
 typesafe-sdk>=0.7.1
+
+# Meta Muse Voice Transcribe streaming STT (STT_BACKEND=meta)
+websockets>=13

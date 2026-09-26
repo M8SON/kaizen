@@ -92,3 +92,69 @@ def test_listen_strips_only_when_preroll_used(voice, monkeypatch):
     assert voice.listen() == "play some edm"
     monkeypatch.setattr(voice, "_record_until_silence", record(False))
     assert voice.listen() == "Hey Jarvis, play some edm"
+
+
+class _FakeSession:
+    def __init__(self, text="what's the weather"):
+        self.text, self.pushed, self.aborted = text, [], False
+
+    def push(self, pcm):
+        self.pushed.append(pcm)
+
+    def finish(self):
+        return self.text
+
+    def abort(self):
+        self.aborted = True
+
+
+def _record_with_session(voice, session, speech):
+    voice._streaming_stt = MagicMock(start=MagicMock(return_value=session))
+    stream = MagicMock()
+    stream.read.side_effect = [_chunk(1000, voice)] * 2 + [_chunk(0, voice)] * 20
+    audio = MagicMock()
+    audio.get_sample_size.return_value = 2
+    voice._shared_audio, voice._shared_stream, voice._wake_preroll = audio, stream, _chunk(7, voice)
+    vad = MagicMock()
+    vad.is_speech.side_effect = ([True, True] if speech else [False, False]) + [False] * 20
+    voice.vad_backend, voice.vad_min_silence_ms = vad, 300
+    return voice._record_until_silence(max_wait_seconds=0 if speech else 0.5)
+
+
+def test_streaming_session_gets_preroll_and_live_chunks(voice):
+    session = _FakeSession()
+    _record_with_session(voice, session, speech=True)
+    assert session.pushed[0] == _chunk(7, voice)          # pre-roll first
+    assert session.pushed[1] == _chunk(1000, voice)       # then live mic audio
+    assert voice._stream_session is session and not session.aborted
+
+
+def test_streaming_session_aborted_when_no_speech(voice):
+    session = _FakeSession()
+    _record_with_session(voice, session, speech=False)
+    assert session.aborted and voice._stream_session is None
+
+
+def test_listen_uses_streamed_text_and_skips_whisper(voice, monkeypatch):
+    session = _FakeSession("Hey Jarvis, what's the weather")
+    whisper = MagicMock(return_value="whisper text")
+    monkeypatch.setattr(voice, "_transcribe", whisper)
+
+    def rec(**kw):
+        voice._stream_session, voice._used_preroll = session, True
+        return "/nonexistent.wav"
+
+    monkeypatch.setattr(voice, "_record_until_silence", rec)
+    assert voice.listen() == "what's the weather"
+    whisper.assert_not_called()
+
+
+def test_listen_falls_back_to_whisper_when_streaming_fails(voice, monkeypatch):
+    monkeypatch.setattr(voice, "_transcribe", lambda path: "whisper text")
+
+    def rec(**kw):
+        voice._stream_session, voice._used_preroll = _FakeSession(text=None), False
+        return "/nonexistent.wav"
+
+    monkeypatch.setattr(voice, "_record_until_silence", rec)
+    assert voice.listen() == "whisper text"

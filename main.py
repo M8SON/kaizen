@@ -138,6 +138,18 @@ def build_voice_interface():
 
     barge_in_enabled = os.getenv("BARGE_IN_ENABLED", "true").lower() == "true"
 
+    streaming_stt = None
+    if os.getenv("STT_BACKEND", "whisper").strip().lower() == "meta":
+        meta_key = os.getenv("META_MODEL_API_KEY", "").strip()
+        if meta_key:
+            from core.meta_stt import MetaStreamingStt
+            from core.prompt_builder import persona_name_from_env
+
+            streaming_stt = MetaStreamingStt(meta_key, keywords=[persona_name_from_env()])
+            logger.info("STT: Meta streaming (local Whisper fallback)")
+        else:
+            logger.warning("STT_BACKEND=meta but META_MODEL_API_KEY is not set — using local Whisper")
+
     return VoiceInterface(
         transcription_model=transcription_model_cpu,
         display_wake_word=_display_wake_word(),
@@ -152,6 +164,7 @@ def build_voice_interface():
         vad_backend=vad_backend,
         vad_min_silence_ms=vad_min_silence_ms,
         barge_in_enabled=barge_in_enabled,
+        streaming_stt=streaming_stt,
     )
 
 

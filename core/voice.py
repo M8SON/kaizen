@@ -80,6 +80,7 @@ class VoiceInterface:
         vad_backend=None,
         vad_min_silence_ms: int = 700,
         barge_in_enabled: bool = False,
+        streaming_stt=None,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
@@ -100,6 +101,10 @@ class VoiceInterface:
         self._wake_preroll_ms = int(os.getenv("WAKE_PREROLL_MS", "600"))
         self._wake_preroll = b""
         self._used_preroll = False
+        # Optional streaming STT (core.meta_stt.MetaStreamingStt): audio goes
+        # out while the user talks; local Whisper remains the fallback.
+        self._streaming_stt = streaming_stt
+        self._stream_session = None
 
         # Active PyAudio resources tracked here so shutdown() (e.g. from a
         # SIGINT handler) can close them even if the wake/listen loop is
@@ -324,8 +329,16 @@ class VoiceInterface:
             max_wait_seconds=max_wait_seconds,
             on_speech_done=on_speech_done,
         )
+        session, self._stream_session = self._stream_session, None
         try:
-            transcription = self._transcribe(audio_file)
+            transcription = None
+            if session is not None:
+                with profiling.stage("stt"):
+                    transcription = session.finish()
+                if transcription is not None:
+                    logger.info("Transcribed (streaming): %s", transcription)
+            if transcription is None:
+                transcription = self._transcribe(audio_file)
         finally:
             try:
                 os.unlink(audio_file)
@@ -811,6 +824,9 @@ class VoiceInterface:
         # the start of speech or affects the idle timeout.
         frames = [preroll] if preroll else []
         self._used_preroll = bool(preroll)
+        session = self._streaming_stt.start() if self._streaming_stt is not None else None
+        if session is not None and preroll:
+            session.push(preroll)
         silence_frames = 0
         silence_limit = int(self.RATE / self.CHUNK * self.silence_duration)
         max_wait_chunks = int(self.RATE / self.CHUNK * max_wait_seconds) if max_wait_seconds else 0
@@ -819,10 +835,13 @@ class VoiceInterface:
         chunk_ms = int(self.CHUNK / self.RATE * 1000)
         silence_ms = 0
 
+        ended_normally = False
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
                 frames.append(data)
+                if session is not None:
+                    session.push(data)
                 chunk_int16 = np.frombuffer(data, dtype=np.int16)
 
                 if self.vad_backend is not None:
@@ -857,6 +876,7 @@ class VoiceInterface:
                     waited_chunks += 1
                     if max_wait_chunks and waited_chunks > max_wait_chunks:
                         break
+            ended_normally = True
 
         except KeyboardInterrupt:
             # Re-raise so main's outer 'except KeyboardInterrupt' runs the
@@ -865,6 +885,13 @@ class VoiceInterface:
             # the program kept running and Mason had to kill the terminal.
             raise
         finally:
+            # Hand the session to listen() only when speech was captured;
+            # otherwise (idle timeout, Ctrl+C) drop it.
+            if session is not None:
+                if recording and ended_normally:
+                    self._stream_session = session
+                else:
+                    session.abort()
             sample_width = audio.get_sample_size(self.FORMAT)
             self._close_pyaudio(audio, stream)
             self._active_audio = None

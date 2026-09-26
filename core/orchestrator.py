@@ -206,6 +206,14 @@ class Orchestrator:
         except Exception:
             logger.exception("_archive_callback failed")
 
+    def record_local_turn(self, user_message: str, response_text: str) -> None:
+        """Record a turn answered without Claude (e.g. a cached canned answer)
+        in conversation history and the archive, so follow-ups have context."""
+        self.conversation_state.append_user_text(user_message)
+        self.conversation_state.append_assistant_content([{"type": "text", "text": response_text}])
+        self.conversation_state.prune()
+        self._archive_callback(user_message, [], response_text)
+
     def _format_tool_summary(self, activity: dict) -> str:
         """Render a tool call as a one-line summary for the archive."""
         import json as _json

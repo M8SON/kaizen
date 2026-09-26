@@ -562,6 +562,39 @@ class VoiceInterface:
         except Exception as e:
             logger.warning("Filler playback error: %s", e)
 
+    def play_answer(self, category: str, text: str) -> bool:
+        """Play the cached audio for a full canned answer, blocking.
+
+        Unlike play_filler this waits for playback to finish — the answer is
+        the whole reply, and the next listen() must not hear it. Returns
+        False (caller falls back to Claude) when TTS is off, the phrase has
+        no cached audio, or playback fails. Never raises.
+        """
+        if not self.enable_tts:
+            return False
+        try:
+            from core.filler_classifier import FILLER_AUDIO_ROOT, phrase_slug
+
+            path = FILLER_AUDIO_ROOT / category / f"{phrase_slug(text)}.npy"
+            if not path.exists():
+                logger.warning(
+                    "play_answer: no cached audio for %r (run "
+                    "scripts/build_filler_audio.py) — deferring to Claude", text,
+                )
+                return False
+
+            audio = np.load(path)
+            sd.play(
+                resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
+                samplerate=self._output_samplerate,
+                device=self._output_device_index,
+            )
+            sd.wait()
+            return True
+        except Exception as e:
+            logger.warning("Answer playback error: %s", e)
+            return False
+
     def speak(self, text: str, interruptible: bool = False) -> bool:
         """Speak text aloud using Kokoro TTS with streaming playback.
 

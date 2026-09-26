@@ -21,9 +21,7 @@ See docs/superpowers/specs/2026-09-23-jev-filler-response-design.md.
 """
 
 import argparse
-import hashlib
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -36,15 +34,10 @@ load_dotenv()
 import numpy as np
 import yaml
 
+from core.filler_classifier import FILLER_AUDIO_ROOT as CACHE_ROOT, phrase_slug, render_phrase
+from core.prompt_builder import persona_name_from_env
+
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "filler_phrases.yaml"
-CACHE_ROOT = Path.home() / ".kaizen" / "filler_audio"
-
-
-def _slug(text: str) -> str:
-    """Deterministic filesystem-safe slug for a phrase."""
-    base = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40]
-    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
-    return f"{base}-{digest}" if base else digest
 
 
 def _load_config(path: Path) -> dict:
@@ -95,6 +88,7 @@ def main() -> int:
 
     client = ElevenLabs(api_key=api_key)
     categories = _load_config(CONFIG_PATH)
+    persona = persona_name_from_env()
 
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +109,8 @@ def main() -> int:
         cached_count = 0
 
         for phrase in phrases:
-            out_path = cat_dir / f"{_slug(phrase)}.npy"
+            phrase = render_phrase(phrase, persona)
+            out_path = cat_dir / f"{phrase_slug(phrase)}.npy"
             if out_path.exists() and not args.force:
                 skipped += 1
                 cached_count += 1

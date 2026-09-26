@@ -8,7 +8,14 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.filler_classifier import FillerClassifier, build_filler_classifier, load_categories
+from core.filler_classifier import (
+    DEFAULT_PATTERNS_PATH,
+    FillerClassifier,
+    build_filler_classifier,
+    load_answer_phrases,
+    load_categories,
+    phrase_slug,
+)
 
 
 def _fake_response(choice: str, confidence: float):
@@ -96,6 +103,51 @@ class FillerClassifierTests(unittest.TestCase):
     def test_unavailable_without_categories(self):
         clf = FillerClassifier(api_key="fake", categories={})
         self.assertFalse(clf.available)
+
+
+class AnswerCategoryTests(unittest.TestCase):
+    def setUp(self):
+        self.categories = {"identity": "Asks the assistant's name.", "weather": "Weather."}
+        self.answers = {"identity": ["I'm Jarvis."]}
+
+    def _clf(self, choice, confidence):
+        client = MagicMock()
+        client.system_one.return_value = _fake_response(choice, confidence)
+        return FillerClassifier(
+            api_key="fake", categories=self.categories, client=client,
+            answer_phrases=self.answers, answer_confidence_threshold=0.85,
+        )
+
+    def test_real_config_answer_phrases_render_persona(self):
+        answers = load_answer_phrases(DEFAULT_PATTERNS_PATH, "Jarvis")
+        self.assertIn("identity", answers)
+        self.assertIn("capabilities", answers)
+        self.assertNotIn("weather", answers)
+        self.assertTrue(any("Jarvis" in p for p in answers["identity"]))
+        self.assertFalse(any("{persona}" in p for ps in answers.values() for p in ps))
+
+    def test_answer_category_above_answer_threshold_returned(self):
+        clf = self._clf("identity", 0.9)
+        self.assertEqual(clf.classify("what's your name"), "identity")
+        self.assertTrue(clf.is_answer("identity"))
+        self.assertEqual(clf.pick_answer("identity"), "I'm Jarvis.")
+
+    def test_answer_category_between_thresholds_defers_to_claude(self):
+        # 0.7 clears the filler threshold (0.6) but not the answer one (0.85).
+        self.assertIsNone(self._clf("identity", 0.7).classify("what's your name"))
+
+    def test_answer_category_without_confidence_defers_to_claude(self):
+        self.assertIsNone(self._clf("identity", None).classify("what's your name"))
+
+    def test_filler_category_unaffected_by_answer_threshold(self):
+        clf = self._clf("weather", 0.7)
+        self.assertEqual(clf.classify("is it raining"), "weather")
+        self.assertFalse(clf.is_answer("weather"))
+        self.assertIsNone(clf.pick_answer("weather"))
+
+    def test_phrase_slug_is_stable(self):
+        # Changing this breaks every previously built cache file.
+        self.assertEqual(phrase_slug("One moment."), "one-moment-" + __import__("hashlib").sha1(b"One moment.").hexdigest()[:8])
 
 
 class BuildFillerClassifierTests(unittest.TestCase):

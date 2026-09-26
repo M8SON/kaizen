@@ -42,6 +42,9 @@ class FakeOrchestrator:
             on_chunk(response)
         return response
 
+    def record_local_turn(self, user_message, response_text):
+        self.local_turns = getattr(self, "local_turns", []) + [(user_message, response_text)]
+
     def close_session(self):
         return "Goodbye!"
 
@@ -206,6 +209,9 @@ class VoiceModeTests(unittest.TestCase):
                 self.last_transcript = transcript
                 return "weather"
 
+            def is_answer(self, category):
+                return False
+
         classifier = FakeClassifier()
 
         with redirect_stdout(io.StringIO()):
@@ -228,6 +234,45 @@ class VoiceModeTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             main.run_voice_mode(orchestrator, voice=voice, filler_classifier=FakeClassifier())
 
+        self.assertEqual(voice.fillers_played, [])
+
+    def _answer_classifier(self):
+        class FakeClassifier:
+            def classify(self, transcript):
+                return "identity"
+
+            def is_answer(self, category):
+                return category == "identity"
+
+            def pick_answer(self, category):
+                return "I'm Jarvis."
+
+        return FakeClassifier()
+
+    def test_voice_mode_cached_answer_replaces_claude_turn(self):
+        orchestrator = FakeOrchestrator([])
+        voice = FakeVoice(wake_results=[True, False], listen_results=["what's your name", None])
+        voice.answers_played = []
+        voice.play_answer = lambda cat, text: voice.answers_played.append((cat, text)) or True
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=self._answer_classifier())
+
+        self.assertEqual(voice.answers_played, [("identity", "I'm Jarvis.")])
+        self.assertEqual(orchestrator.processed, [])
+        self.assertEqual(orchestrator.local_turns, [("what's your name", "I'm Jarvis.")])
+        self.assertEqual(voice.fillers_played, [])
+
+    def test_voice_mode_missing_answer_audio_falls_back_to_claude(self):
+        orchestrator = FakeOrchestrator(["Claude answer"])
+        voice = FakeVoice(wake_results=[True, False], listen_results=["what's your name", None])
+        voice.play_answer = lambda cat, text: False
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=self._answer_classifier())
+
+        self.assertEqual(orchestrator.processed, ["what's your name"])
+        self.assertFalse(hasattr(orchestrator, "local_turns"))
         self.assertEqual(voice.fillers_played, [])
 
     def test_voice_mode_skips_filler_classification_when_no_classifier(self):

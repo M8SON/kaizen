@@ -143,3 +143,24 @@ def test_archive_noop_without_started_session(archive: SessionArchive):
     finally:
         conn.close()
     assert count == 0
+
+
+def test_record_local_turn_updates_history_and_archive(archive: SessionArchive):
+    orch, tool_loop = _make_orchestrator(archive)
+    orch.start_session("voice")
+    orch.record_local_turn("what's your name", "I'm Jarvis.")
+
+    assert orch.conversation_state.messages[-2] == {"role": "user", "content": "what's your name"}
+    assert orch.conversation_state.messages[-1]["content"] == [{"type": "text", "text": "I'm Jarvis."}]
+    tool_loop.run.assert_not_called()
+
+    import sqlite3
+    conn = sqlite3.connect(archive.db_path)
+    try:
+        rows = conn.execute(
+            "SELECT role, content FROM turns WHERE session_id = ? ORDER BY id",
+            (orch._current_session_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("user", "what's your name"), ("assistant", "I'm Jarvis.")]

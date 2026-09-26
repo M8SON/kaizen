@@ -17,7 +17,10 @@ See docs/superpowers/specs/2026-09-23-jev-filler-response-design.md.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import random
+import re
 import threading
 from pathlib import Path
 
@@ -26,6 +29,45 @@ import yaml
 logger = logging.getLogger(__name__)
 
 DEFAULT_PATTERNS_PATH = Path(__file__).parent.parent / "config" / "filler_phrases.yaml"
+FILLER_AUDIO_ROOT = Path.home() / ".kaizen" / "filler_audio"
+
+
+def phrase_slug(text: str) -> str:
+    """Deterministic filesystem-safe cache filename stem for a phrase.
+
+    Shared by scripts/build_filler_audio.py (writer) and
+    VoiceInterface.play_answer (reader) so both resolve the same file.
+    """
+    base = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40]
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+    return f"{base}-{digest}" if base else digest
+
+
+def render_phrase(phrase: str, persona: str) -> str:
+    """Fill the {persona} placeholder in an answer phrase."""
+    return phrase.replace("{persona}", persona)
+
+
+def load_answer_phrases(path: Path, persona: str) -> dict[str, list[str]]:
+    """Load {category: [rendered phrases]} for categories marked `answer: true`.
+
+    Never raises; a missing or malformed file yields {} (no answer categories).
+    """
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        return {}
+
+    answers = {}
+    for name, entry in (data.get("categories") or {}).items():
+        entry = entry or {}
+        phrases = entry.get("phrases") or []
+        if entry.get("answer") and phrases:
+            answers[name] = [render_phrase(p, persona) for p in phrases]
+    return answers
 
 
 def load_categories(path: Path = DEFAULT_PATTERNS_PATH) -> dict[str, str]:
@@ -69,16 +111,29 @@ class FillerClassifier:
         timeout_s: float = 0.5,
         confidence_threshold: float = 0.6,
         client=None,
+        answer_phrases: dict[str, list[str]] | None = None,
+        answer_confidence_threshold: float = 0.85,
     ):
         self._categories = dict(categories)
         self._timeout_s = timeout_s
         self._confidence_threshold = confidence_threshold
+        self._answer_phrases = dict(answer_phrases or {})
+        self._answer_confidence_threshold = answer_confidence_threshold
         self._client = client
         self._api_key = api_key
 
     @property
     def available(self) -> bool:
         return bool(self._api_key) and bool(self._categories)
+
+    def is_answer(self, category: str) -> bool:
+        """True when `category`'s phrase is the whole reply, not a filler."""
+        return category in self._answer_phrases
+
+    def pick_answer(self, category: str) -> str | None:
+        """Random rendered answer phrase for `category`, or None."""
+        phrases = self._answer_phrases.get(category)
+        return random.choice(phrases) if phrases else None
 
     def _get_client(self):
         if self._client is not None:
@@ -160,6 +215,18 @@ class FillerClassifier:
             logger.warning("FillerClassifier: Jev returned unknown category %r", category)
             return None
 
+        # Answer categories replace Claude's reply entirely, so a wrong match
+        # is worse than a slow right answer — require a stricter, explicit
+        # confidence and otherwise let Claude handle the turn.
+        if self.is_answer(category) and (
+            confidence is None or confidence < self._answer_confidence_threshold
+        ):
+            logger.debug(
+                "FillerClassifier: answer category=%s confidence=%s below answer threshold %.2f — deferring to Claude",
+                category, confidence, self._answer_confidence_threshold,
+            )
+            return None
+
         return category
 
 
@@ -187,10 +254,15 @@ def build_filler_classifier() -> "FillerClassifier | None":
 
     timeout_s = float(os.getenv("FILLER_CLASSIFIER_TIMEOUT_MS", "800")) / 1000.0
     confidence_threshold = float(os.getenv("FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD", "0.6"))
+    answer_confidence_threshold = float(os.getenv("FILLER_ANSWER_CONFIDENCE_THRESHOLD", "0.85"))
+
+    from core.prompt_builder import persona_name_from_env
 
     return FillerClassifier(
         api_key=api_key,
         categories=categories,
         timeout_s=timeout_s,
         confidence_threshold=confidence_threshold,
+        answer_phrases=load_answer_phrases(DEFAULT_PATTERNS_PATH, persona_name_from_env()),
+        answer_confidence_threshold=answer_confidence_threshold,
     )

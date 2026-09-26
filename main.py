@@ -400,7 +400,17 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         # already covers the dead-air gap for this turn.
                         with profiling.stage("filler_classify"):
                             category = filler_classifier.classify(transcription)
-                        if category is not None:
+                        if category is not None and filler_classifier.is_answer(category):
+                            # Canned full answer (identity, capabilities):
+                            # play it instead of calling Claude. Missing
+                            # audio falls through to a normal Claude turn.
+                            answer = filler_classifier.pick_answer(category)
+                            if answer and voice.play_answer(category, answer):
+                                print(f"Assistant: {answer}\n")
+                                orchestrator.record_local_turn(transcription, answer)
+                                print("Listening...")
+                                continue
+                        elif category is not None:
                             voice.play_filler(category)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":

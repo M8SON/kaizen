@@ -1,7 +1,7 @@
 # Jev-classified filler responses (fill the STT→answer gap with speech, not a beep)
 
 **Date:** 2026-09-23
-**Status:** Draft — for review
+**Status:** Approved (2026-09-25) — Q1/Q2 resolved; Q3 (category list) still open
 **Owner:** Mason
 **Related:**
 - `docs/laya-feasibility-report.md` — Laya (local 421M-param classifier) rejected
@@ -52,9 +52,8 @@ Two classifier options were evaluated:
 when Jev is slow, errors, or is unreachable is **explicitly designed for but
 not implemented in v1** (see §7, Open Questions) — v1 degrades to *no filler
 this turn* (silence, same as today) rather than a second code path, to keep
-the initial change small and reviewable. Mason: confirm this phased approach
-before implementation, or say "build the regex fallback now too" and it's a
-small addition to the same design (§6.4 sketches it).
+the initial change small and reviewable. Mason confirmed this phased approach
+on 2026-09-25: Jev-only now, regex fallback later (§6.4 sketches it).
 
 ## 3. Goal / success criteria
 
@@ -351,6 +350,20 @@ wire it into `run.sh`'s auto-build (unlike Docker containers) since it needs
 a live ElevenLabs key and network access at setup time — a missing cache
 should degrade to "no filler this turn," not block startup.
 
+### 6.6 Canned answer categories (added 2026-09-25)
+
+Categories marked `answer: true` in `config/filler_phrases.yaml`
+(`identity`: "what's your name / who are you / what do you do";
+`capabilities`: "what can you do") carry full replies, not fillers. When Jev
+returns one with confidence ≥ `FILLER_ANSWER_CONFIDENCE_THRESHOLD` (0.85),
+`main.py` plays the cached audio via `VoiceInterface.play_answer()` (blocking,
+so the next `listen()` doesn't hear it), records the exchange with
+`Orchestrator.record_local_turn()` (history + archive), and skips Claude for
+that turn. Below the answer threshold, or with missing audio, the turn goes
+to Claude as normal with no filler. Answer phrases may use `{persona}`,
+rendered from `WAKE_WORD_MODEL` at build time. The capabilities text is
+hand-written: update it when skills change.
+
 ## 7. Failure modes
 
 | Failure | Handled by |
@@ -408,9 +421,8 @@ see the ElevenLabs backend's mocked-SDK test approach).
 
 ## 10. Open questions for Mason
 
-1. Confirm the phased approach (Jev-only v1, regex fallback deferred) vs.
-   building both now.
-2. Confirm `FILLER_CLASSIFIER_TIMEOUT_MS=800` (revised from 500 after
+1. **Resolved 2026-09-25:** Jev-only v1; regex fallback deferred.
+2. **Resolved 2026-09-25:** defaults accepted. `FILLER_CLASSIFIER_TIMEOUT_MS=800` (revised from 500 after
    real-world testing showed cold-start connection overhead pushed
    first-call latency to ~505ms) and
    `FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD=0.6` as starting defaults — these

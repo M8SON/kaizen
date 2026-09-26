@@ -243,8 +243,9 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `SESSION_RECALL_DEFAULT_LIMIT` | `5` | Default max hits returned by the `recall_session` skill |
 | `TYPESAFE_API_KEY` | — | Required for the Jev filler-phrase classifier; unset disables it (no filler, existing thinking-sound cue still plays) |
 | `FILLER_CLASSIFIER_ENABLED` | `true` | Set false to disable Jev filler classification entirely |
-| `FILLER_CLASSIFIER_TIMEOUT_MS` | `500` | Hard timeout for the Jev classify call; exceeding it skips the filler for that turn only |
+| `FILLER_CLASSIFIER_TIMEOUT_MS` | `800` | Hard timeout for the Jev classify call; exceeding it skips the filler for that turn only |
 | `FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.6` | Minimum Jev confidence to speak a specific filler; below this, no filler plays |
+| `FILLER_ANSWER_CONFIDENCE_THRESHOLD` | `0.85` | Minimum Jev confidence for `answer: true` categories (identity, capabilities) to play a cached full answer instead of calling Claude; below this, Claude answers |
 
 ## What's Next (from roadmap)
 

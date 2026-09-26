@@ -95,7 +95,7 @@ Update this file when durable project context changes. Do not create overlapping
   - **Current Pi `.env` TTS block**: `TTS_BACKEND=kokoro-onnx`,
     `KOKORO_ONNX_VARIANT=fp32`, `WHISPER_MODEL=base`, `VAD_MIN_SILENCE_MS=700`,
     `KAIZEN_PROFILE=true`, `KOKORO_PREBUFFER_MS=0`, `KOKORO_MIN_FIRST_FLUSH=20`
-    (`KOKORO_CUE_MS` removed). Pi runs `main` on the `archimedes@192.168.1.136`
+    (`KOKORO_CUE_MS` removed). Pi runs `main` on the `archimedes@192.168.1.137`
     host (`ssh pi`), user systemd unit `kaizen.service`.
 - 2026-06-18: voice "heard you / processing" cue — wired the previously-unused
   `on_speech_done` hook in the voice loop to `play_thinking_sound` so the R2-D2

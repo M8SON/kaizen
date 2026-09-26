@@ -6,6 +6,11 @@
 #              primitive so it can classify a transcript against this label.
 #   phrases  — one or more spoken lines; a random one is picked each turn so
 #              repeated fillers don't sound robotic.
+#   answer   — optional, default false. When true the phrase IS the whole
+#              reply: it plays instead of calling Claude, and only when Jev's
+#              confidence clears FILLER_ANSWER_CONFIDENCE_THRESHOLD. Answer
+#              phrases may use {persona} (derived from WAKE_WORD_MODEL at
+#              build time, e.g. "Jarvis").
 #
 # Run scripts/build_filler_audio.py after editing this file to (re)generate
 # the cached ElevenLabs audio at ~/.kaizen/filler_audio/.
@@ -54,9 +59,23 @@ categories:
     phrases:
       - "Mm-hm, one sec."
 
+  identity:
+    answer: true
+    criteria: "The user asks the assistant's own name, who or what the assistant is, or what the assistant's job is. Not questions about any other person or thing."
+    phrases:
+      - "I'm {persona}, Mason's voice assistant. I run right here on a Raspberry Pi."
+      - "My name is {persona}. I'm Mason's personal assistant, here to help around the house."
+
+  capabilities:
+    answer: true
+    criteria: "The user asks in general what the assistant can do or help with. Not a request to actually perform a specific task."
+    phrases:
+      - "I can check the weather, play music, search the web, set reminders, and remember things for you. If I can't do something yet, I can learn a new skill for it."
+      - "Quite a bit. Weather, music, web searches, reminders, and remembering things you tell me. Just ask, and if I can't do it yet, I can learn how."
+
   general:
     # Fallback bucket for anything that doesn't clearly match another
-    # category, or when Jev's confidence is below the configured threshold.
+    # category. Below FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD no filler plays.
     criteria: "Anything that doesn't clearly match another category."
     phrases:
       - "One moment."

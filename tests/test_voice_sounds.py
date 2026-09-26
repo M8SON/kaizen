@@ -107,3 +107,47 @@ class PlayFillerSound(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlayAnswerSound(unittest.TestCase):
+    def _voice(self):
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = 24000
+        v._output_device_index = 0
+        return v
+
+    def test_false_when_tts_disabled(self):
+        v = self._voice()
+        v.enable_tts = False
+        with patch("core.voice.sd.play") as mock_play:
+            self.assertFalse(v.play_answer("identity", "I'm Jarvis."))
+        mock_play.assert_not_called()
+
+    def test_false_when_no_cached_audio(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("core.filler_classifier.FILLER_AUDIO_ROOT", Path(tmp)), \
+             patch("core.voice.sd.play") as mock_play:
+            self.assertFalse(self._voice().play_answer("identity", "I'm Jarvis."))
+        mock_play.assert_not_called()
+
+    def test_plays_and_waits_when_cached(self):
+        """Answers block until playback ends so the next listen() doesn't
+        record the assistant's own voice."""
+        import tempfile
+        from pathlib import Path
+        import numpy as np
+        from core.filler_classifier import phrase_slug
+        with tempfile.TemporaryDirectory() as tmp:
+            cat = Path(tmp) / "identity"
+            cat.mkdir()
+            np.save(cat / f"{phrase_slug('I am Jarvis.')}.npy", np.zeros(2400, dtype=np.float32))
+            with patch("core.filler_classifier.FILLER_AUDIO_ROOT", Path(tmp)), \
+                 patch("core.voice.sd.play") as mock_play, \
+                 patch("core.voice.sd.wait") as mock_wait:
+                self.assertTrue(self._voice().play_answer("identity", "I am Jarvis."))
+        mock_play.assert_called_once()
+        mock_wait.assert_called_once()

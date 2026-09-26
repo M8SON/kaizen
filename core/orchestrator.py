@@ -302,7 +302,8 @@ class Orchestrator:
         return None
 
     def process_message(
-        self, user_message: str, on_chunk=None, on_ack_success=None, intent_hint: str | None = None,
+        self, user_message: str, on_chunk=None, on_ack_success=None,
+        intent_hint: str | None = None, prefetch: dict | None = None,
     ) -> str:
         """Process a user message through the tiered intelligence stack.
 
@@ -316,6 +317,9 @@ class Orchestrator:
 
         intent_hint: optional classifier note (see FillerClassifier.intent_hint)
         appended to the uncached part of the system prompt for LLM tiers.
+
+        prefetch: optional {"tool", "input"} run before the first LLM call
+        (tool-first, see ToolLoop.run).
         """
         # Reuse the outer profiling.turn() if the voice loop already opened
         # one; otherwise own the scope so text-mode turns still produce a
@@ -324,7 +328,8 @@ class Orchestrator:
         ctx = contextlib.nullcontext() if outer is not None else profiling.turn()
         with ctx:
             return self._process_message(
-                user_message, on_chunk=on_chunk, on_ack_success=on_ack_success, intent_hint=intent_hint,
+                user_message, on_chunk=on_chunk, on_ack_success=on_ack_success,
+                intent_hint=intent_hint, prefetch=prefetch,
             )
 
     def _split_with_hint(self, user_message: str, intent_hint: str | None) -> tuple[str, str]:
@@ -336,7 +341,8 @@ class Orchestrator:
         return stable, dynamic
 
     def _process_message(
-        self, user_message: str, on_chunk=None, on_ack_success=None, intent_hint: str | None = None,
+        self, user_message: str, on_chunk=None, on_ack_success=None,
+        intent_hint: str | None = None, prefetch: dict | None = None,
     ) -> str:
         if self._tier_router is None:
             stable, dynamic = self._split_with_hint(user_message, intent_hint)
@@ -346,6 +352,7 @@ class Orchestrator:
                 system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
+                prefetch=prefetch,
             )
 
         route = self._tier_router.route(user_message)
@@ -365,6 +372,7 @@ class Orchestrator:
                 system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
+                prefetch=prefetch,
             )
 
         # Micro tier — Haiku with a slim system prompt and top-K filtered tools.
@@ -380,6 +388,7 @@ class Orchestrator:
                 system_prompt=micro_system_prompt,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
+                prefetch=prefetch,
             )
         except Exception:
             logger.exception("Micro tier failed → escalating to Claude")
@@ -390,6 +399,7 @@ class Orchestrator:
                 system_prompt_dynamic=dynamic,
                 archive_callback=self._archive_callback,
                 on_chunk=on_chunk,
+                prefetch=prefetch,
             )
 
     def _execute_direct(self, route, user_message: str, on_ack_success=None) -> str:

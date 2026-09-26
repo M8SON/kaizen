@@ -8,6 +8,8 @@ one user message.
 import json
 import logging
 import re
+import uuid
+from types import SimpleNamespace
 
 import anthropic
 
@@ -65,9 +67,15 @@ class ToolLoop:
         archive_callback=None,
         on_chunk=None,
         system_prompt_dynamic: str = "",
+        prefetch: dict | None = None,
     ) -> str:
         """
         Process a user message through Claude with tool support.
+
+        prefetch: optional {"tool", "input"} to execute before the first
+        Claude call (tool-first). It is recorded as if Claude had requested
+        it, so Claude's first round goes straight to phrasing the answer.
+        Skipped when the tool isn't among this turn's tool definitions.
 
         archive_callback: optional Callable[[str, list[dict], str], None].
         Called once per completed turn with (user_message, tool_activity,
@@ -109,6 +117,17 @@ class ToolLoop:
 
         tool_definitions = self._build_tool_definitions(user_message)
         tool_activity: list[dict] = []
+        if prefetch and any(td["name"] == prefetch["tool"] for td in tool_definitions):
+            block = {
+                "type": "tool_use",
+                "id": f"toolu_kaizen_{uuid.uuid4().hex[:20]}",
+                "name": prefetch["tool"],
+                "input": prefetch["input"],
+            }
+            logger.info("Tool-first: running %s before Claude", prefetch["tool"])
+            tool_results = self._handle_tool_calls(SimpleNamespace(content=[block]), tool_activity)
+            self.conversation_state.append_assistant_content([block])
+            self.conversation_state.append_tool_results(tool_results)
         rounds = 0
         last_nudged_at = 0
 

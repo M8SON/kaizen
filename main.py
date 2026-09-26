@@ -395,6 +395,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         return
 
                     intent_hint = None
+                    prefetch = None
                     if filler_classifier is not None:
                         # Jev classification, hard-timeout bounded (see
                         # FillerClassifier). A miss (disabled/timeout/error/
@@ -416,7 +417,10 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 continue
                         elif category is not None:
                             voice.play_filler(category)
-                            intent_hint = filler_classifier.intent_hint(category)
+                            # Tool-first: Kaizen runs the category's tool now
+                            # so Claude only phrases the answer (one round).
+                            prefetch = filler_classifier.prefetch_call(category)
+                            intent_hint = filler_classifier.intent_hint(category, prefetch)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
                         # Fire the R2-D2 pre-buffer cue when the first delta
@@ -434,6 +438,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 on_chunk=push_raw,
                                 on_ack_success=voice.play_ack_sound,
                                 intent_hint=intent_hint,
+                                prefetch=prefetch,
                             )
                             # Empty response = direct-tier ack chime was played
                             # in lieu of TTS; nothing to speak or print.
@@ -454,6 +459,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                             transcription,
                             on_ack_success=voice.play_ack_sound,
                             intent_hint=intent_hint,
+                            prefetch=prefetch,
                         )
                         if response:
                             print(f"Assistant: {response}\n")

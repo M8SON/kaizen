@@ -6,6 +6,11 @@
 #              primitive so it can classify a transcript against this label.
 #   phrases  — one or more spoken lines; a random one is picked each turn so
 #              repeated fillers don't sound robotic.
+#   prefetch — optional {tool, input}. With TOOL_FIRST_ENABLED=true, Kaizen
+#              runs this tool itself as soon as Jev picks the category, and
+#              Claude only phrases the answer (skips one Claude round).
+#              "{location}" in input resolves via core.location_preference;
+#              if it can't be resolved the prefetch is skipped.
 #   answer   — optional, default false. When true the phrase IS the whole
 #              reply: it plays instead of calling Claude, and only when Jev's
 #              confidence clears FILLER_ANSWER_CONFIDENCE_THRESHOLD. Answer
@@ -20,6 +25,10 @@
 categories:
   weather:
     criteria: "Questions about current or forecast weather, temperature, rain, snow, or other conditions."
+    prefetch:
+      tool: weather
+      input:
+        query: "{location}"
     phrases:
       - "Let me check the weather for you."
       - "One moment, pulling up the forecast."

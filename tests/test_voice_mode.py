@@ -35,9 +35,10 @@ class FakeOrchestrator:
     def list_skills(self):
         return [{"name": "skill_tells_random", "description": "Tell a random joke"}]
 
-    def process_message(self, transcription, on_chunk=None, on_ack_success=None, intent_hint=None):
+    def process_message(self, transcription, on_chunk=None, on_ack_success=None, intent_hint=None, prefetch=None):
         self.processed.append(transcription)
         self.intent_hints = getattr(self, "intent_hints", []) + [intent_hint]
+        self.prefetches = getattr(self, "prefetches", []) + [prefetch]
         response = self.responses.pop(0)
         if on_chunk is not None:
             on_chunk(response)
@@ -224,8 +225,11 @@ class VoiceModeTests(unittest.TestCase):
             def is_answer(self, category):
                 return False
 
-            def intent_hint(self, category):
-                return f"hint:{category}"
+            def intent_hint(self, category, prefetch=None):
+                return f"hint:{category}:{prefetch['tool'] if prefetch else None}"
+
+            def prefetch_call(self, category):
+                return {"tool": "weather", "input": {"query": "Burlington, Vermont"}}
 
         classifier = FakeClassifier()
 
@@ -234,7 +238,8 @@ class VoiceModeTests(unittest.TestCase):
 
         self.assertEqual(voice.fillers_played, ["weather"])
         self.assertEqual(classifier.last_transcript, "what's the weather")
-        self.assertEqual(orchestrator.intent_hints, ["hint:weather"])
+        self.assertEqual(orchestrator.intent_hints, ["hint:weather:weather"])
+        self.assertEqual(orchestrator.prefetches, [{"tool": "weather", "input": {"query": "Burlington, Vermont"}}])
 
     def test_voice_mode_skips_filler_when_classifier_returns_none(self):
         orchestrator = FakeOrchestrator(["Response one"])

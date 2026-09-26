@@ -97,6 +97,25 @@ def load_categories(path: Path = DEFAULT_PATTERNS_PATH) -> dict[str, str]:
     return categories
 
 
+def load_prefetch(path: Path) -> dict[str, dict]:
+    """Load {category: {"tool": str, "input": dict}} for categories with a
+    `prefetch` block. Never raises; malformed entries are skipped."""
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        return {}
+
+    prefetch = {}
+    for name, entry in (data.get("categories") or {}).items():
+        spec = (entry or {}).get("prefetch") or {}
+        if isinstance(spec, dict) and spec.get("tool"):
+            prefetch[name] = {"tool": str(spec["tool"]), "input": dict(spec.get("input") or {})}
+    return prefetch
+
+
 class FillerClassifier:
     """Classifies a transcript into a filler-phrase category via Jev.
 
@@ -114,6 +133,7 @@ class FillerClassifier:
         client=None,
         answer_phrases: dict[str, list[str]] | None = None,
         answer_confidence_threshold: float = 0.85,
+        prefetch: dict[str, dict] | None = None,
     ):
         self._categories = dict(categories)
         self._timeout_s = timeout_s
@@ -121,6 +141,7 @@ class FillerClassifier:
         self._answer_phrases = dict(answer_phrases or {})
         self._answer_confidence_threshold = answer_confidence_threshold
         self.last_confidence: float | None = None
+        self._prefetch = dict(prefetch or {})
         self._client = client
         self._api_key = api_key
 
@@ -137,17 +158,43 @@ class FillerClassifier:
         phrases = self._answer_phrases.get(category)
         return random.choice(phrases) if phrases else None
 
-    def intent_hint(self, category: str) -> str:
+    def intent_hint(self, category: str, prefetch: dict | None = None) -> str:
         """System-prompt note telling Claude what Jev classified this turn as,
         so a clipped or misheard transcript doesn't force a clarifying question."""
         conf = "" if self.last_confidence is None else f", confidence {self.last_confidence:.2f}"
-        return (
+        hint = (
             f"Voice intent classifier: this request was classified as '{category}' "
             f"({self._categories.get(category, '')}{conf}). The transcript comes from speech "
             "recognition and may be clipped or misheard. If it is unclear but consistent with "
             "this intent, act on the intent instead of asking a clarifying question. Still "
             "confirm anything with side effects."
         )
+        if prefetch:
+            hint += (
+                f" Kaizen already ran the {prefetch['tool']} tool with {prefetch['input']} for "
+                "this request; answer from that result. Only call a tool again if the user asked "
+                "about something that result doesn't cover (e.g. another place or day)."
+            )
+        return hint
+
+    def prefetch_call(self, category: str) -> dict | None:
+        """The tool call to run before Claude for `category`, with {location}
+        resolved, or None (no prefetch configured / location unresolved)."""
+        spec = self._prefetch.get(category)
+        if not spec:
+            return None
+        rendered = {}
+        for key, value in spec["input"].items():
+            if isinstance(value, str) and "{location}" in value:
+                from core.location_preference import resolve_location
+
+                location = resolve_location("")
+                if not location:
+                    logger.info("FillerClassifier: no remembered location — skipping %s prefetch", category)
+                    return None
+                value = value.replace("{location}", location)
+            rendered[key] = value
+        return {"tool": spec["tool"], "input": rendered}
 
     def _get_client(self):
         if self._client is not None:
@@ -286,4 +333,9 @@ def build_filler_classifier() -> "FillerClassifier | None":
         confidence_threshold=confidence_threshold,
         answer_phrases=load_answer_phrases(DEFAULT_PATTERNS_PATH, persona_name_from_env()),
         answer_confidence_threshold=answer_confidence_threshold,
+        prefetch=(
+            load_prefetch(DEFAULT_PATTERNS_PATH)
+            if os.getenv("TOOL_FIRST_ENABLED", "false").strip().lower() == "true"
+            else None
+        ),
     )

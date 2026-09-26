@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.filler_classifier import (
     DEFAULT_PATTERNS_PATH,
+    load_prefetch,
     FillerClassifier,
     build_filler_classifier,
     load_answer_phrases,
@@ -164,6 +165,46 @@ class AnswerCategoryTests(unittest.TestCase):
         self.assertIn("Weather.", hint)
         self.assertIn("0.92", hint)
         self.assertIn("instead of asking", hint)
+
+    def test_real_config_prefetches_weather_with_location_template(self):
+        self.assertEqual(
+            load_prefetch(DEFAULT_PATTERNS_PATH)["weather"],
+            {"tool": "weather", "input": {"query": "{location}"}},
+        )
+
+    def test_prefetch_call_resolves_location(self):
+        clf = FillerClassifier(
+            api_key="k", categories=self.categories,
+            prefetch={"weather": {"tool": "weather", "input": {"query": "{location}"}}},
+        )
+        with patch("core.location_preference.resolve_location", return_value="Burlington, Vermont"):
+            self.assertEqual(
+                clf.prefetch_call("weather"),
+                {"tool": "weather", "input": {"query": "Burlington, Vermont"}},
+            )
+        self.assertIsNone(clf.prefetch_call("identity"))
+
+    def test_prefetch_skipped_without_location(self):
+        clf = FillerClassifier(
+            api_key="k", categories=self.categories,
+            prefetch={"weather": {"tool": "weather", "input": {"query": "{location}"}}},
+        )
+        with patch("core.location_preference.resolve_location", return_value=""):
+            self.assertIsNone(clf.prefetch_call("weather"))
+
+    def test_hint_mentions_prefetched_tool(self):
+        hint = self._clf("weather", 0.9).intent_hint(
+            "weather", {"tool": "weather", "input": {"query": "Burlington"}}
+        )
+        self.assertIn("already ran the weather tool", hint)
+
+    def test_prefetch_disabled_unless_tool_first_enabled(self):
+        env = {"FILLER_CLASSIFIER_ENABLED": "true", "TYPESAFE_API_KEY": "k", "TOOL_FIRST_ENABLED": "false"}
+        with patch.dict("os.environ", env):
+            self.assertEqual(build_filler_classifier()._prefetch, {})
+        env["TOOL_FIRST_ENABLED"] = "true"
+        with patch.dict("os.environ", env):
+            self.assertIn("weather", build_filler_classifier()._prefetch)
 
     def test_phrase_slug_is_stable(self):
         # Changing this breaks every previously built cache file.

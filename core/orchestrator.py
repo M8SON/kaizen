@@ -14,6 +14,7 @@ import contextlib
 import logging
 import os
 import queue as _queue
+from datetime import datetime
 from pathlib import Path
 
 import anthropic
@@ -40,6 +41,10 @@ def _parse_float(value: str | None, default: float) -> float:
     except ValueError:
         logger.warning("Invalid float value %r — using default %.1f", value, default)
         return default
+
+
+def _now_line() -> str:
+    return datetime.now().strftime("Current date and time: %A, %B %-d, %Y, %-I:%M %p.")
 
 
 class Orchestrator:
@@ -250,6 +255,10 @@ class Orchestrator:
         )
         if self._startup_context:
             stable += f"\n--- Current Context ---\n{self._startup_context}\n"
+        # Live clock every turn, on the uncached side so the cached prefix
+        # stays byte-stable. Includes the year so searches aren't dated wrong.
+        now_line = _now_line()
+        dynamic = f"{dynamic}\n\n{now_line}" if dynamic else now_line
         return stable, dynamic
 
     def drain_pending_announcements(self) -> list[str]:
@@ -379,7 +388,7 @@ class Orchestrator:
         # Reuses the same ToolLoop machinery as the full Claude path, so
         # streaming, conversation state, archive, and tool execution all work
         # identically. On error / unexpected response, fall through to Sonnet.
-        micro_system_prompt = self.prompt_builder.build_for_micro_tier()
+        micro_system_prompt = f"{self.prompt_builder.build_for_micro_tier()}\n\n{_now_line()}"
         if intent_hint:
             micro_system_prompt = f"{micro_system_prompt}\n\n{intent_hint}"
         try:

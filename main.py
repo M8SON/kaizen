@@ -75,7 +75,9 @@ def _build_startup_context() -> str:
     """Return a brief context string with date, time, and optional weather."""
     from datetime import datetime
     now = datetime.now()
-    context = now.strftime("Today is %A, %B %-d. The time is %-I:%M %p.")
+    # Phrased as the start time, not "today": the orchestrator adds the live
+    # date/time to every turn, and this line stays true after days of uptime.
+    context = now.strftime("Kaizen started on %A, %B %-d, %Y at %-I:%M %p.")
 
     location = resolve_location()
     api_key = os.getenv("OPENWEATHER_API_KEY", "").strip()

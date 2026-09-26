@@ -22,3 +22,4 @@ class MainLocationTests(unittest.TestCase):
 
         fetch_weather.assert_called_once_with("Denver,CO", "test-key")
         self.assertIn("Weather in Denver", context)
+        self.assertRegex(context, r"^Kaizen started on \w+, \w+ \d+, \d{4} at ")

@@ -138,7 +138,8 @@ class TestOrchestratorRoutingEnabled(unittest.TestCase):
         mock_build.assert_not_called()
         orch.prompt_builder.build_for_micro_tier.assert_called_once()
         call_args = orch._micro_loop.run.call_args
-        self.assertEqual(call_args.kwargs["system_prompt"], "slim prompt")
+        self.assertTrue(call_args.kwargs["system_prompt"].startswith("slim prompt"))
+        self.assertIn("Current date and time:", call_args.kwargs["system_prompt"])
         self.assertEqual(result, "Haiku response")
 
     def test_claude_tier_still_builds_full_system_prompt(self):

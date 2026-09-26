@@ -25,8 +25,11 @@ class SystemdUnitTests(unittest.TestCase):
     def test_working_directory_is_repo_root(self):
         self.assertIn("WorkingDirectory=%h/kaizen", self.text)
 
-    def test_restart_policy_is_on_failure_with_5s_delay(self):
-        self.assertIn("Restart=on-failure", self.text)
+    def test_restart_policy_is_always_with_5s_delay(self):
+        # always, not on-failure: a clean exit must not leave the assistant
+        # down. `systemctl --user stop` is still honored (systemd never
+        # restarts a unit it stopped itself).
+        self.assertIn("Restart=always", self.text)
         self.assertIn("RestartSec=5", self.text)
 
     def test_install_target_is_default(self):

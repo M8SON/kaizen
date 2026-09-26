@@ -12,6 +12,7 @@ Usage:
 """
 
 import os
+import re
 import sys
 import argparse
 import logging
@@ -295,6 +296,19 @@ def _display_wake_word() -> str:
     return os.getenv("WAKE_WORD_MODEL", "hey_jarvis").replace("_", " ")
 
 
+_SESSION_END_RE = re.compile(
+    r"\b(good ?bye|bye|that'?s all|that is all|you can stop|stop listening|never mind|nevermind)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_session_end(transcript: str) -> bool:
+    """Whole-phrase check for ending the conversation. A bare "stop" or
+    "stop the music" is deliberately not matched — that goes to normal
+    handling (music control)."""
+    return bool(_SESSION_END_RE.search(transcript))
+
+
 def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     """Run the assistant in voice mode with microphone input.
 
@@ -322,7 +336,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     print("  Kaizen")
     print("=" * 60)
     print(f"\n  Wake word: '{wake_word}'")
-    print("  Say 'goodbye' or 'stop' to exit.")
+    print("  Say 'goodbye' to end a conversation.")
     print("  Press Ctrl+C to quit.\n")
     print("=" * 60)
 
@@ -402,14 +416,16 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
                     print(f"You: {transcription}")
 
-                    # Check for exit
-                    exit_words = ["goodbye", "exit", "quit", "stop"]
-                    if any(word in transcription.lower() for word in exit_words):
+                    # "Goodbye" ends the conversation, not the program: an
+                    # always-on service must go back to the wake loop. (This
+                    # used to `return`, so "You can stop now" quit Kaizen and
+                    # systemd's Restart=on-failure left it down.)
+                    if _is_session_end(transcription):
                         response = orchestrator.close_session()
                         print(f"\nAssistant: {response}")
                         voice.speak(response)
                         active_flag[0] = False
-                        return
+                        break
 
                     intent_hint = None
                     prefetch = None

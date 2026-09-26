@@ -58,6 +58,9 @@ Notes:
 - `%h` resolves to the user's home, so the same unit works for any user that clones Kaizen into `~/kaizen`.
 - `Type=simple` — `run.sh` ends in `exec python3 main.py …`, so the python process becomes the unit's main PID.
 - `Restart=on-failure` (not `always`) so `systemctl --user stop kaizen` is honored.
+  **Superseded 2026-09-26:** changed to `Restart=always`. A clean voice-triggered
+  exit ("You can stop now") left the service down; and `systemctl stop` is honored
+  under any `Restart=` value, since systemd doesn't restart units it stopped itself.
 - `RestartSec=5` covers the typical USB audio enumeration delay (mic/DAC usually present within 1–2s of boot).
 - No `StandardOutput=` / `StandardError=` — defaults send both to the user journal, which is exactly what we want.
 

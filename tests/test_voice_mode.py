@@ -340,6 +340,28 @@ class VoiceModeTests(unittest.TestCase):
         self.assertIn("[scheduled] Scheduled briefing", rendered)
 
 
+class SessionEndTests(unittest.TestCase):
+    def test_goodbye_phrases_end_session(self):
+        for said in ["goodbye", "Good bye Jarvis.", "You can stop now. Thanks.", "that's all", "never mind", "ok bye"]:
+            self.assertTrue(main._is_session_end(said), said)
+
+    def test_stop_and_lookalikes_do_not_end_session(self):
+        for said in ["stop", "stop the music", "don't stop", "unstoppable", "exit the dashboard", "what's the byline"]:
+            self.assertFalse(main._is_session_end(said), said)
+
+    def test_goodbye_returns_to_wake_loop_instead_of_exiting(self):
+        """Regression: "You can stop now" used to return from run_voice_mode,
+        exiting the process; systemd then left Kaizen down."""
+        orchestrator = FakeOrchestrator(["Answer one", "Answer two"])
+        voice = FakeVoice(
+            wake_results=[True, True, False],
+            listen_results=["first question", "You can stop now. Thanks.", "second question", None],
+        )
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+        self.assertEqual(orchestrator.processed, ["first question", "second question"])
+
+
 class VoiceModeShutdownTests(unittest.TestCase):
     def test_voice_shutdown_runs_on_normal_exit(self):
         orchestrator = FakeOrchestrator(["Hi"])

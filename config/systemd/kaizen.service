@@ -11,7 +11,7 @@ WorkingDirectory=%h/kaizen
 # Leading "-" = best effort; needs the sudoers rule from install_systemd_service.sh.
 ExecStartPre=-/usr/bin/sudo -n /usr/bin/systemctl restart raspotify.service
 ExecStart=%h/kaizen/run.sh --voice
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

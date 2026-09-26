@@ -248,6 +248,7 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.6` | Minimum Jev confidence to speak a specific filler; below this, no filler plays |
 | `FILLER_ANSWER_CONFIDENCE_THRESHOLD` | `0.85` | Minimum Jev confidence for `answer: true` categories (identity, capabilities) to play a cached full answer instead of calling Claude; below this, Claude answers |
 | `TOOL_FIRST_ENABLED` | `false` | Run the tool for Jev categories with a `prefetch` block (weather) before calling Claude, so Claude only phrases the answer (~1.7s faster on the Pi). Weather needs a `topic: location` memory note |
+| `THINKING_SOUND_ENABLED` | `true` | R2-D2 warble the instant you stop talking; set false to go straight to the filler/answer |
 | `PREBUFFER_CUE_ENABLED` | `true` | Looping R2-D2 bloops from the first streamed LLM text until first TTS audio; set false to go straight to speech |
 
 ## What's Next (from roadmap)

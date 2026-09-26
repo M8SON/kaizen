@@ -193,6 +193,17 @@ class VoiceModeTests(unittest.TestCase):
         # talking — once for the one spoken request, before the response cue.
         self.assertEqual(voice.thinking_sounds, 1)
 
+    def test_voice_mode_skips_thinking_sound_when_disabled(self):
+        orchestrator = FakeOrchestrator(["Response one"])
+        voice = FakeVoice(wake_results=[True, False], listen_results=["tell me something", None])
+
+        with patch.dict("os.environ", {"THINKING_SOUND_ENABLED": "false"}), \
+             redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice)
+
+        self.assertEqual(orchestrator.processed, ["tell me something"])
+        self.assertEqual(voice.thinking_sounds, 0)
+
     def test_voice_mode_ends_idle_session_and_returns_to_wake_loop(self):
         orchestrator = FakeOrchestrator(["Response one"])
         voice = FakeVoice(

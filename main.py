@@ -324,6 +324,8 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     conversation_idle_timeout = float(os.getenv("CONVERSATION_IDLE_TIMEOUT", "8"))
     # Looping R2-D2 cue between the first LLM delta and first TTS audio.
     prebuffer_cue = os.getenv("PREBUFFER_CUE_ENABLED", "true").lower() == "true"
+    # R2-D2 warble the instant the user stops talking ("heard you").
+    thinking_sound = os.getenv("THINKING_SOUND_ENABLED", "true").lower() == "true"
 
     active_flag = getattr(orchestrator, "_conversation_active_flag", [False])
 
@@ -376,7 +378,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                     with profiling.stage("listen_record"):
                         transcription = voice.listen(
                             max_wait_seconds=conversation_idle_timeout,
-                            on_speech_done=voice.play_thinking_sound,
+                            on_speech_done=voice.play_thinking_sound if thinking_sound else None,
                         )
 
                     if not transcription:

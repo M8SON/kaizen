@@ -97,6 +97,23 @@ def load_categories(path: Path = DEFAULT_PATTERNS_PATH) -> dict[str, str]:
     return categories
 
 
+def load_actions(path: Path) -> dict[str, str]:
+    """Load {category: action} for categories with an `action` field (e.g.
+    `stop`), which Kaizen handles itself instead of calling Claude."""
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        return {}
+    return {
+        name: str(entry["action"])
+        for name, entry in (data.get("categories") or {}).items()
+        if isinstance(entry, dict) and entry.get("action")
+    }
+
+
 def load_prefetch(path: Path) -> dict[str, dict]:
     """Load {category: {"tool": str, "input": dict}} for categories with a
     `prefetch` block. Never raises; malformed entries are skipped."""
@@ -134,6 +151,7 @@ class FillerClassifier:
         answer_phrases: dict[str, list[str]] | None = None,
         answer_confidence_threshold: float = 0.85,
         prefetch: dict[str, dict] | None = None,
+        actions: dict[str, str] | None = None,
     ):
         self._categories = dict(categories)
         self._timeout_s = timeout_s
@@ -142,6 +160,7 @@ class FillerClassifier:
         self._answer_confidence_threshold = answer_confidence_threshold
         self.last_confidence: float | None = None
         self._prefetch = dict(prefetch or {})
+        self._actions = dict(actions or {})
         self._client = client
         self._api_key = api_key
 
@@ -152,6 +171,10 @@ class FillerClassifier:
     def is_answer(self, category: str) -> bool:
         """True when `category`'s phrase is the whole reply, not a filler."""
         return category in self._answer_phrases
+
+    def action_for(self, category: str) -> str | None:
+        """Kaizen-handled action for `category` (e.g. "stop"), or None."""
+        return self._actions.get(category)
 
     def pick_answer(self, category: str) -> str | None:
         """Random rendered answer phrase for `category`, or None."""
@@ -285,16 +308,19 @@ class FillerClassifier:
             logger.warning("FillerClassifier: Jev returned unknown category %r", category)
             return None
 
-        # Answer categories replace Claude's reply entirely, so a wrong match
-        # is worse than a slow right answer — require a stricter, explicit
-        # confidence and otherwise let Claude handle the turn.
-        if self.is_answer(category) and (
+        # Answer and action categories replace Claude's reply entirely, so a
+        # wrong match is worse than a slow right answer — require a stricter,
+        # explicit confidence and otherwise let Claude handle the turn.
+        if (self.is_answer(category) or self.action_for(category)) and (
             confidence is None or confidence < self._answer_confidence_threshold
         ):
             _log(f"Claude (below answer threshold {self._answer_confidence_threshold:.2f})")
             return None
 
-        _log("answer" if self.is_answer(category) else "filler")
+        _log(
+            f"action:{self.action_for(category)}" if self.action_for(category)
+            else "answer" if self.is_answer(category) else "filler"
+        )
         return category
 
 
@@ -333,6 +359,7 @@ def build_filler_classifier() -> "FillerClassifier | None":
         confidence_threshold=confidence_threshold,
         answer_phrases=load_answer_phrases(DEFAULT_PATTERNS_PATH, persona_name_from_env()),
         answer_confidence_threshold=answer_confidence_threshold,
+        actions=load_actions(DEFAULT_PATTERNS_PATH),
         prefetch=(
             load_prefetch(DEFAULT_PATTERNS_PATH)
             if os.getenv("TOOL_FIRST_ENABLED", "false").strip().lower() == "true"

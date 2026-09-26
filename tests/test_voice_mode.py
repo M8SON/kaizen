@@ -240,6 +240,9 @@ class VoiceModeTests(unittest.TestCase):
             def is_answer(self, category):
                 return False
 
+            def action_for(self, category):
+                return None
+
             def intent_hint(self, category, prefetch=None):
                 return f"hint:{category}:{prefetch['tool'] if prefetch else None}"
 
@@ -279,6 +282,9 @@ class VoiceModeTests(unittest.TestCase):
 
             def is_answer(self, category):
                 return category == "identity"
+
+            def action_for(self, category):
+                return None
 
             def pick_answer(self, category):
                 return "I'm Jarvis."
@@ -342,6 +348,47 @@ class VoiceModeTests(unittest.TestCase):
 
         rendered = output.getvalue()
         self.assertIn("[scheduled] Scheduled briefing", rendered)
+
+
+class StopIntentTests(unittest.TestCase):
+    def _stop_classifier(self):
+        class FakeClassifier:
+            def classify(self, transcript):
+                return "stop"
+
+            def is_answer(self, category):
+                return False
+
+            def action_for(self, category):
+                return "stop" if category == "stop" else None
+
+        return FakeClassifier()
+
+    def test_stop_intent_stops_music_chimes_and_goes_idle_without_claude(self):
+        orchestrator = FakeOrchestrator([])
+        voice = FakeVoice(wake_results=[True, False], listen_results=["hey jarvis stop"])
+        voice.acks = 0
+        voice.play_ack_sound = lambda: setattr(voice, "acks", voice.acks + 1)
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=self._stop_classifier())
+
+        self.assertEqual(orchestrator.container_manager.music_stops, 1)
+        self.assertEqual(voice.acks, 1)
+        self.assertEqual(orchestrator.processed, [])            # no Claude
+        self.assertEqual(voice.spoken, ["Good morning."])       # no goodbye speech
+        self.assertEqual(voice.fillers_played, [])
+
+    def test_stop_intent_returns_to_wake_loop(self):
+        orchestrator = FakeOrchestrator(["Answer"])
+        voice = FakeVoice(wake_results=[True, True, False], listen_results=["stop", "what time is it", None])
+        clf = self._stop_classifier()
+        clf.classify = lambda t: "stop" if t == "stop" else None
+
+        with redirect_stdout(io.StringIO()):
+            main.run_voice_mode(orchestrator, voice=voice, filler_classifier=clf)
+
+        self.assertEqual(orchestrator.processed, ["what time is it"])
 
 
 class SessionEndTests(unittest.TestCase):

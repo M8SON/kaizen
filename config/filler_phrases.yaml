@@ -11,6 +11,9 @@
 #              Claude only phrases the answer (skips one Claude round).
 #              "{location}" in input resolves via core.location_preference;
 #              if it can't be resolved the prefetch is skipped.
+#   action   — optional. Kaizen handles the category itself, no Claude and
+#              no phrase (e.g. `stop`: stop music / stop responding, chime,
+#              back to idle). Uses FILLER_ANSWER_CONFIDENCE_THRESHOLD.
 #   answer   — optional, default false. When true the phrase IS the whole
 #              reply: it plays instead of calling Claude, and only when Jev's
 #              confidence clears FILLER_ANSWER_CONFIDENCE_THRESHOLD. Answer
@@ -81,6 +84,10 @@ categories:
     phrases:
       - "I can check the weather, play music, search the web, set reminders, and remember things for you. If I can't do something yet, I can learn a new skill for it."
       - "Quite a bit. Weather, music, web searches, reminders, and remembering things you tell me. Just ask, and if I can't do it yet, I can learn how."
+
+  stop:
+    action: stop
+    criteria: "The user wants something to stop right now: the music or audio that is playing, or Jarvis's current reply (for example \"stop\", \"hey Jarvis stop\", \"stop the music\", \"you can stop\", \"that's enough\", \"turn it off\", \"pause\"). Not a goodbye, and not a question that merely mentions stopping."
 
   general:
     # Fallback bucket for anything that doesn't clearly match another

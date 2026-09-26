@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.filler_classifier import (
     DEFAULT_PATTERNS_PATH,
+    load_actions,
     load_prefetch,
     FillerClassifier,
     build_filler_classifier,
@@ -205,6 +206,22 @@ class AnswerCategoryTests(unittest.TestCase):
         env["TOOL_FIRST_ENABLED"] = "true"
         with patch.dict("os.environ", env):
             self.assertIn("weather", build_filler_classifier()._prefetch)
+
+    def test_real_config_has_stop_action(self):
+        self.assertEqual(load_actions(DEFAULT_PATTERNS_PATH).get("stop"), "stop")
+
+    def test_action_category_needs_strict_confidence(self):
+        def clf(conf):
+            client = MagicMock()
+            client.system_one.return_value = _fake_response("stop", conf)
+            return FillerClassifier(
+                api_key="k", categories={"stop": "Stop.", "weather": "W."}, client=client,
+                actions={"stop": "stop"}, answer_confidence_threshold=0.85,
+            )
+        self.assertEqual(clf(0.95).classify("stop"), "stop")
+        self.assertIsNone(clf(0.7).classify("stop by the store later"))
+        self.assertEqual(clf(0.95).action_for("stop"), "stop")
+        self.assertIsNone(clf(0.95).action_for("weather"))
 
     def test_phrase_slug_is_stable(self):
         # Changing this breaks every previously built cache file.

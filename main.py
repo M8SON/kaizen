@@ -423,10 +423,27 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                     # always-on service must go back to the wake loop. (This
                     # used to `return`, so "You can stop now" quit Kaizen and
                     # systemd's Restart=on-failure left it down.)
+                    # Jev classification, hard-timeout bounded (see
+                    # FillerClassifier). A miss (disabled/timeout/error/low
+                    # confidence) returns None and is a silent no-op.
+                    category = None
+                    if filler_classifier is not None:
+                        with profiling.stage("filler_classify"):
+                            category = filler_classifier.classify(transcription)
+
+                    if category is not None and filler_classifier.action_for(category) == "stop":
+                        # "Stop" = stop the music and/or stop responding, never
+                        # "done for the day" (Mason, 2026-09-26): no Claude, no
+                        # goodbye speech — chime and back to idle wake listening.
+                        logger.info("Stop intent: %s", orchestrator.container_manager.stop_music())
+                        voice.play_ack_sound()
+                        orchestrator.end_session()
+                        active_flag[0] = False
+                        break
+
                     if _is_session_end(transcription):
-                        # "Stop" means stop responding *and* stop the music
-                        # (Mason, 2026-09-26): "Jarvis you can stop" over
-                        # music used to end the chat and leave it playing.
+                        # Goodbye: stop any music, spoken goodbye, back to idle.
+                        # Also the fallback for "you can stop" when Jev is off.
                         logger.info("Session end: %s", orchestrator.container_manager.stop_music())
                         response = orchestrator.close_session()
                         print(f"\nAssistant: {response}")
@@ -436,31 +453,23 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
                     intent_hint = None
                     prefetch = None
-                    if filler_classifier is not None:
-                        # Jev classification, hard-timeout bounded (see
-                        # FillerClassifier). A miss (disabled/timeout/error/
-                        # low confidence) returns None and is a silent no-op
-                        # — the on_speech_done thinking-sound cue above
-                        # already covers the dead-air gap for this turn.
-                        with profiling.stage("filler_classify"):
-                            category = filler_classifier.classify(transcription)
-                        if category is not None and filler_classifier.is_answer(category):
-                            # Canned full answer (identity, capabilities):
-                            # play it instead of calling Claude. Missing
-                            # audio falls through to a normal Claude turn.
-                            answer = filler_classifier.pick_answer(category)
-                            if answer and voice.play_answer(category, answer):
-                                logger.info("Canned answer (%s): %s", category, answer)
-                                print(f"Assistant: {answer}\n")
-                                orchestrator.record_local_turn(transcription, answer)
-                                print("Listening...")
-                                continue
-                        elif category is not None:
-                            voice.play_filler(category)
-                            # Tool-first: Kaizen runs the category's tool now
-                            # so Claude only phrases the answer (one round).
-                            prefetch = filler_classifier.prefetch_call(category)
-                            intent_hint = filler_classifier.intent_hint(category, prefetch)
+                    if category is not None and filler_classifier.is_answer(category):
+                        # Canned full answer (identity, capabilities):
+                        # play it instead of calling Claude. Missing
+                        # audio falls through to a normal Claude turn.
+                        answer = filler_classifier.pick_answer(category)
+                        if answer and voice.play_answer(category, answer):
+                            logger.info("Canned answer (%s): %s", category, answer)
+                            print(f"Assistant: {answer}\n")
+                            orchestrator.record_local_turn(transcription, answer)
+                            print("Listening...")
+                            continue
+                    elif category is not None:
+                        voice.play_filler(category)
+                        # Tool-first: Kaizen runs the category's tool now
+                        # so Claude only phrases the answer (one round).
+                        prefetch = filler_classifier.prefetch_call(category)
+                        intent_hint = filler_classifier.intent_hint(category, prefetch)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
                         # Fire the R2-D2 pre-buffer cue when the first delta

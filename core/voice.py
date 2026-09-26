@@ -29,6 +29,17 @@ from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBac
 logger = logging.getLogger(__name__)
 
 
+def _quiet_points(seg: "np.ndarray", min_run: int) -> "np.ndarray":
+    """Sorted sample offsets where `seg` is at rest: 0, the start of every
+    silent run >= min_run samples, and len(seg). The pre-buffer cue stops at
+    the next of these so it ends between bloops rather than mid-sound."""
+    silent = np.concatenate(([False], np.abs(seg) < 1e-4, [False]))
+    edges = np.flatnonzero(np.diff(silent.astype(np.int8)))
+    starts, ends = edges[0::2], edges[1::2]
+    points = starts[(ends - starts) >= min_run]
+    return np.unique(np.concatenate(([0], points, [len(seg)])))
+
+
 class VoiceInterface:
     """
     Manages audio input (recording + transcription) and output (TTS).
@@ -463,10 +474,12 @@ class VoiceInterface:
                 return
             try:
                 seg = self._prebuffer_cue_segment()
+                quiet = _quiet_points(seg, int(0.01 * self._output_samplerate))
                 stop_event = threading.Event()
 
                 def _loop():
                     SUB = 1024
+                    pos = 0
                     try:
                         with sd.OutputStream(
                             samplerate=self._output_samplerate,
@@ -474,14 +487,21 @@ class VoiceInterface:
                             dtype="float32",
                             device=self._output_device_index,
                         ) as stream:
-                            while not stop_event.is_set():
-                                for i in range(0, len(seg), SUB):
-                                    block = seg[i : i + SUB]
-                                    if stop_event.is_set():
-                                        # Fade the in-flight block so the cut is clickless.
-                                        stream.write(block * np.linspace(1, 0, len(block), dtype=np.float32))
-                                        return
-                                    stream.write(block)
+                            while True:
+                                if stop_event.is_set():
+                                    # Let the in-flight bloop finish to the next
+                                    # silent gap (<= one element, ~0.18s) instead
+                                    # of chopping it mid-sound; PipeWire mixes the
+                                    # tail with the start of speech.
+                                    end = quiet[np.searchsorted(quiet, pos)]
+                                    if end > pos:
+                                        stream.write(seg[pos:end])
+                                    return
+                                block = seg[pos : pos + SUB]
+                                stream.write(block)
+                                pos += len(block)
+                                if pos >= len(seg):
+                                    pos = 0
                     except Exception:
                         logger.exception("Pre-buffer cue loop error")
 
@@ -493,18 +513,17 @@ class VoiceInterface:
                 self._prebuffer_cue = None
 
     def stop_prebuffer_cue(self) -> None:
-        """Stop the looping cue. Idempotent. The loop thread owns and closes
-        its own stream, so this only signals and joins."""
+        """Stop the looping cue. Idempotent. Only signals — never joins: the
+        loop thread finishes its current bloop and closes its own stream, and
+        this runs on the TTS writer thread (via on_first_audio), which must
+        not stall while that tail plays."""
         with self._prebuffer_cue_lock:
             handle = self._prebuffer_cue
             self._prebuffer_cue = None
         if handle is None:
             return
-        stop_event, thread = handle
+        stop_event, _thread = handle
         stop_event.set()
-        thread.join(timeout=2.0)
-        if thread.is_alive():
-            logger.warning("Pre-buffer cue thread did not exit within 2s")
 
     def play_ack_sound(self):
         """Short R2-D2-style acknowledgement chime — replaces verbal

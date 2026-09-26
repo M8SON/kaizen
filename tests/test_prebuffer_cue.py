@@ -68,3 +68,44 @@ def test_noop_when_tts_disabled():
     with patch.object(voice_mod, "sd"):
         v.start_prebuffer_cue()
         assert v._prebuffer_cue is None
+
+
+def test_quiet_points_find_gaps_between_bloops():
+    v = _make_voice()
+    seg = v._prebuffer_cue_segment()
+    quiet = voice_mod._quiet_points(seg, int(0.01 * v._output_samplerate))
+    assert quiet[0] == 0 and quiet[-1] == len(seg)
+    assert len(quiet) >= 5  # 0, three inter-bloop gaps, end
+    for q in quiet[1:-1]:
+        assert np.all(seg[q : q + 10] == 0)
+
+
+def test_stop_mid_bloop_finishes_to_next_gap():
+    """Stopping mid-sound lets the current bloop finish instead of chopping
+    it, and never plays more than that one element."""
+    v = _make_voice()
+    seg = v._prebuffer_cue_segment()
+    written = []
+
+    class FakeStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def write(self, block):
+            written.append(np.array(block))
+            if len(written) == 3:  # mid-way through the first chirp region
+                v.stop_prebuffer_cue()
+
+    with patch.object(voice_mod.sd, "OutputStream", return_value=FakeStream()):
+        v.start_prebuffer_cue()
+        for t in threading.enumerate():
+            if t.name == "prebuffer-cue":
+                t.join(timeout=2)
+
+    played = np.concatenate(written)
+    quiet = voice_mod._quiet_points(seg, int(0.01 * v._output_samplerate))
+    assert len(played) in set(quiet.tolist())  # ended exactly at a rest point
+    assert len(played) - 3 * 1024 <= int(0.2 * v._output_samplerate)  # <= one element

@@ -96,7 +96,9 @@ Update this file when durable project context changes. Do not create overlapping
     `KOKORO_ONNX_VARIANT=fp32`, `WHISPER_MODEL=base`, `VAD_MIN_SILENCE_MS=700`,
     `KAIZEN_PROFILE=true`, `KOKORO_PREBUFFER_MS=0`, `KOKORO_MIN_FIRST_FLUSH=20`
     (`KOKORO_CUE_MS` removed). Pi runs `main` on the `archimedes@192.168.1.137`
-    host (`ssh pi`), user systemd unit `kaizen.service`.
+    host (`ssh pi`; Pi hostname is `daedalus`), user systemd unit `kaizen.service`.
+    No persistent user journal: read logs with `journalctl _SYSTEMD_USER_UNIT=kaizen.service`.
+    Pi venv is uv-made (no pip): install with `VIRTUAL_ENV=.venv ~/.local/bin/uv pip install ...`.
 - 2026-06-18: voice "heard you / processing" cue — wired the previously-unused
   `on_speech_done` hook in the voice loop to `play_thinking_sound` so the R2-D2
   warble fires the instant speech endpoints, overlapping the silent

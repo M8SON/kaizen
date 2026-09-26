@@ -98,8 +98,9 @@ def test_mono_mic_ignores_alt_backend(monkeypatch):
     assert len(v._split_channels(np.zeros(1024, np.int16).tobytes())) == 1
 
 
-def test_near_miss_is_logged_with_per_channel_peaks(stereo_voice, caplog):
+def test_near_miss_is_logged_with_per_channel_peaks(stereo_voice, caplog, tmp_path, monkeypatch):
     import logging
+    monkeypatch.setattr(voice_module._WakeDiagnostics, "DEBUG_DIR", str(tmp_path))
     diag = voice_module._WakeDiagnostics(stereo_voice)
     stereo_voice.wake_backend.threshold = 0.7
     chans = stereo_voice._split_channels(_stereo(0, 0))
@@ -109,10 +110,15 @@ def test_near_miss_is_logged_with_per_channel_peaks(stereo_voice, caplog):
             stereo_voice.wake_backend_alt.last_score = alt   # channel 0
             diag.observe(chans, detected=False)
     assert "Wake near-miss: peak score ch0=0.20 ch1=0.55 (threshold 0.70)" in caplog.text
+    clips = list(tmp_path.iterdir())            # the missed audio is kept for analysis
+    assert len(clips) == 1 and clips[0].name.endswith("_ch0-0.20_ch1-0.55.wav")
+    with wave.open(str(clips[0])) as wf:
+        assert wf.getnchannels() == 2
 
 
-def test_detection_is_not_logged_as_near_miss(stereo_voice, caplog):
+def test_detection_is_not_logged_as_near_miss(stereo_voice, caplog, tmp_path, monkeypatch):
     import logging
+    monkeypatch.setattr(voice_module._WakeDiagnostics, "DEBUG_DIR", str(tmp_path))
     diag = voice_module._WakeDiagnostics(stereo_voice)
     chans = stereo_voice._split_channels(_stereo(0, 0))
     with caplog.at_level(logging.INFO, logger="core.voice"):

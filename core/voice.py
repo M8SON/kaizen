@@ -63,12 +63,19 @@ class _WakeDiagnostics:
     - Heartbeat every HEARTBEAT_S: per-channel mic RMS and the max score seen.
     """
 
-    NEAR_MISS = 0.2
+    NEAR_MISS = 0.08
     HEARTBEAT_S = 60.0
+    CLIP_S = 5.0
+    DEBUG_DIR = os.path.expanduser("~/.kaizen/wake_debug")
+    KEEP_CLIPS = 30
 
     def __init__(self, voice):
         self._voice = voice
         self._episode_peaks = None
+        # Last CLIP_S of raw capture (all channels), saved on a near-miss so a
+        # missed "hey jarvis" can be compared offline with what should fire.
+        if not hasattr(self, "_ring"):
+            self._ring = collections.deque(maxlen=int(self.CLIP_S * voice.RATE / voice.CHUNK))
         self._window_max = [0.0, 0.0]
         self._window_sq = [0.0, 0.0]
         self._window_n = 0
@@ -81,8 +88,23 @@ class _WakeDiagnostics:
         # index by channel number
         return [alt, primary] if v._primary_channel == 1 else [primary, alt]
 
+    def _save_clip(self, peaks) -> None:
+        try:
+            os.makedirs(self.DEBUG_DIR, exist_ok=True)
+            frames = np.stack([np.concatenate(c) for c in zip(*self._ring)], axis=1)
+            name = time.strftime("nearmiss_%H%M%S") + f"_ch0-{peaks[0]:.2f}_ch1-{peaks[1]:.2f}.wav"
+            with wave.open(os.path.join(self.DEBUG_DIR, name), "wb") as wf:
+                wf.setnchannels(frames.shape[1]); wf.setsampwidth(2)
+                wf.setframerate(self._voice.RATE); wf.writeframes(frames.astype("<i2").tobytes())
+            clips = sorted(os.listdir(self.DEBUG_DIR))
+            for old in clips[:-self.KEEP_CLIPS]:
+                os.unlink(os.path.join(self.DEBUG_DIR, old))
+        except Exception:
+            logger.debug("near-miss clip save failed", exc_info=True)
+
     def observe(self, channels: list, detected: bool) -> None:
         try:
+            self._ring.append([c.copy() for c in channels])
             scores = self._scores()
             for c, ch in enumerate(channels[:2]):
                 a = ch.astype(np.float32) / 32768.0
@@ -98,6 +120,7 @@ class _WakeDiagnostics:
                     logger.info("Wake near-miss: peak score ch0=%.2f ch1=%.2f (threshold %.2f)",
                                 self._episode_peaks[0], self._episode_peaks[1],
                                 getattr(self._voice.wake_backend, "threshold", 0.0))
+                    self._save_clip(self._episode_peaks)
                 self._episode_peaks = None
             if detected:
                 self._episode_peaks = None

@@ -121,3 +121,67 @@ def test_detection_is_not_logged_as_near_miss(stereo_voice, caplog):
         stereo_voice.wake_backend.last_score, stereo_voice.wake_backend_alt.last_score = 0.0, 0.0
         diag.observe(chans, detected=False)
     assert "near-miss" not in caplog.text
+
+
+def _wake_run(voice, monkeypatch, primary_scores, alt_scores):
+    stream = MagicMock()
+    stream.read.side_effect = [_stereo(0, 0)] * len(primary_scores)
+    audio = MagicMock()
+    audio.open.return_value = stream
+    monkeypatch.setattr(voice_module.pyaudio, "PyAudio", lambda: audio)
+    it_p, it_a = iter(primary_scores), iter(alt_scores)
+
+    def det_p(_):
+        voice.wake_backend.last_score = next(it_p)
+        return voice.wake_backend.last_score >= 0.7
+
+    def det_a(_):
+        voice.wake_backend_alt.last_score = next(it_a)
+        return voice.wake_backend_alt.last_score >= 0.7
+
+    voice.wake_backend.detect.side_effect = det_p
+    voice.wake_backend_alt.detect.side_effect = det_a
+    return voice.wait_for_wake_word()
+
+
+def test_soft_wake_fires_between_soft_and_hard_threshold(stereo_voice, monkeypatch):
+    stereo_voice._wake_soft_threshold = 0.25
+    assert _wake_run(stereo_voice, monkeypatch, [0.05, 0.1, 0.3], [0.0, 0.2, 0.4]) is True
+    assert stereo_voice._soft_wake is True
+
+
+def test_hard_wake_is_not_soft(stereo_voice, monkeypatch):
+    stereo_voice._wake_soft_threshold = 0.25
+    assert _wake_run(stereo_voice, monkeypatch, [0.1, 0.9], [0.0, 0.1]) is True
+    assert stereo_voice._soft_wake is False
+
+
+def test_soft_wake_disabled_by_default(stereo_voice, monkeypatch):
+    assert stereo_voice._wake_soft_threshold == 0
+    with pytest.raises(StopIteration):  # never fires on 0.4; runs out of audio
+        _wake_run(stereo_voice, monkeypatch, [0.4, 0.4], [0.4, 0.4])
+
+
+def _listen_after(voice, monkeypatch, soft, text):
+    monkeypatch.setattr(voice, "_transcribe", lambda path: text)
+
+    def rec(**kw):
+        voice._heard_speech, voice._used_preroll, voice._stream_session = True, True, None
+        return "/nonexistent.wav"
+
+    monkeypatch.setattr(voice, "_record_until_silence", rec)
+    voice._soft_wake = soft
+    return voice.listen()
+
+
+def test_soft_wake_confirmed_when_transcript_says_jarvis(stereo_voice, monkeypatch):
+    assert _listen_after(stereo_voice, monkeypatch, True, "Jarvis, what time is it?") == "what time is it?"
+    assert stereo_voice._soft_wake is False
+
+
+def test_soft_wake_rejected_without_wake_name(stereo_voice, monkeypatch):
+    assert _listen_after(stereo_voice, monkeypatch, True, "and then the TV said something") is None
+
+
+def test_hard_wake_needs_no_confirmation(stereo_voice, monkeypatch):
+    assert _listen_after(stereo_voice, monkeypatch, False, "what time is it?") == "what time is it?"

@@ -187,6 +187,12 @@ class VoiceInterface:
         self._streaming_stt = streaming_stt
         self._stream_session = None
         self._heard_speech = False
+        # Two-stage wake: a score between this and the detector threshold is a
+        # "soft" wake that only counts if the transcript contains the wake
+        # name. On the Pi, missed real attempts scored 0.28-0.47 while ambient
+        # (quiet or music) never exceeded 0.09 over hours. 0 disables.
+        self._wake_soft_threshold = float(os.getenv("WAKE_WORD_SOFT_THRESHOLD", "0"))
+        self._soft_wake = False
 
         # Active PyAudio resources tracked here so shutdown() (e.g. from a
         # SIGINT handler) can close them even if the wake/listen loop is
@@ -281,6 +287,12 @@ class VoiceInterface:
             other = channels[1 - self._primary_channel]
             hit = self.wake_backend_alt.detect(other) or hit
         return hit
+
+    def _max_wake_score(self) -> float:
+        scores = [getattr(self.wake_backend, "last_score", 0.0)]
+        if self.wake_backend_alt is not None:
+            scores.append(getattr(self.wake_backend_alt, "last_score", 0.0))
+        return max(scores)
 
     def _reset_wake(self) -> None:
         self.wake_backend.reset()
@@ -394,9 +406,19 @@ class VoiceInterface:
                 preroll.append(channels[self._primary_channel].tobytes())
 
                 detected = self._wake_detected(channels)
-                diag.observe(channels, detected)
-                if detected:
-                    logger.info("Wake detected")
+                soft = (
+                    not detected
+                    and self._wake_soft_threshold > 0
+                    and self._max_wake_score() >= self._wake_soft_threshold
+                )
+                diag.observe(channels, detected or soft)
+                if detected or soft:
+                    self._soft_wake = soft
+                    if soft:
+                        logger.info("Wake detected (soft, score %.2f) — confirming via transcript",
+                                    self._max_wake_score())
+                    else:
+                        logger.info("Wake detected")
                     self._wake_preroll = b"".join(preroll)
                     self._shared_audio = audio
                     self._shared_stream = stream
@@ -435,6 +457,7 @@ class VoiceInterface:
             on_speech_done=on_speech_done,
         )
         session, self._stream_session = self._stream_session, None
+        soft, self._soft_wake = self._soft_wake, False
         if not self._heard_speech:
             # VAD never detected speech (idle timeout): nothing to transcribe,
             # so don't spend ~1.8s of Whisper CPU on silence.
@@ -458,6 +481,10 @@ class VoiceInterface:
             except OSError:
                 pass
 
+        if soft and not self._mentions_wake_name(transcription):
+            logger.info("Soft wake rejected (no wake name in %r)", transcription)
+            return None
+
         if transcription and self._used_preroll:
             transcription = self._strip_wake_phrase(transcription)
 
@@ -465,6 +492,14 @@ class VoiceInterface:
             return None
 
         return transcription.strip()
+
+    def _mentions_wake_name(self, text: str | None) -> bool:
+        """True if the transcript contains the wake name ("jarv..." for
+        "hey jarvis") — confirms a soft wake was really addressed to us."""
+        name = self.display_wake_word.split()[-1] if self.display_wake_word else ""
+        if not text or not name:
+            return False
+        return re.search(rf"\b{re.escape(name[:4])}", text, re.IGNORECASE) is not None
 
     def _strip_wake_phrase(self, text: str) -> str:
         """Drop a leading "hey jarvis" that the wake pre-roll let Whisper hear."""

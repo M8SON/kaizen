@@ -225,6 +225,7 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `META_MODEL_API_KEY` | — | Meta Model API key, required for `STT_BACKEND=meta` |
 | `MIC_CHANNEL` | `1` | Primary channel on 2-channel mics (XVF3800) for recording/STT/VAD; channel 0 suppresses speech while audio plays (0/7 wake words over music vs 4/7 on channel 1). Wake word runs on both channels |
 | `WAKE_PREROLL_MS` | `600` | Audio from just before the wake word fired, prepended to the recording so words said in the same breath as "hey jarvis" aren't clipped; leading wake phrase is stripped from the transcript. 0 disables |
+| `WAKE_WORD_SOFT_THRESHOLD` | `0` (off) | Two-stage wake: scores between this and `WAKE_WORD_THRESHOLD` start listening but only count if the transcript contains "Jarvis". Pi uses 0.25 (missed real attempts 0.28-0.47, ambient ≤0.09) |
 | `BARGE_IN_ENABLED` | `true` | Say the wake word during a response to interrupt playback and start listening; set false to disable |
 | `ENABLE_TTS` | `true` | Set false to disable speech output |
 | `TTS_BACKEND` | `kokoro` | `kokoro` \| `kokoro-onnx` \| `elevenlabs` |

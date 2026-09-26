@@ -118,6 +118,8 @@ def build_voice_interface():
         threshold=wake_word_threshold,
     )
     logger.info(wake_msg)
+    # Second detector for 2-channel mics (XVF3800): wake runs on both channels.
+    wake_backend_alt, _ = build_wake_backend(model_name=wake_word_model, threshold=wake_word_threshold)
 
     vad_backend_name = os.getenv("VAD_BACKEND", "silero")
     vad_threshold = float(os.getenv("VAD_THRESHOLD", "0.5"))
@@ -162,6 +164,7 @@ def build_voice_interface():
         stt_backend=stt_backend,
         tts_backend=tts_backend,
         wake_backend=wake_backend,
+        wake_backend_alt=wake_backend_alt,
         vad_backend=vad_backend,
         vad_min_silence_ms=vad_min_silence_ms,
         barge_in_enabled=barge_in_enabled,

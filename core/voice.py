@@ -25,6 +25,7 @@ from core.audio_devices import (
     resample,
     resolve_input_device,
     resolve_output_device,
+    input_channel_count,
 )
 from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBackend
 
@@ -81,6 +82,7 @@ class VoiceInterface:
         vad_min_silence_ms: int = 700,
         barge_in_enabled: bool = False,
         streaming_stt=None,
+        wake_backend_alt=None,
     ):
         self.enable_tts = enable_tts
         self.silence_threshold = silence_threshold
@@ -88,6 +90,20 @@ class VoiceInterface:
         self.display_wake_word = display_wake_word.strip()
 
         self._input_device_index = resolve_input_device()
+        # Multi-channel mics are captured in stereo and split. On the XVF3800
+        # channel 0 is heavily suppressed while audio plays (music: 0/7 wake
+        # words, speech mostly lost) whereas channel 1 kept every word (7/7
+        # transcribed) — measured on the Pi 2026-09-26 — so channel 1 is the
+        # primary (recording/STT/VAD). The wake word runs on both channels
+        # (either fires): in a quiet room each channel missed a *different*
+        # 5-ft attempt, together 6/6.
+        self._capture_channels = input_channel_count(self._input_device_index)
+        self._primary_channel = (
+            min(int(os.getenv("MIC_CHANNEL", "1")), self._capture_channels - 1)
+            if self._capture_channels > 1 else 0
+        )
+        logger.info("Mic capture: %d channel(s), primary channel %d",
+                    self._capture_channels, self._primary_channel)
         self._output_device_index = resolve_output_device()
         self._output_samplerate = output_samplerate(self._output_device_index)
 
@@ -132,6 +148,9 @@ class VoiceInterface:
                 "constructs the default openWakeWord backend"
             )
         self.wake_backend = wake_backend
+        # Second detector for the non-primary channel (stateful, so one per
+        # channel). Unused for mono mics.
+        self.wake_backend_alt = wake_backend_alt if self._capture_channels > 1 else None
         self.vad_backend = vad_backend
         self.vad_min_silence_ms = vad_min_silence_ms
         self.tts_backend = (
@@ -171,6 +190,38 @@ class VoiceInterface:
             except Exception:
                 pass
 
+    def _open_mic(self, audio):
+        return audio.open(
+            format=self.FORMAT,
+            channels=self._capture_channels,
+            rate=self.RATE,
+            input=True,
+            input_device_index=self._input_device_index,
+            frames_per_buffer=self.CHUNK,
+        )
+
+    def _split_channels(self, data: bytes) -> list:
+        """Interleaved int16 capture -> one contiguous array per channel."""
+        samples = np.frombuffer(data, dtype=np.int16)
+        if self._capture_channels == 1:
+            return [samples]
+        frames = samples.reshape(-1, self._capture_channels)
+        return [np.ascontiguousarray(frames[:, c]) for c in range(self._capture_channels)]
+
+    def _wake_detected(self, channels: list) -> bool:
+        """Feed every channel's detector every chunk (openWakeWord's buffers
+        must stay primed) and fire if either one crosses its threshold."""
+        hit = self.wake_backend.detect(channels[self._primary_channel])
+        if self.wake_backend_alt is not None:
+            other = channels[1 - self._primary_channel]
+            hit = self.wake_backend_alt.detect(other) or hit
+        return hit
+
+    def _reset_wake(self) -> None:
+        self.wake_backend.reset()
+        if self.wake_backend_alt is not None:
+            self.wake_backend_alt.reset()
+
     def _start_barge_in_watcher(self, interrupt_event) -> None:
         """Run a wake-word watcher on its own mic stream during playback.
 
@@ -183,14 +234,7 @@ class VoiceInterface:
             return
         try:
             audio = pyaudio.PyAudio()
-            stream = audio.open(
-                format=self.FORMAT,
-                channels=self.CHANNELS,
-                rate=self.RATE,
-                input=True,
-                input_device_index=self._input_device_index,
-                frames_per_buffer=self.CHUNK,
-            )
+            stream = self._open_mic(audio)
         except Exception as e:
             logger.warning(
                 "Barge-in watcher could not open mic; inactive this turn: %s", e
@@ -200,15 +244,14 @@ class VoiceInterface:
 
         # Clear stale features so the watcher doesn't fire on the tail of the
         # prior wake event (same reasoning as wait_for_wake_word).
-        self.wake_backend.reset()
+        self._reset_wake()
         stop_event = threading.Event()
 
         def _watch():
             try:
                 while not stop_event.is_set():
                     data = stream.read(self.CHUNK, exception_on_overflow=False)
-                    chunk_int16 = np.frombuffer(data, dtype=np.int16)
-                    if self.wake_backend.detect(chunk_int16):
+                    if self._wake_detected(self._split_channels(data)):
                         logger.info("Barge-in wake word detected")
                         interrupt_event.set()
                         return
@@ -263,14 +306,7 @@ class VoiceInterface:
         immediately with no gap.
         """
         audio = pyaudio.PyAudio()
-        stream = audio.open(
-            format=self.FORMAT,
-            channels=self.CHANNELS,
-            rate=self.RATE,
-            input=True,
-            input_device_index=self._input_device_index,
-            frames_per_buffer=self.CHUNK,
-        )
+        stream = self._open_mic(audio)
         self._active_audio = audio
         self._active_stream = stream
 
@@ -278,7 +314,7 @@ class VoiceInterface:
         # Without a reset between sessions, the next wake-loop entry sees
         # the tail of the prior wake event still in the model's buffer
         # and fires immediately.
-        self.wake_backend.reset()
+        self._reset_wake()
 
         logger.info("Waiting for wake word: '%s'", self.display_wake_word)
 
@@ -288,10 +324,10 @@ class VoiceInterface:
         try:
             while True:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
-                preroll.append(data)
-                chunk_int16 = np.frombuffer(data, dtype=np.int16)
+                channels = self._split_channels(data)
+                preroll.append(channels[self._primary_channel].tobytes())
 
-                if self.wake_backend.detect(chunk_int16):
+                if self._wake_detected(channels):
                     logger.info("Wake detected")
                     self._wake_preroll = b"".join(preroll)
                     self._shared_audio = audio
@@ -813,14 +849,7 @@ class VoiceInterface:
             preroll, self._wake_preroll = self._wake_preroll, b""
         else:
             audio = pyaudio.PyAudio()
-            stream = audio.open(
-                format=self.FORMAT,
-                channels=self.CHANNELS,
-                rate=self.RATE,
-                input=True,
-                input_device_index=self._input_device_index,
-                frames_per_buffer=self.CHUNK,
-            )
+            stream = self._open_mic(audio)
         self._active_audio = audio
         self._active_stream = stream
 
@@ -847,11 +876,13 @@ class VoiceInterface:
         ended_normally = False
         try:
             while True:
-                data = stream.read(self.CHUNK, exception_on_overflow=False)
+                chunk_int16 = self._split_channels(
+                    stream.read(self.CHUNK, exception_on_overflow=False)
+                )[self._primary_channel]
+                data = chunk_int16.tobytes()  # mono: WAV, streaming STT, VAD
                 frames.append(data)
                 if session is not None:
                     session.push(data)
-                chunk_int16 = np.frombuffer(data, dtype=np.int16)
 
                 if self.vad_backend is not None:
                     is_speech = self.vad_backend.is_speech(chunk_int16)

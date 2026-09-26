@@ -55,6 +55,27 @@ def resolve_input_device(query: str | None = None) -> int | None:
     return None
 
 
+def input_channel_count(device: int | None) -> int:
+    """Channels to capture from `device`: 2 for multi-channel mics (the
+    XVF3800 exposes two differently-processed channels), else 1. Falls back
+    to 1 when PortAudio can't be queried."""
+    try:
+        import pyaudio
+
+        audio = pyaudio.PyAudio()
+        try:
+            info = (
+                audio.get_device_info_by_index(device)
+                if device is not None
+                else audio.get_default_input_device_info()
+            )
+            return 2 if int(info.get("maxInputChannels", 1)) >= 2 else 1
+        finally:
+            audio.terminate()
+    except Exception:
+        return 1
+
+
 def resolve_output_device(query: str | None = None) -> int | None:
     """Return the sounddevice output index whose name contains ``query``.
 

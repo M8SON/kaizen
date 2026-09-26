@@ -301,7 +301,9 @@ class Orchestrator:
             logger.warning("unknown delivery mode %r for schedule %s", delivery, entry.id)
         return None
 
-    def process_message(self, user_message: str, on_chunk=None, on_ack_success=None) -> str:
+    def process_message(
+        self, user_message: str, on_chunk=None, on_ack_success=None, intent_hint: str | None = None,
+    ) -> str:
         """Process a user message through the tiered intelligence stack.
 
         on_chunk: optional Callable[[str], None]. When provided, both the
@@ -311,6 +313,9 @@ class Orchestrator:
         dispatches, session-close patterns) deliver the assembled string
         as a single delta so the caller's TTS feed has a uniform shape
         regardless of which tier handled the turn.
+
+        intent_hint: optional classifier note (see FillerClassifier.intent_hint)
+        appended to the uncached part of the system prompt for LLM tiers.
         """
         # Reuse the outer profiling.turn() if the voice loop already opened
         # one; otherwise own the scope so text-mode turns still produce a
@@ -318,11 +323,23 @@ class Orchestrator:
         outer = profiling._current_turn.get()
         ctx = contextlib.nullcontext() if outer is not None else profiling.turn()
         with ctx:
-            return self._process_message(user_message, on_chunk=on_chunk, on_ack_success=on_ack_success)
+            return self._process_message(
+                user_message, on_chunk=on_chunk, on_ack_success=on_ack_success, intent_hint=intent_hint,
+            )
 
-    def _process_message(self, user_message: str, on_chunk=None, on_ack_success=None) -> str:
+    def _split_with_hint(self, user_message: str, intent_hint: str | None) -> tuple[str, str]:
+        """System prompt split with the classifier hint on the uncached side,
+        so it never invalidates the cached stable prefix."""
+        stable, dynamic = self._build_system_prompt_split(user_message=user_message)
+        if intent_hint:
+            dynamic = f"{dynamic}\n\n{intent_hint}" if dynamic else intent_hint
+        return stable, dynamic
+
+    def _process_message(
+        self, user_message: str, on_chunk=None, on_ack_success=None, intent_hint: str | None = None,
+    ) -> str:
         if self._tier_router is None:
-            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
+            stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=stable,
@@ -341,7 +358,7 @@ class Orchestrator:
             return result
 
         if route.tier == "claude":
-            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
+            stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=stable,
@@ -355,6 +372,8 @@ class Orchestrator:
         # streaming, conversation state, archive, and tool execution all work
         # identically. On error / unexpected response, fall through to Sonnet.
         micro_system_prompt = self.prompt_builder.build_for_micro_tier()
+        if intent_hint:
+            micro_system_prompt = f"{micro_system_prompt}\n\n{intent_hint}"
         try:
             return self._micro_loop.run(
                 user_message=user_message,
@@ -364,7 +383,7 @@ class Orchestrator:
             )
         except Exception:
             logger.exception("Micro tier failed → escalating to Claude")
-            stable, dynamic = self._build_system_prompt_split(user_message=user_message)
+            stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(
                 user_message=user_message,
                 system_prompt=stable,

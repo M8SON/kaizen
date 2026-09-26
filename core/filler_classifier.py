@@ -120,6 +120,7 @@ class FillerClassifier:
         self._confidence_threshold = confidence_threshold
         self._answer_phrases = dict(answer_phrases or {})
         self._answer_confidence_threshold = answer_confidence_threshold
+        self.last_confidence: float | None = None
         self._client = client
         self._api_key = api_key
 
@@ -136,6 +137,18 @@ class FillerClassifier:
         phrases = self._answer_phrases.get(category)
         return random.choice(phrases) if phrases else None
 
+    def intent_hint(self, category: str) -> str:
+        """System-prompt note telling Claude what Jev classified this turn as,
+        so a clipped or misheard transcript doesn't force a clarifying question."""
+        conf = "" if self.last_confidence is None else f", confidence {self.last_confidence:.2f}"
+        return (
+            f"Voice intent classifier: this request was classified as '{category}' "
+            f"({self._categories.get(category, '')}{conf}). The transcript comes from speech "
+            "recognition and may be clipped or misheard. If it is unclear but consistent with "
+            "this intent, act on the intent instead of asking a clarifying question. Still "
+            "confirm anything with side effects."
+        )
+
     def _get_client(self):
         if self._client is not None:
             return self._client
@@ -145,6 +158,7 @@ class FillerClassifier:
 
     def classify(self, transcript: str) -> str | None:
         """Return a category name, or None on timeout/error/low confidence."""
+        self.last_confidence = None
         if not self.available or not transcript.strip():
             return None
 
@@ -206,6 +220,7 @@ class FillerClassifier:
             logger.warning("FillerClassifier: unexpected Jev response shape: %s", exc)
             return None
 
+        self.last_confidence = confidence
         elapsed_ms = (time.perf_counter() - started) * 1000
         conf_str = "n/a" if confidence is None else f"{confidence:.2f}"
 

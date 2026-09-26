@@ -164,3 +164,19 @@ def test_record_local_turn_updates_history_and_archive(archive: SessionArchive):
     finally:
         conn.close()
     assert rows == [("user", "what's your name"), ("assistant", "I'm Jarvis.")]
+
+
+def test_intent_hint_goes_to_uncached_dynamic_block(archive: SessionArchive):
+    orch, tool_loop = _make_orchestrator(archive)
+    orch._tier_router = None
+    orch.process_message("to the weather today", intent_hint="HINT")
+    kwargs = tool_loop.run.call_args.kwargs
+    assert kwargs["system_prompt"] == "system"          # cached prefix untouched
+    assert kwargs["system_prompt_dynamic"] == "HINT"    # hint on the uncached side
+
+
+def test_no_intent_hint_leaves_prompt_unchanged(archive: SessionArchive):
+    orch, tool_loop = _make_orchestrator(archive)
+    orch._tier_router = None
+    orch.process_message("hello")
+    assert tool_loop.run.call_args.kwargs["system_prompt_dynamic"] == ""

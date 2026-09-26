@@ -394,6 +394,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         active_flag[0] = False
                         return
 
+                    intent_hint = None
                     if filler_classifier is not None:
                         # Jev classification, hard-timeout bounded (see
                         # FillerClassifier). A miss (disabled/timeout/error/
@@ -415,6 +416,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 continue
                         elif category is not None:
                             voice.play_filler(category)
+                            intent_hint = filler_classifier.intent_hint(category)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
                         # Fire the R2-D2 pre-buffer cue when the first delta
@@ -431,6 +433,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 transcription,
                                 on_chunk=push_raw,
                                 on_ack_success=voice.play_ack_sound,
+                                intent_hint=intent_hint,
                             )
                             # Empty response = direct-tier ack chime was played
                             # in lieu of TTS; nothing to speak or print.
@@ -450,6 +453,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         response = orchestrator.process_message(
                             transcription,
                             on_ack_success=voice.play_ack_sound,
+                            intent_hint=intent_hint,
                         )
                         if response:
                             print(f"Assistant: {response}\n")

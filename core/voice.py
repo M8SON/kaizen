@@ -102,7 +102,13 @@ class _WakeDiagnostics:
 
             if time.monotonic() - self._window_start >= self.HEARTBEAT_S and self._window_n:
                 rms = [10 * np.log10(sq / self._window_n + 1e-12) for sq in self._window_sq]
-                logger.info("Wake loop alive: mic rms ch0=%.0f ch1=%.0f dBFS, max score ch0=%.2f ch1=%.2f",
+                elapsed = time.monotonic() - self._window_start
+                realtime = elapsed * self._voice.RATE / self._voice.CHUNK
+                # chunks < realtime => the loop is slower than the mic and
+                # PortAudio is silently dropping audio (exception_on_overflow=False).
+                logger.info("Wake loop alive: %d/%d chunks (%.0f%% of real time), mic rms "
+                            "ch0=%.0f ch1=%.0f dBFS, max score ch0=%.2f ch1=%.2f",
+                            self._window_n, realtime, 100 * self._window_n / realtime,
                             rms[0], rms[1] if len(channels) > 1 else float("nan"),
                             self._window_max[0], self._window_max[1])
                 self.__init__(self._voice)

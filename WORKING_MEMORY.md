@@ -56,6 +56,24 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-09-25/26: Jev filler + canned answers shipped and validated on the Pi.
+  - Jev (TypeSafe) classifies each voice transcript (~150-360ms on the Pi); a cached
+    ElevenLabs filler phrase plays while Claude works. Categories marked `answer: true`
+    (`identity`, `capabilities`) play a cached full reply instead of calling Claude when
+    confidence >= `FILLER_ANSWER_CONFIDENCE_THRESHOLD` (0.85). The identity criteria
+    needed example phrasings ("what do you do" scored 0.55 without them, 0.98 with).
+    Audio lives in `~/.kaizen/filler_audio` per machine; rebuild with
+    `scripts/build_filler_audio.py` after editing `config/filler_phrases.yaml`.
+  - Looping R2-D2 pre-buffer cue disabled on the Pi (`PREBUFFER_CUE_ENABLED=false`): with
+    ElevenLabs it only spanned ~0.5s and was heard as a clipped bloop.
+  - Spotify: long-running librespot can hold a dead session (after a DHCP change) and
+    silently fail while the Web API says "Now playing". Fixes: kaizen.service
+    ExecStartPre restarts raspotify (sudoers rule `/etc/sudoers.d/kaizen-raspotify`,
+    installed by `install_systemd_service.sh`); play/playlist/genre verify progress is
+    advancing and self-heal once via raspotify restart. New `play_genre` action plays a
+    shuffled searched playlist (Spotify editorial playlists are hidden from newer dev apps).
+  - Pi audio: speaker is the KT USB Audio adapter, pinned as PipeWire default sink;
+    mic is the XVF3800.
 - 2026-07-18/19: first-answer voice-latency arc (all merged to `main`; specs/plans
   under `docs/superpowers/`). Root cause of felt latency: Kokoro synth runs
   ~1.15–1.4× **slower than real-time** on the Pi CPU (`kokoro-onnx` fp32 is the CPU

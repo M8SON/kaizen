@@ -1,5 +1,6 @@
 """
-Weather skill container - receives a location query, returns weather data.
+Weather skill container - receives a location query, returns current
+conditions plus a 7-day daily forecast.
 
 Uses open-meteo (free, no API key required).
 
@@ -11,6 +12,7 @@ Contract:
 import json
 import os
 import sys
+from datetime import date
 
 import requests
 
@@ -105,8 +107,9 @@ def get_weather(location: str) -> str:
                 "current": "temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m",
                 "temperature_unit": "fahrenheit",
                 "windspeed_unit": "mph",
+                "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
                 "timezone": "auto",
-                "forecast_days": 1,
+                "forecast_days": 7,
             },
             timeout=10,
         )
@@ -123,10 +126,31 @@ def get_weather(location: str) -> str:
             "conditions": condition,
             "humidity": f"{round(current.get('relativehumidity_2m', 0))}%",
             "wind_speed": f"{round(current.get('windspeed_10m', 0))} mph",
+            "forecast": _daily_forecast(data.get("daily") or {}),
         })
 
     except Exception as exc:
         return f"Weather error: {exc}"
+
+
+def _daily_forecast(daily: dict) -> list[dict]:
+    """Per-day summary from open-meteo's `daily` block (local dates, today first)."""
+    days = []
+    for i, day in enumerate(daily.get("time") or []):
+        def at(key):
+            values = daily.get(key) or []
+            return values[i] if i < len(values) else None
+
+        high, low, rain = at("temperature_2m_max"), at("temperature_2m_min"), at("precipitation_probability_max")
+        days.append({
+            "date": day,
+            "day": date.fromisoformat(day).strftime("%A"),
+            "conditions": _weathercode_description(at("weathercode") or 0),
+            "high": f"{round(high)}°F" if high is not None else None,
+            "low": f"{round(low)}°F" if low is not None else None,
+            "chance_of_rain": f"{round(rain)}%" if rain is not None else None,
+        })
+    return days
 
 
 def _weathercode_description(code: int) -> str:

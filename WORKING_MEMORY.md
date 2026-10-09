@@ -25,8 +25,11 @@ Update this file when durable project context changes. Do not create overlapping
   handle untrusted content (`playwright-scraper`, the dashboard container).
 - Untrusted containers: bridge network, all caps dropped, host uid (non-root),
   pids limit, killed by name on timeout; no reserved secrets
-  (`RESERVED_ENV_VARS`, `ANTHROPIC_*`). Dev-tier (symlinked) skills get
-  authored-tier checks.
+  (`RESERVED_ENV_VARS`, `ANTHROPIC_*`); image must be `kaizen/<name>:<tag>`
+  built locally from the skill's own Dockerfile, `--pull=never`; installs
+  reject symlinks. Dev-tier (symlinked) skills get authored-tier checks.
+- Claude Code is installed on the Pi (native binary, `~/.local/bin/claude`,
+  authenticates with `.env`'s `ANTHROPIC_API_KEY`) for voice skill authoring.
 - Voice-authored skills: Claude Code runs in a throwaway staging dir with file
   tools scoped to it (`Read/Write/Edit(./**)`, no Bash, `--setting-sources ""`,
   minimal env), then the shared InstallPipeline validates at the authored tier

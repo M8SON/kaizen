@@ -24,6 +24,13 @@ class ConversationState:
         """Return the full conversation history."""
         return self._messages
 
+    def snapshot(self) -> list[dict]:
+        """Copy of the history, for restore() if a turn has to be undone."""
+        return list(self._messages)
+
+    def restore(self, snapshot: list[dict]) -> None:
+        self._messages = list(snapshot)
+
     def append_user_text(self, text: str) -> None:
         """Append a plain user text turn."""
         self._messages.append({"role": "user", "content": text})

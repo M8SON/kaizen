@@ -390,19 +390,41 @@ class Orchestrator:
         # Micro tier — Haiku with a slim system prompt and top-K filtered tools.
         # Reuses the same ToolLoop machinery as the full Claude path, so
         # streaming, conversation state, archive, and tool execution all work
-        # identically. On error / unexpected response, fall through to Sonnet.
+        # identically. If Haiku raises, its partial turn is rolled back; the
+        # turn is retried on Sonnet only if Haiku hadn't yet run a tool or
+        # spoken — otherwise a retry would repeat actions and speech.
         micro_system_prompt = f"{self.prompt_builder.build_for_micro_tier()}\n\n{_now_line()}"
         if intent_hint:
             micro_system_prompt = f"{micro_system_prompt}\n\n{intent_hint}"
+        snapshot = self.conversation_state.snapshot()
+        spoke = []
+
+        def micro_chunk(text):
+            spoke.append(text)
+            on_chunk(text)
+
         try:
             return self._micro_loop.run(
                 user_message=user_message,
                 system_prompt=micro_system_prompt,
                 archive_callback=self._archive_callback,
-                on_chunk=on_chunk,
+                on_chunk=micro_chunk if on_chunk else None,
                 prefetch=prefetch,
             )
         except Exception:
+            ran_tool = any(
+                block.get("type") == "tool_use"
+                for msg in self.conversation_state.messages
+                if not any(msg is old for old in snapshot) and isinstance(msg.get("content"), list)
+                for block in msg["content"] if isinstance(block, dict)
+            )
+            self.conversation_state.restore(snapshot)
+            if ran_tool or spoke:
+                logger.exception("Micro tier failed after acting — not retrying on Claude")
+                reply = "Sorry, something went wrong partway through that."
+                self.conversation_state.append_user_text(user_message)
+                self.conversation_state.append_assistant_content([{"type": "text", "text": reply}])
+                return reply
             logger.exception("Micro tier failed → escalating to Claude")
             stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(

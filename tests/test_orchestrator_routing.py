@@ -91,6 +91,57 @@ class TestOrchestratorRoutingEnabled(unittest.TestCase):
         orch.tool_loop.run.assert_called_once()
         self.assertEqual(result, "Sonnet response")
 
+    def _micro_orch(self, micro_run):
+        from core.conversation_state import ConversationState
+        orch = _make_orchestrator_with_mocks()
+        orch.conversation_state = ConversationState()
+        orch.conversation_state.append_user_text("earlier question")
+        orch.conversation_state.append_assistant_content([{"type": "text", "text": "earlier answer"}])
+        orch._tier_router = self._make_router("micro")
+        orch._micro_loop = MagicMock()
+        orch._micro_loop.run.side_effect = micro_run
+        return orch
+
+    def test_clean_micro_failure_rolls_back_history_before_sonnet(self):
+        def micro_run(user_message, **kw):
+            orch.conversation_state.append_user_text(user_message)
+            raise RuntimeError("haiku unavailable")
+        orch = self._micro_orch(micro_run)
+        seen = []
+        orch.tool_loop.run.side_effect = lambda **kw: seen.append(
+            [m["content"] for m in orch.conversation_state.messages]) or "Sonnet response"
+        result = orch.process_message("what's the weather")
+        self.assertEqual(result, "Sonnet response")
+        # Sonnet starts from the pre-Haiku history: no duplicate user turn.
+        self.assertEqual(seen[0], ["earlier question", [{"type": "text", "text": "earlier answer"}]])
+
+    def test_micro_failure_after_tool_use_is_not_retried(self):
+        def micro_run(user_message, **kw):
+            orch.conversation_state.append_user_text(user_message)
+            orch.conversation_state.append_assistant_content(
+                [{"type": "tool_use", "id": "t1", "name": "spotify", "input": {"action": "play"}}])
+            raise RuntimeError("haiku died after the tool ran")
+        orch = self._micro_orch(micro_run)
+        result = orch.process_message("play some jazz")
+        orch.tool_loop.run.assert_not_called()
+        self.assertIn("went wrong", result)
+        msgs = orch.conversation_state.messages
+        self.assertEqual(msgs[-2], {"role": "user", "content": "play some jazz"})
+        self.assertEqual(msgs[-1]["role"], "assistant")
+        self.assertFalse(any(b.get("type") == "tool_use"
+                             for m in msgs if isinstance(m["content"], list) for b in m["content"]))
+
+    def test_micro_failure_after_speaking_is_not_retried(self):
+        def micro_run(user_message, on_chunk=None, **kw):
+            on_chunk("Sure, ")
+            raise RuntimeError("stream dropped")
+        orch = self._micro_orch(micro_run)
+        spoken = []
+        result = orch.process_message("tell me a joke", on_chunk=spoken.append)
+        orch.tool_loop.run.assert_not_called()
+        self.assertEqual(spoken[0], "Sure, ")
+        self.assertIn("went wrong", result)
+
     def test_direct_skill_route_calls_container_manager(self):
         from core.tier_router import RouteResult
 

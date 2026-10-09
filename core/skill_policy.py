@@ -78,6 +78,25 @@ _CREDENTIAL_PATTERNS = [
 ]
 
 
+# Kaizen's own credentials and the account-control secrets of bundled
+# integrations. Authored and imported skills may never receive these.
+RESERVED_ENV_VARS = frozenset({
+    "ELEVENLABS_API_KEY",
+    "META_MODEL_API_KEY",
+    "TYPESAFE_API_KEY",
+    "SPOTIFY_CLIENT_ID",
+    "SPOTIFY_CLIENT_SECRET",
+    "HOMEBRIDGE_USERNAME",
+    "HOMEBRIDGE_PASSWORD",
+})
+
+
+def is_reserved_env_var(env_var_name: str) -> bool:
+    """True for env vars untrusted tiers must not receive. ANTHROPIC_* covers
+    the API key and anything that redirects the client (e.g. ANTHROPIC_BASE_URL)."""
+    return env_var_name.startswith("ANTHROPIC_") or env_var_name in RESERVED_ENV_VARS
+
+
 def is_credential_pattern(env_var_name: str) -> bool:
     """Return True if an env var name looks like a credential."""
     return any(p.match(env_var_name) for p in _CREDENTIAL_PATTERNS)

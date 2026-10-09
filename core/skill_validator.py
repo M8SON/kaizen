@@ -21,6 +21,7 @@ from core.skill_policy import (
     policy_for,
     DEVICE_ALLOWLIST_PATTERNS,
     is_scoped_volume,
+    is_reserved_env_var,
 )
 
 
@@ -195,6 +196,15 @@ class SkillValidator:
                 if cpus_f > policy.max_cpus:
                     raise ValueError(
                         f"cpus {cpus!r} exceeds tier {tier!r} max of {policy.max_cpus}"
+                    )
+
+        # Reserved secrets (only enforced in authored/imported)
+        if tier in (TIER_AUTHORED, TIER_IMPORTED):
+            for var in config.get("env_passthrough", []) or []:
+                if is_reserved_env_var(var):
+                    raise ValueError(
+                        f"env_passthrough {var!r} is reserved for Kaizen and "
+                        f"not allowed for tier {tier!r}"
                     )
 
         # Device allowlist (only enforced in authored/imported)

@@ -131,7 +131,7 @@ Skill names are lowercase kebab-case (`web-search`, `recall-session`) and must m
 - `~/.kaizen/authored/` → voice-installed via `install-skill`, Docker-only, Dockerfile allowlist
 - `~/.kaizen/imported/` → community-sourced, Docker-only, stricter config clamps
 
-See `core/skill_policy.py` for the exact per-tier limits (memory/timeout/cpus/devices/volumes).
+See `core/skill_policy.py` for the exact per-tier limits (memory/timeout/cpus/devices/volumes). Authored and imported skills may not list reserved secrets in `env_passthrough` (`ANTHROPIC_*`, ElevenLabs/Meta/TypeSafe keys, Spotify client credentials, Homebridge login — `RESERVED_ENV_VARS`); they are rejected at validation and withheld at runtime.
 
 Native skills (no Docker) use `type: native` in `config.yaml` and omit the `image` field. Only bundled skills may declare `type: native`; authored and imported are Docker-only.
 

@@ -30,6 +30,7 @@ from core.dashboard_defaults import default_hazard_config
 from core.location_preference import resolve_location
 from core.mempalace_bridge import MemPalaceBridge
 from core.scheduler import ScheduleEntry, ScheduleValidationError
+from core.skill_policy import TIER_AUTHORED, TIER_IMPORTED, is_reserved_env_var
 
 logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -190,7 +191,7 @@ class ContainerManager:
 
         cmd = self._build_docker_cmd(
             image=image,
-            env_vars=self._collect_env_vars(config.get("env_passthrough", [])),
+            env_vars=self._collect_env_vars(config.get("env_passthrough", []), skill.tier),
             devices=config.get("devices", []),
             input_data=json.dumps(tool_input),
             memory=config.get("memory", self.memory_limit),
@@ -1413,6 +1414,16 @@ class ContainerManager:
         except ScheduleValidationError as exc:
             return json.dumps({"status": "error", "message": str(exc)})
 
-    def _collect_env_vars(self, var_names: list[str]) -> dict[str, str]:
-        """Collect env vars that exist in the host environment."""
-        return {var: val for var in var_names if (val := os.environ.get(var))}
+    def _collect_env_vars(self, var_names: list[str], tier: str) -> dict[str, str]:
+        """Collect env vars that exist in the host environment. Reserved
+        Kaizen secrets are withheld from authored/imported skills even if a
+        config slipped past validation."""
+        untrusted = tier in (TIER_AUTHORED, TIER_IMPORTED)
+        env = {}
+        for var in var_names:
+            if untrusted and is_reserved_env_var(var):
+                logger.warning("Withholding reserved env var %s from %s-tier skill", var, tier)
+                continue
+            if val := os.environ.get(var):
+                env[var] = val
+        return env

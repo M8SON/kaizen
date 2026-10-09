@@ -206,5 +206,40 @@ class BuildTtsBackendElevenLabsTests(unittest.TestCase):
             self.assertIn("kokoro", msg.lower())
 
 
+class BuildTtsBackendKokoroOnnxTests(unittest.TestCase):
+    """PyTorch Kokoro is gone: kokoro-onnx is the default and only local TTS."""
+
+    def _build(self, env):
+        with patch("core.audio_devices.output_samplerate", return_value=48000), \
+             patch("core.audio_devices.resolve_output_device", return_value=0), \
+             patch("core.voice_backends.KokoroONNXBackend") as mock_onnx, \
+             patch.dict("os.environ", env, clear=False):
+            mock_onnx.return_value.intra_op_threads = 4
+            backend, msg = main._build_tts_backend(True, "af_heart", 1.2)
+        return backend, msg, mock_onnx
+
+    def test_default_is_kokoro_onnx(self):
+        import os as _os
+        with patch.dict("os.environ", {}, clear=False):
+            _os.environ.pop("TTS_BACKEND", None)
+            backend, msg, mock_onnx = self._build({})
+        self.assertIs(backend, mock_onnx.return_value)
+        self.assertIn("kokoro-onnx", msg)
+
+    def test_legacy_kokoro_value_uses_onnx(self):
+        backend, msg, mock_onnx = self._build({"TTS_BACKEND": "kokoro"})
+        self.assertIs(backend, mock_onnx.return_value)
+
+    def test_missing_onnx_assets_disables_speech(self):
+        with patch("core.audio_devices.output_samplerate", return_value=48000), \
+             patch("core.audio_devices.resolve_output_device", return_value=0), \
+             patch("core.voice_backends.KokoroONNXBackend",
+                   side_effect=FileNotFoundError("assets missing")), \
+             patch.dict("os.environ", {"TTS_BACKEND": "kokoro-onnx"}, clear=False):
+            backend, msg = main._build_tts_backend(True, "af_heart", 1.2)
+        self.assertIsNone(backend)
+        self.assertIn("speech disabled", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

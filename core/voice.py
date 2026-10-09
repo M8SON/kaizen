@@ -28,7 +28,7 @@ from core.audio_devices import (
     resolve_output_device,
     input_channel_count,
 )
-from core.voice_backends import KOKORO_SAMPLE_RATE, KokoroTTSBackend, WhisperBackend
+from core.voice_backends import KOKORO_SAMPLE_RATE, WhisperBackend
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +160,6 @@ class VoiceInterface:
         self,
         transcription_model: str = "base",
         enable_tts: bool = True,
-        tts_voice: str = "af_heart",
-        tts_speed: float = 1.0,
         silence_threshold: int = 1000,
         silence_duration: float = 2.0,
         stt_backend=None,
@@ -252,20 +250,7 @@ class VoiceInterface:
         self.wake_backend_alt = wake_backend_alt if self._capture_channels > 1 else None
         self.vad_backend = vad_backend
         self.vad_min_silence_ms = vad_min_silence_ms
-        self.tts_backend = (
-            tts_backend
-            if tts_backend is not None
-            else (
-                KokoroTTSBackend(
-                    voice=tts_voice,
-                    speed=tts_speed,
-                    output_device=self._output_device_index,
-                    output_samplerate=self._output_samplerate,
-                )
-                if enable_tts
-                else None
-            )
-        )
+        self.tts_backend = tts_backend
 
         logger.info("Models loaded — wake word: '%s'", self.display_wake_word)
 

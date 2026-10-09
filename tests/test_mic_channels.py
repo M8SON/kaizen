@@ -17,7 +17,6 @@ def stereo_voice(monkeypatch):
     monkeypatch.setattr(voice_module, "output_samplerate", lambda *a, **k: 48000)
     monkeypatch.setattr(voice_module, "input_channel_count", lambda *a, **k: 2)
     monkeypatch.setattr(voice_module, "WhisperBackend", MagicMock)
-    monkeypatch.setattr(voice_module, "KokoroTTSBackend", MagicMock)
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
     monkeypatch.delenv("MIC_CHANNEL", raising=False)
     return voice_module.VoiceInterface(
@@ -91,7 +90,6 @@ def test_mono_mic_ignores_alt_backend(monkeypatch):
     monkeypatch.setattr(voice_module, "output_samplerate", lambda *a, **k: 48000)
     monkeypatch.setattr(voice_module, "input_channel_count", lambda *a, **k: 1)
     monkeypatch.setattr(voice_module, "WhisperBackend", MagicMock)
-    monkeypatch.setattr(voice_module, "KokoroTTSBackend", MagicMock)
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
     v = voice_module.VoiceInterface(enable_tts=True, wake_backend=MagicMock(), wake_backend_alt=MagicMock())
     assert v._primary_channel == 0 and v.wake_backend_alt is None

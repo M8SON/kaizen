@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core import voice_backends
 
+from tests.tts_doubles import PipelineTTSBackend
+
 
 # --- the env-read helper (pure, no model load) ---
 
@@ -41,7 +43,7 @@ def test_helper_non_numeric_falls_back(monkeypatch):
 # --- boundary actually moves with the threshold (pure, via __new__) ---
 
 def _backend_with_min(min_val):
-    b = voice_backends.KokoroTTSBackend.__new__(voice_backends.KokoroTTSBackend)
+    b = PipelineTTSBackend.__new__(PipelineTTSBackend)
     b.MIN_FIRST_FLUSH = min_val
     return b
 
@@ -57,17 +59,15 @@ def test_lower_threshold_breaks_at_earlier_clause():
     assert i30 > i20
 
 
-# --- __init__ reads the env (KPipeline patched so no model load) ---
+# --- __init__ reads the env  ---
 
 def test_init_reads_env(monkeypatch):
     monkeypatch.setenv("KOKORO_MIN_FIRST_FLUSH", "15")
-    with patch.object(voice_backends, "KPipeline"):
-        b = voice_backends.KokoroTTSBackend()
+    b = PipelineTTSBackend()
     assert b.MIN_FIRST_FLUSH == 15
 
 
 def test_init_default_is_30(monkeypatch):
     monkeypatch.delenv("KOKORO_MIN_FIRST_FLUSH", raising=False)
-    with patch.object(voice_backends, "KPipeline"):
-        b = voice_backends.KokoroTTSBackend()
+    b = PipelineTTSBackend()
     assert b.MIN_FIRST_FLUSH == 30

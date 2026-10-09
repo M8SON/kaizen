@@ -1,18 +1,18 @@
-"""Tests for KokoroTTSBackend.speak_stream — per-sentence flushing."""
+"""Tests for StreamingTTSBackend.speak_stream — per-sentence flushing."""
 
 import unittest
 from unittest.mock import MagicMock, patch
+
+from tests.tts_doubles import PipelineTTSBackend
 
 
 class SpeakStreamTests(unittest.TestCase):
     def _make_backend(self):
         from core import voice_backends
 
-        with patch.object(voice_backends, "KPipeline"):
-            backend = voice_backends.KokoroTTSBackend()
+        backend = PipelineTTSBackend()
         # Replace the pipeline with a mock that returns an empty iterable
         # for every call — we only count flushes, not synthesise audio.
-        backend.pipeline = MagicMock()
         backend.pipeline.side_effect = lambda *a, **k: iter([])
         return backend
 
@@ -270,9 +270,7 @@ class SpeakStreamTests(unittest.TestCase):
 class SpeakInterruptTests(unittest.TestCase):
     def _make_backend(self):
         from core import voice_backends
-        with patch.object(voice_backends, "KPipeline"):
-            backend = voice_backends.KokoroTTSBackend()
-        backend.pipeline = MagicMock()
+        backend = PipelineTTSBackend()
         return backend
 
     @patch("core.voice_backends.sd")
@@ -302,7 +300,7 @@ class SpeakInterruptTests(unittest.TestCase):
 
 
 class KokoroONNXBackendTests(unittest.TestCase):
-    """KokoroONNXBackend mirrors KokoroTTSBackend's interface, just with a
+    """KokoroONNXBackend mirrors StreamingTTSBackend's interface, just with a
     different synth library. Smoke-test the override and the missing-asset
     error path; full streaming behavior is covered by SpeakStreamTests
     above (the parallel pipeline lives in the parent class)."""

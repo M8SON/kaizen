@@ -174,9 +174,18 @@ else
     ok "dependencies present"
 fi
 
-# ── espeak-ng (required by Kokoro TTS) ───────────────────────────────────────
-# Kokoro downloads its own model automatically on first run (~80MB to ~/.cache/huggingface/).
-# espeak-ng must be installed as a system package.
+# ── espeak-ng + Kokoro ONNX models (voice-mode TTS) ──────────────────────────
+# espeak-ng must be installed as a system package. The ONNX model (~340MB) is
+# fetched once into ~/.kaizen/models/kokoro-onnx/; the script skips files
+# that already exist.
+
+if [ "${#ARGS[@]}" -eq 0 ]; then
+    if python3 scripts/download_kokoro_onnx.py >/dev/null; then
+        ok "kokoro-onnx models"
+    else
+        warn "kokoro-onnx model download failed — speech will be disabled. Retry: python3 scripts/download_kokoro_onnx.py"
+    fi
+fi
 
 if command -v espeak-ng &>/dev/null; then
     ok "espeak-ng"

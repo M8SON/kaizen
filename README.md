@@ -15,7 +15,7 @@ Microphone → openWakeWord → STT (local Whisper on CPU/Hailo, or Meta streami
         ├─ micro         → Claude Haiku → skill → Haiku response
         │                  (turn retried on Sonnet if Haiku raises)
         └─ claude        → Claude Sonnet → skill → Sonnet response
-    → TTS (Kokoro, Kokoro ONNX, or ElevenLabs) → Speaker
+    → TTS (Kokoro ONNX, or ElevenLabs) → Speaker
 ```
 
 **Tiered intelligence** (opt-in via `MICRO_TIER_ENABLED=true`) keeps Claude Sonnet as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine tool calls route to Claude Haiku (the "micro" tier) with a slimmer prompt, and the most common commands bypass LLMs entirely. With it off (the default), every turn goes to Sonnet. See [Intelligence Tiers](#intelligence-tiers) for details.
@@ -40,7 +40,7 @@ The system uses two layers for extensibility:
 - Jev filler phrases — an optional classifier picks a topic-relevant line ("let me check the weather") to cover latency, and can answer identity/capability questions from cache without calling Claude
 - Tool-first prefetch — optionally runs the weather tool before calling Claude so Claude only phrases the answer (~1.7s faster on the Pi)
 - Conversation session mode — stays active between follow-ups until idle timeout
-- Streaming TTS — Kokoro chunks play as they're generated. Backends: PyTorch Kokoro (default), Kokoro ONNX (fp32 default, faster than PyTorch on Pi 5; int8 is faster on x86_64), or ElevenLabs cloud (Flash v2.5, ~75ms first-audio). ElevenLabs falls back to local Kokoro only if it is unavailable at startup — a mid-session failure (network drop, exhausted quota) silences speech until restart
+- Streaming TTS — Kokoro chunks play as they're generated. Backends: Kokoro on ONNX Runtime (default; fp32 on the Pi, int8 is faster on x86_64), or ElevenLabs cloud (Flash v2.5, ~75ms first-audio). ElevenLabs falls back to local Kokoro only if it is unavailable at startup — a mid-session failure (network drop, exhausted quota) silences speech until restart
 - Voice skill installation — say "add a skill that does X" and Claude Code writes, builds, and loads it
 - Self-improving skills — skills that opt in (`self_update.allow_body: true`) can refine their own routing hints based on usage; no bundled skill opts in by default
 - Persistent memory — plain markdown notes for transparency, with MemPalace preferred by default when installed
@@ -382,10 +382,10 @@ Key environment variables in `.env`:
 | `CLAUDE_MODEL` | `claude-sonnet-4-6` | Main (Sonnet-tier) model |
 | `LLM_STREAM_TO_TTS` | `true` | Stream Claude's text into TTS sentence-by-sentence; `false` waits for the full response |
 | `ENABLE_TTS` | `true` | Set `false` to disable speech |
-| `TTS_BACKEND` | `kokoro` | `kokoro` (PyTorch), `kokoro-onnx` (ONNX, faster on Pi 5), or `elevenlabs` (cloud, ~75ms first-audio) |
+| `TTS_BACKEND` | `kokoro-onnx` | `kokoro-onnx` (local; `kokoro` is accepted as an alias) or `elevenlabs` (cloud, ~75ms first-audio). If the ONNX model is missing, speech is disabled |
 | `KOKORO_ONNX_VARIANT` | `fp32` | `fp32` or `int8`; fp32 is faster on ARM, int8 on x86_64 |
 | `TTS_ONNX_THREADS` | all cores | ONNX Runtime intra-op threads for `kokoro-onnx`; lower it for thermals |
-| `KOKORO_PREBUFFER_MS` | `1500` (PyTorch), `0` (ONNX/ElevenLabs) | Audio buffered before playback starts |
+| `KOKORO_PREBUFFER_MS` | `1500` (Kokoro ONNX), `0` (ElevenLabs) | Audio buffered before playback starts |
 | `KOKORO_MIN_FIRST_FLUSH` | `30` | Minimum characters of streamed LLM text before the first TTS flush |
 | `TTS_VOICE` | `af_heart` | Kokoro voice (`af_heart`, `am_adam`, `bm_george`, etc.) |
 | `TTS_SPEED` | `1.2` | Speech rate (1.0 = normal, 1.3 = faster). ElevenLabs caps at 1.2 (values are clamped) |
@@ -596,7 +596,7 @@ Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + 
 - [x] Two-stage soft wake + wake pre-roll + near-miss wake diagnostics
 - [x] Conversation session mode (stay active between follow-ups)
 - [x] Kokoro TTS with streaming playback (chunks play as generated)
-- [x] Kokoro ONNX backend (fp32/int8, ~2–3× faster than PyTorch on Pi 5)
+- [x] Kokoro ONNX backend (fp32/int8; replaced the PyTorch backend, which was slower than realtime on Pi 5)
 - [x] ElevenLabs cloud TTS backend (Flash v2.5, ~75ms first-audio, startup fallback to Kokoro)
 - [x] R2-D2 style audio feedback (startup chime + thinking sound)
 - [x] Jev filler phrases + cached identity/capability answers

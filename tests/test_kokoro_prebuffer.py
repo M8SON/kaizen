@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core import voice_backends
 
+from tests.tts_doubles import PipelineTTSBackend
+
 
 def _make_backend():
-    with patch.object(voice_backends, "KPipeline"):
-        backend = voice_backends.KokoroTTSBackend()
+    backend = PipelineTTSBackend()
     # Each flush yields one (phonemes, tokens, audio) tuple of 2048 samples.
-    backend.pipeline = MagicMock()
     backend.pipeline.side_effect = lambda *a, **k: iter(
         [("", "", np.zeros(2048, dtype=np.float32))]
     )
@@ -31,24 +31,21 @@ def _written_samples(stream):
 @patch("core.voice_backends.sd")
 def test_env_wires_prebuffer_ms(mock_sd, monkeypatch):
     monkeypatch.setenv("KOKORO_PREBUFFER_MS", "800")
-    with patch.object(voice_backends, "KPipeline"):
-        b = voice_backends.KokoroTTSBackend()
+    b = PipelineTTSBackend()
     assert b.PREBUFFER_MS == 800
 
 
 @patch("core.voice_backends.sd")
 def test_prebuffer_default(mock_sd, monkeypatch):
     monkeypatch.delenv("KOKORO_PREBUFFER_MS", raising=False)
-    with patch.object(voice_backends, "KPipeline"):
-        b = voice_backends.KokoroTTSBackend()
+    b = PipelineTTSBackend()
     assert b.PREBUFFER_MS == 1500
 
 
 @patch("core.voice_backends.sd")
 def test_prebuffer_floor_negative(mock_sd, monkeypatch):
     monkeypatch.setenv("KOKORO_PREBUFFER_MS", "-100")
-    with patch.object(voice_backends, "KPipeline"):
-        b = voice_backends.KokoroTTSBackend()
+    b = PipelineTTSBackend()
     assert b.PREBUFFER_MS == 0
 
 

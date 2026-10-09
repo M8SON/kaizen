@@ -17,7 +17,6 @@ def voice(monkeypatch):
     monkeypatch.setattr(voice_module, "resolve_output_device", lambda *a, **k: 0)
     monkeypatch.setattr(voice_module, "output_samplerate", lambda *a, **k: 48000)
     monkeypatch.setattr(voice_module, "WhisperBackend", MagicMock)
-    monkeypatch.setattr(voice_module, "KokoroTTSBackend", MagicMock)
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
     monkeypatch.setenv("WAKE_PREROLL_MS", "600")
     return voice_module.VoiceInterface(enable_tts=True, wake_backend=MagicMock())

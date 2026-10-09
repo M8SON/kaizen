@@ -157,8 +157,6 @@ def build_voice_interface():
         transcription_model=transcription_model_cpu,
         display_wake_word=_display_wake_word(),
         enable_tts=enable_tts,
-        tts_voice=tts_voice,
-        tts_speed=tts_speed,
         silence_threshold=int(os.getenv("SILENCE_THRESHOLD", "1000")),
         silence_duration=float(os.getenv("SILENCE_DURATION", "2.0")),
         stt_backend=stt_backend,
@@ -175,11 +173,13 @@ def build_voice_interface():
 def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     """Pick a TTS backend by env var, returning (backend, status_message).
 
-    TTS_BACKEND=kokoro       — kokoro PyTorch package (default; works everywhere)
-    TTS_BACKEND=kokoro-onnx  — kokoro-onnx (ONNX Runtime int8); ~2-3x faster
-                               on Pi 5 ARM64 CPU. Requires model files at
+    TTS_BACKEND=kokoro-onnx  — Kokoro on ONNX Runtime (default; `kokoro` is an
+                               alias). Requires model files at
                                ~/.kaizen/models/kokoro-onnx/ — fetch with
                                scripts/download_kokoro_onnx.py.
+    TTS_BACKEND=elevenlabs   — cloud; falls back to kokoro-onnx at startup.
+
+    Returns (None, status) when no backend can be built — speech is then off.
 
     Resolves the output device and its native sample rate up front so the
     backend opens its OutputStream against the device the rest of the voice
@@ -189,8 +189,7 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     its 24 kHz native rate and fail with PortAudio Invalid sample rate.
 
     The status message is printed at startup so the active backend is
-    always visible — silent fallbacks were hiding 'still on PyTorch'
-    configurations where the user thought the ONNX backend was active.
+    always visible — silent fallbacks hid which backend was really active.
     """
     if not enable_tts:
         return None, "TTS backend: disabled (ENABLE_TTS=false)"
@@ -200,7 +199,7 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
     output_device = resolve_output_device()
     output_sr = output_samplerate(output_device)
 
-    backend_name = os.getenv("TTS_BACKEND", "kokoro").strip().lower()
+    backend_name = os.getenv("TTS_BACKEND", "kokoro-onnx").strip().lower()
 
     if backend_name == "elevenlabs":
         api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
@@ -233,27 +232,16 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
                 f"elevenlabs unavailable: {exc}",
             )
 
-    if backend_name == "kokoro-onnx":
-        return _build_kokoro_onnx_fallback(
-            voice, speed, output_device, output_sr, "requested",
-        )
-
-    if backend_name != "kokoro":
-        return None, (
-            f"TTS backend: kokoro PyTorch ({voice}) — "
-            f"unknown TTS_BACKEND={backend_name!r}, defaulting to kokoro"
-        )
-
-    # Returning None lets VoiceInterface lazily construct the default
-    # KokoroTTSBackend with the same voice/speed args we already pass —
-    # VoiceInterface resolves output_device and output_samplerate itself
-    # for the PyTorch path.
-    return None, f"TTS backend: kokoro PyTorch ({voice})"
+    if backend_name in ("kokoro-onnx", "kokoro"):
+        reason = "requested"
+    else:
+        reason = f"unknown TTS_BACKEND={backend_name!r}"
+    return _build_kokoro_onnx_fallback(voice, speed, output_device, output_sr, reason)
 
 
 def _build_kokoro_onnx_fallback(voice, speed, output_device, output_sr, reason):
-    """Build kokoro-onnx for the given device, or return the PyTorch-fallback
-    (None) sentinel if its assets/package are missing. `reason` is prefixed to
+    """Build kokoro-onnx for the given device, or return (None, status) —
+    speech off — if its assets/package are missing. `reason` is prefixed to
     the status message so the trigger (e.g. an elevenlabs failure) is visible."""
     try:
         from core.voice_backends import KokoroONNXBackend, KOKORO_ONNX_ASSET_ROOT
@@ -266,8 +254,7 @@ def _build_kokoro_onnx_fallback(voice, speed, output_device, output_sr, reason):
         # (~310 MB vs ~88 MB) because ONNX Runtime's int8 kernels for
         # ARMv8.2 are not optimised for Cortex-A76 DOTPROD: measured
         # 2026-05-09 on Pi 5, int8 ran ~2x slower than fp32 with
-        # identical config. fp32 also beats the PyTorch backend on
-        # the same hardware. On x86_64 the situation is reversed —
+        # identical config. On x86_64 the situation is reversed —
         # int8 is faster there — so override KOKORO_ONNX_VARIANT
         # accordingly when running on a non-Pi machine.
         variant = os.getenv("KOKORO_ONNX_VARIANT", "fp32").strip().lower()
@@ -289,8 +276,8 @@ def _build_kokoro_onnx_fallback(voice, speed, output_device, output_sr, reason):
         )
     except (FileNotFoundError, ImportError) as exc:
         return None, (
-            f"TTS backend: kokoro PyTorch fallback ({voice}) — {reason}; "
-            f"kokoro-onnx also unavailable: {exc}"
+            f"TTS backend: NONE, speech disabled — {reason}; "
+            f"kokoro-onnx unavailable: {exc}"
         )
 
 

@@ -15,7 +15,6 @@ import numpy as np
 
 import sounddevice as sd
 import whisper
-from kokoro import KPipeline
 from core.audio_devices import resample
 from core.hailo_whisper_runtime import HailoTranscriptionRuntime
 
@@ -411,24 +410,25 @@ def _configured_min_first_flush(default: int) -> int:
     return _configured_int("KOKORO_MIN_FIRST_FLUSH", default, 1)
 
 
-class KokoroTTSBackend:
-    """Text-to-speech backend using the kokoro PyTorch package."""
+class StreamingTTSBackend:
+    """Shared sentence-flushing, parallel synth/playback pipeline.
+
+    Subclasses call super().__init__ and implement _synth_audio.
+    """
 
     sample_rate = KOKORO_SAMPLE_RATE
 
     def __init__(
         self,
-        voice: str = "af_heart",
-        speed: float = 1.0,
+        voice: str,
+        speed: float,
         output_device: int | None = None,
         output_samplerate: int | None = None,
     ):
-        logger.info("Loading Kokoro TTS pipeline (voice: %s)...", voice)
         self.voice = voice
         self.speed = speed
         self.output_device = output_device
         self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
-        self.pipeline = KPipeline(lang_code="a")
         self.MIN_FIRST_FLUSH = _configured_min_first_flush(type(self).MIN_FIRST_FLUSH)
         self.PREBUFFER_MS = _configured_int("KOKORO_PREBUFFER_MS", type(self).PREBUFFER_MS, 0)
 
@@ -444,13 +444,8 @@ class KokoroTTSBackend:
     WRITE_SUB_BLOCK = 1024  # frames per stream.write, so a barge-in cut lands within ~tens of ms
 
     def _synth_audio(self, text: str):
-        """Yield audio chunks for `text` at KOKORO_SAMPLE_RATE float32.
-
-        Extension point for backends that share the parallel-pipeline
-        machinery but use a different synth library underneath.
-        """
-        for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
-            yield audio
+        """Yield audio chunks for `text` at KOKORO_SAMPLE_RATE float32."""
+        raise NotImplementedError
 
     def _find_flush_boundary(self, buffer: str, allow_clause: bool) -> int:
         """Index of the earliest flush point in buffer, or -1 if none.
@@ -749,23 +744,16 @@ class KokoroTTSBackend:
             )
 
 
-class KokoroONNXBackend(KokoroTTSBackend):
-    """Same Kokoro voices, ONNX Runtime instead of PyTorch.
+class KokoroONNXBackend(StreamingTTSBackend):
+    """Kokoro voices on ONNX Runtime — the only local TTS backend.
 
-    Pi 5 voice test 2026-05-08 measured the kokoro PyTorch package at
-    ~1.4x slower than realtime — fast enough to be smooth on a laptop
-    but too slow for gap-free playback on Pi 5 ARM64. The int8-quantized
-    Kokoro ONNX model runs ~2-3x faster on the same CPU; combined with
-    the parallel synth pipeline this brings synth-vs-realtime under 1.0
-    and the audio queue stays full ahead of the writer.
-
-    Inherits the parallel-pipeline machinery (sentence segmentation,
-    synth + writer threads, OutputStream lifecycle) and overrides only
-    the actual synthesis call.
+    The kokoro PyTorch package was removed (2026-10): on Pi 5 it measured
+    ~1.4x slower than realtime, and ONNX fp32 beat it on the same CPU.
 
     Model files (download once with scripts/download_kokoro_onnx.py):
-      - <KOKORO_ONNX_ASSET_ROOT>/kokoro-v1.0.int8.onnx  (~30 MB)
-      - <KOKORO_ONNX_ASSET_ROOT>/voices-v1.0.bin         (~10 MB)
+      - <KOKORO_ONNX_ASSET_ROOT>/kokoro-v1.0.onnx       (fp32, Pi default)
+      - <KOKORO_ONNX_ASSET_ROOT>/kokoro-v1.0.int8.onnx  (int8, faster on x86_64)
+      - <KOKORO_ONNX_ASSET_ROOT>/voices-v1.0.bin
     """
 
     def __init__(
@@ -811,30 +799,23 @@ class KokoroONNXBackend(KokoroTTSBackend):
             "Loading Kokoro ONNX (voice: %s, model: %s, intra_op_threads=%d)",
             voice, model_path.name, intra_op_threads,
         )
-        self.voice = voice
-        self.speed = speed
-        self.output_device = output_device
-        self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
+        super().__init__(voice, speed, output_device, output_samplerate)
         self.intra_op_threads = intra_op_threads
         self.kokoro = _KokoroONNXImpl.from_session(session, str(voices_path))
-        self.MIN_FIRST_FLUSH = _configured_min_first_flush(type(self).MIN_FIRST_FLUSH)
-        self.PREBUFFER_MS = _configured_int("KOKORO_PREBUFFER_MS", type(self).PREBUFFER_MS, 0)
 
     def _synth_audio(self, text: str):
-        # kokoro.create returns (audio_array, sample_rate). Returns a single
-        # array per call rather than streaming chunks like the PyTorch
-        # pipeline — same observable behavior we already saw on Pi where
-        # the pytorch path also yields one chunk per call.
+        # kokoro.create returns (audio_array, sample_rate): one array per
+        # call, no in-call streaming.
         audio, _sr = self.kokoro.create(
             text, voice=self.voice, speed=self.speed, lang="en-us"
         )
         yield audio
 
 
-class ElevenLabsTTSBackend(KokoroTTSBackend):
+class ElevenLabsTTSBackend(StreamingTTSBackend):
     """Cloud TTS via ElevenLabs Flash v2.5 (~75ms first-audio).
 
-    Reuses KokoroTTSBackend's parallel speak_stream pipeline (sentence flush,
+    Reuses StreamingTTSBackend's parallel speak_stream pipeline (sentence flush,
     synth + writer threads, barge-in, on_first_audio cue-stop) and overrides
     only _synth_audio. Requests pcm_24000 so the audio matches KOKORO_SAMPLE_RATE
     and the inherited resample path is correct with no changes.
@@ -857,8 +838,6 @@ class ElevenLabsTTSBackend(KokoroTTSBackend):
         output_samplerate: int | None = None,
         client=None,
     ):
-        # Do NOT call super().__init__ — there is no Kokoro pipeline to load.
-        # Set only the attributes speak_stream/speak read.
         if client is None:
             if not _ELEVENLABS_AVAILABLE:
                 raise ImportError("elevenlabs not installed")
@@ -866,15 +845,13 @@ class ElevenLabsTTSBackend(KokoroTTSBackend):
         self._client = client
         self._voice_id = voice_id
         self._model_id = model_id
-        self.voice = voice_id
         # ElevenLabs caps speed at ELEVENLABS_SPEED_MAX; clamp rather than error
         # so a Kokoro-tuned TTS_SPEED (e.g. 1.4) still works (capped at 1.2).
-        self.speed = min(max(speed, ELEVENLABS_SPEED_MIN), ELEVENLABS_SPEED_MAX)
-        self.output_device = output_device
-        self.output_samplerate = output_samplerate or KOKORO_SAMPLE_RATE
-        self.MIN_FIRST_FLUSH = _configured_min_first_flush(type(self).MIN_FIRST_FLUSH)
-        self.PREBUFFER_MS = _configured_int(
-            "KOKORO_PREBUFFER_MS", type(self).PREBUFFER_MS, 0
+        super().__init__(
+            voice_id,
+            min(max(speed, ELEVENLABS_SPEED_MIN), ELEVENLABS_SPEED_MAX),
+            output_device,
+            output_samplerate,
         )
         logger.info(
             "Loading ElevenLabs TTS (voice_id: %s, model: %s, speed: %.2f)",

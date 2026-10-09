@@ -28,6 +28,8 @@ class BuildSkillPaths(unittest.TestCase):
                 "---\nname: hello-skill\ndescription: Says hello\n---\n\nSay hello.\n"
             )
             (skill / "config.yaml").write_text("type: docker\nimage: kaizen/hello-skill:latest\n")
+            (skill / "scripts").mkdir()
+            (skill / "scripts" / "Dockerfile").write_text("FROM kaizen/base:latest\n")
             paths = [SkillLoader.DEFAULT_SEARCH_PATHS[0], Path(tmp) / "authored", imported]
             with patch.object(SkillLoader, "DEFAULT_SEARCH_PATHS", paths):
                 loader = SkillLoader(search_paths=build_skill_paths(None))

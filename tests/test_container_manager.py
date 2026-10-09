@@ -201,6 +201,7 @@ class ContainerManagerTests(unittest.TestCase):
         self.assertIn("--network=bridge", cmd)
         self.assertEqual(cmd[cmd.index("-p") + 1], "127.0.0.1:7860:7860")
         self.assertIn("--cap-drop=ALL", cmd)
+        self.assertIn("--pull=never", cmd)
         self.assertIn("--read-only", cmd)
         self.assertNotEqual(cmd[cmd.index("--user") + 1].split(":")[0], "0")
         mounts = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]

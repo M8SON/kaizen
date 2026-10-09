@@ -175,6 +175,13 @@ class InstallPipeline:
             logger.error("staging %s has no SKILL.md", staging)
             return InstallDecision.FAILED
 
+        # copytree would follow a symlink and copy its target (e.g. ~/.ssh)
+        # into the installed skill; refuse them outright.
+        links = [p for p in staging.rglob("*") if p.is_symlink()]
+        if links:
+            logger.error("skill contains symlinks: %s", [str(p.relative_to(staging)) for p in links])
+            return InstallDecision.FAILED
+
         # First parse the frontmatter to learn the declared name without
         # enforcing the parent-dir match yet.
         try:
@@ -229,6 +236,9 @@ class InstallPipeline:
             return InstallDecision.FAILED
 
         dockerfile = staging / "scripts" / "Dockerfile"
+        if config.get("type", "docker") == "docker" and not dockerfile.exists():
+            logger.error("docker skill has no scripts/Dockerfile to build its image from")
+            return InstallDecision.FAILED
         if config.get("type", "docker") == "docker" and dockerfile.exists():
             try:
                 validate_dockerfile(dockerfile, tier=tier)

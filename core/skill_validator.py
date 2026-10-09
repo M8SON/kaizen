@@ -167,6 +167,15 @@ class SkillValidator:
             image = config.get("image")
             if not isinstance(image, str) or not image.strip():
                 raise ValueError("docker skills must define a non-empty image")
+            # Untrusted skills run only the image Kaizen builds locally from
+            # their own validated Dockerfile — never a registry image.
+            if tier in UNTRUSTED_TIERS and not re.fullmatch(
+                rf"kaizen/{re.escape(skill_name)}:[A-Za-z0-9_.-]+", image
+            ):
+                raise ValueError(
+                    f"image {image!r} not allowed for tier {tier!r}: must be "
+                    f"kaizen/{skill_name}:<tag>, built locally from scripts/Dockerfile"
+                )
 
         self._require_optional_int(config, "timeout_seconds", minimum=1)
         self._require_optional_str(config, "memory")

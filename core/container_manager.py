@@ -237,6 +237,7 @@ class ContainerManager:
             "docker", "run",
             "--rm",
             "-i",
+            "--pull=never",  # only locally built images; never fetch from a registry
             "--network=bridge",
             f"--memory={memory or self.memory_limit}",
             "--cpus=1.0",
@@ -626,6 +627,7 @@ class ContainerManager:
         uid = os.getuid()
         docker_cmd = [
             "docker", "run", "-d",
+            "--pull=never",
             "--network=bridge",
             "-p", f"127.0.0.1:{DASHBOARD_PORT}:{DASHBOARD_PORT}",
             "--memory=512m",

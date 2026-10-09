@@ -188,9 +188,15 @@ class SkillLoader:
             self._record_invalid_skill(name, description, str(e))
             return None
 
-        # Validate Dockerfile for untrusted tiers
+        # Validate Dockerfile for untrusted tiers (required: their image must
+        # be built locally from it)
         if tier in UNTRUSTED_TIERS:
             dockerfile = skill_dir / "scripts" / "Dockerfile"
+            if execution_config.get("type", "docker") == "docker" and not dockerfile.exists():
+                reason = "untrusted docker skills must ship scripts/Dockerfile"
+                logger.warning("Invalid skill '%s': %s", name, reason)
+                self._record_invalid_skill(name, description, reason)
+                return None
             if execution_config.get("type", "docker") == "docker" and dockerfile.exists():
                 from core.dockerfile_validator import validate, DockerfileValidationError
                 try:

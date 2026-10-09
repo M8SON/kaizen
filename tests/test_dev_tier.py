@@ -13,6 +13,8 @@ def _skill(root: Path, name: str, config: str):
     d.mkdir(parents=True)
     (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Dev skill\n---\n\nBody.\n")
     (d / "config.yaml").write_text(config)
+    (d / "scripts").mkdir()
+    (d / "scripts" / "Dockerfile").write_text("FROM kaizen/base:latest\n")
     return d
 
 

@@ -22,6 +22,7 @@ from core.skill_policy import (
     DEVICE_ALLOWLIST_PATTERNS,
     is_scoped_volume,
     is_reserved_env_var,
+    UNTRUSTED_TIERS,
 )
 
 
@@ -207,7 +208,7 @@ class SkillValidator:
                     )
 
         # Reserved secrets (only enforced in authored/imported)
-        if tier in (TIER_AUTHORED, TIER_IMPORTED):
+        if tier in UNTRUSTED_TIERS:
             for var in config.get("env_passthrough", []) or []:
                 if is_reserved_env_var(var):
                     raise ValueError(
@@ -216,7 +217,7 @@ class SkillValidator:
                     )
 
         # Device allowlist (only enforced in authored/imported)
-        if tier in (TIER_AUTHORED, TIER_IMPORTED):
+        if tier in UNTRUSTED_TIERS:
             for device in config.get("devices", []) or []:
                 host_path = device.split(":", 1)[0] if ":" in device else device
                 if not any(p.match(host_path) for p in DEVICE_ALLOWLIST_PATTERNS):
@@ -225,7 +226,7 @@ class SkillValidator:
                     )
 
         # Volume scope check (only enforced in authored/imported)
-        if tier in (TIER_AUTHORED, TIER_IMPORTED):
+        if tier in UNTRUSTED_TIERS:
             home = os.path.expanduser("~")
             for vol in config.get("volumes", []) or []:
                 if not is_scoped_volume(vol, skill_name, home):

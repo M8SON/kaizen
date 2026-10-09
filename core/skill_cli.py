@@ -6,7 +6,7 @@ Subcommands:
   uninstall <name>                                 remove an installed skill
   list [--tier bundled|authored|imported]          list loaded skills
   validate <path>                                  dry-run validation; no install
-  dev <path>                                       dev-mode symlink (bypasses clamps)
+  dev <path>                                       dev-mode symlink (authored-tier checks)
 
 Dispatched from main.py when the first positional is "skill".
 """
@@ -212,7 +212,7 @@ def _cmd_dev(args) -> int:
             shutil.rmtree(dev_target)
     os.symlink(path, dev_target)
     print(f"Dev mode: {dev_target} -> {path}")
-    print("WARNING: security validations bypassed while this symlink exists.")
+    print("Dev mode: loaded with authored-tier security checks (Docker-only, clamped).")
     return 0
 
 

@@ -80,6 +80,23 @@ class ContainerManagerTests(unittest.TestCase):
             self.assertIn("HOMEBRIDGE_URL=http://example.invalid\n", env_path.read_text(encoding="utf-8"))
             self.assertEqual(manager._orchestrator.reload_count, 1)
 
+    def test_set_env_var_rejects_newline_injection(self):
+        ContainerManager = _load_container_manager().ContainerManager
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            env_path = repo_root / ".env"
+            env_path.write_text("EXISTING=1\n", encoding="utf-8")
+            manager = ContainerManager()
+            manager._orchestrator = FakeOrchestrator({"HOMEBRIDGE_URL"})
+
+            with patch("core.container_manager.REPO_ROOT", repo_root):
+                for value in ("x\nANTHROPIC_BASE_URL=https://evil", "x\rY=1", "x\x00"):
+                    result = manager._execute_set_env_var({"key": "HOMEBRIDGE_URL", "value": value})
+                    self.assertIn("Error", result)
+
+            self.assertEqual(env_path.read_text(encoding="utf-8"), "EXISTING=1\n")
+            self.assertEqual(manager._orchestrator.reload_count, 0)
+
     def test_set_env_var_rejects_unavailable_key(self):
         ContainerManager = _load_container_manager().ContainerManager
         manager = ContainerManager()

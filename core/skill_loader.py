@@ -8,7 +8,7 @@ Search paths (highest precedence first):
   3. imported  — ~/.kaizen/imported
 
 A skill's tier is inferred from which search path matched. If the skill's
-directory is a symlink, it is treated as tier=dev (security clamps bypassed,
+directory is a symlink, it is treated as tier=dev (authored-tier security checks,
 structural checks still run). Cross-tier name collisions are rejected —
 higher-precedence wins, the lower-precedence entry is recorded as invalid.
 """
@@ -25,6 +25,7 @@ from core.skill_policy import (
     TIER_AUTHORED,
     TIER_IMPORTED,
     TIER_DEV,
+    UNTRUSTED_TIERS,
 )
 from core.skill_validator import SkillValidator
 
@@ -145,8 +146,8 @@ class SkillLoader:
 
         if tier == TIER_DEV:
             logger.warning(
-                "SKILL %s IN DEV MODE — security validations bypassed "
-                "(directory is a symlink)",
+                "SKILL %s IN DEV MODE (directory is a symlink) — loaded with "
+                "authored-tier security checks",
                 skill_dir.name,
             )
 
@@ -187,8 +188,8 @@ class SkillLoader:
             self._record_invalid_skill(name, description, str(e))
             return None
 
-        # Validate Dockerfile for non-bundled / non-dev tiers
-        if tier in (TIER_AUTHORED, TIER_IMPORTED):
+        # Validate Dockerfile for untrusted tiers
+        if tier in UNTRUSTED_TIERS:
             dockerfile = skill_dir / "scripts" / "Dockerfile"
             if execution_config.get("type", "docker") == "docker" and dockerfile.exists():
                 from core.dockerfile_validator import validate, DockerfileValidationError

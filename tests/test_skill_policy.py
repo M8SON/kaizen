@@ -36,8 +36,8 @@ class TestPolicyLookup(unittest.TestCase):
         self.assertEqual(policy.max_cpus, 1.0)
         self.assertFalse(policy.allow_native)
 
-    def test_dev_matches_bundled_policy(self):
-        self.assertEqual(policy_for(TIER_DEV), policy_for(TIER_BUNDLED))
+    def test_dev_matches_authored_policy(self):
+        self.assertEqual(policy_for(TIER_DEV), policy_for(TIER_AUTHORED))
 
 
 class TestCredentialPattern(unittest.TestCase):

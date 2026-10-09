@@ -14,7 +14,7 @@ from pathlib import Path
 TIER_BUNDLED = "bundled"   # shipped in repo; full trust
 TIER_AUTHORED = "authored" # voice-installed via install_skill
 TIER_IMPORTED = "imported" # community-sourced
-TIER_DEV = "dev"           # symlinked-in; bypasses security but not structural checks
+TIER_DEV = "dev"           # symlinked-in for development; authored-tier security checks
 
 
 @dataclass(frozen=True)
@@ -57,10 +57,14 @@ _POLICIES: dict[str, TierPolicy] = {
         require_confirm_read_only_false=True,
     ),
 }
-# Dev mode inherits bundled policy — no security clamps, but structural
-# validation still runs via the loader/validator checks that don't
-# consult TierPolicy (name format, parent-dir match, frontmatter shape).
-_POLICIES[TIER_DEV] = _POLICIES[TIER_BUNDLED]
+# Dev mode (a symlinked skill dir) gets the authored tier's checks: a symlink
+# must not be a way around them (an untrusted skill with a writable volume
+# could otherwise plant one). Docker-only, clamped, allowlisted.
+_POLICIES[TIER_DEV] = _POLICIES[TIER_AUTHORED]
+
+# Tiers whose skills are not trusted code: Docker-only, scoped volumes,
+# allowlisted devices and Dockerfiles, no reserved secrets.
+UNTRUSTED_TIERS = (TIER_AUTHORED, TIER_IMPORTED, TIER_DEV)
 
 
 def policy_for(tier: str) -> TierPolicy:

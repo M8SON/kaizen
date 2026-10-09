@@ -31,7 +31,7 @@ from core.dashboard_defaults import default_hazard_config
 from core.location_preference import resolve_location
 from core.mempalace_bridge import MemPalaceBridge
 from core.scheduler import ScheduleEntry, ScheduleValidationError
-from core.skill_policy import TIER_AUTHORED, TIER_IMPORTED, is_reserved_env_var
+from core.skill_policy import UNTRUSTED_TIERS, is_reserved_env_var
 
 logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -360,6 +360,10 @@ class ContainerManager:
 
         if not re.match(r'^[A-Z][A-Z0-9_]*$', key):
             return f"Error: '{key}' is not a valid environment variable name."
+
+        # A line break would let one value smuggle extra KEY=value lines into .env.
+        if not value.isprintable():
+            return "Error: the value contains line breaks or control characters."
 
         # Only allow keys that are actually needed by a skipped skill
         if self._orchestrator is not None:
@@ -1468,9 +1472,9 @@ class ContainerManager:
 
     def _collect_env_vars(self, var_names: list[str], tier: str) -> dict[str, str]:
         """Collect env vars that exist in the host environment. Reserved
-        Kaizen secrets are withheld from authored/imported skills even if a
+        Kaizen secrets are withheld from untrusted-tier skills even if a
         config slipped past validation."""
-        untrusted = tier in (TIER_AUTHORED, TIER_IMPORTED)
+        untrusted = tier in UNTRUSTED_TIERS
         env = {}
         for var in var_names:
             if untrusted and is_reserved_env_var(var):

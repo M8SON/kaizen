@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from core.apt_allowlist import load_apt_allowlist
-from core.skill_policy import TIER_BUNDLED, TIER_AUTHORED, TIER_IMPORTED, TIER_DEV
+from core.skill_policy import TIER_BUNDLED, TIER_AUTHORED, TIER_IMPORTED
 
 
 class DockerfileValidationError(Exception):
@@ -50,9 +50,9 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
     Validate a Dockerfile against the per-tier allowlist.
 
     Raises DockerfileValidationError with a descriptive message on failure.
-    Bundled and dev tiers bypass validation entirely.
+    Bundled skills bypass validation; dev is validated like authored.
     """
-    if tier in (TIER_BUNDLED, TIER_DEV):
+    if tier == TIER_BUNDLED:
         return
 
     apt_allowlist = load_apt_allowlist() if tier == TIER_IMPORTED else None

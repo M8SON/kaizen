@@ -211,7 +211,7 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 - **System prompt**: Claude is instructed to avoid markdown, asterisks, and emojis (responses go through TTS) and to repeat back unclear transcriptions before acting. Skill instructions are separately budgeted by `SKILL_PROMPT_MAX_TOKENS`; when the full markdown for every skill does not fit, the prompt builder falls back to compact or minimal per-skill summaries rather than dropping skills entirely.
 - **Conversation window**: Short-term conversation history is bounded by `ConversationState(max_messages=..., max_tokens=...)`, configured via `CONVERSATION_MAX_MESSAGES` and `CONVERSATION_MAX_TOKENS`. Retention is turn-aware: it keeps whole recent user requests and their assistant/tool-result exchanges rather than cutting the window in the middle of a turn. Prompt selection uses an approximate token estimator based on serialized message size.
 - **Tool input/output**: Input is always JSON via `SKILL_INPUT` env var; output is plain text or JSON printed to stdout.
-- **OpenClaw porting**: Community OpenClaw skills can be ported by adding a `config.yaml` and `Dockerfile` alongside their `SKILL.md`. Use `scripts/port-skill.py` to scaffold these files.
+- **OpenClaw porting**: Community OpenClaw skills can be ported by adding a `config.yaml` and `Dockerfile` alongside their `SKILL.md`. Use `scripts/port-openclaw-skill.py` to scaffold these files.
 
 ## Key Environment Variables
 

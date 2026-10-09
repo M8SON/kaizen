@@ -2,51 +2,63 @@
 
 An open-source, modular voice assistant designed for Raspberry Pi. Think Jarvis, but running on a $120 board in your living room.
 
+Audio runs on the device — wake word, speech-to-text, and text-to-speech can all be local. Reasoning uses the Claude API, so an internet connection and an Anthropic API key are required.
+
 Built around a skill-based architecture where capabilities are defined as lightweight markdown files and executed in sandboxed Docker containers. Compatible with [OpenClaw](https://github.com/openclaw/openclaw) skills out of the box.
 
 ## How It Works
 
 ```
-Microphone → Whisper (speech-to-text) → TierRouter (<5ms, no LLM)
-    ├─ deterministic → skill called directly        (stop, volume, goodbye)
-    ├─ micro         → Claude Haiku → skill → Haiku response
-    │                  (whole turn escalates to Sonnet on error)
-    └─ claude        → Claude Sonnet → skill → Sonnet response
-         → Kokoro TTS (text-to-speech) → Speaker
+Microphone → openWakeWord → STT (local Whisper on CPU/Hailo, or Meta streaming)
+    → TierRouter (optional, MICRO_TIER_ENABLED; no LLM)
+        ├─ deterministic → skill/action called directly   (stop, pause, skip, volume, goodbye)
+        ├─ micro         → Claude Haiku → skill → Haiku response
+        │                  (turn retried on Sonnet if Haiku raises)
+        └─ claude        → Claude Sonnet → skill → Sonnet response
+    → TTS (Kokoro, Kokoro ONNX, or ElevenLabs) → Speaker
 ```
 
-**Tiered intelligence** keeps Claude Sonnet as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine tool calls route to Claude Haiku (the "micro" tier) with a slimmer prompt, and the most common commands bypass LLMs entirely. See [Intelligence Tiers](#intelligence-tiers) for details.
+**Tiered intelligence** (opt-in via `MICRO_TIER_ENABLED=true`) keeps Claude Sonnet as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine tool calls route to Claude Haiku (the "micro" tier) with a slimmer prompt, and the most common commands bypass LLMs entirely. With it off (the default), every turn goes to Sonnet. See [Intelligence Tiers](#intelligence-tiers) for details.
 
 The system uses two layers for extensibility:
 
 **Skill layer** — Lightweight `SKILL.md` files that teach Claude *when* and *how* to use a tool. These are just markdown with YAML metadata, costing zero memory until invoked. Compatible with OpenClaw's skill format, giving you access to community-built skills.
 
-**Container layer** — Each skill executes inside a sandboxed Docker container that spins up on demand and tears down after. This keeps the Pi's RAM free and provides security isolation between skills.
+**Container layer** — Docker skills execute inside a sandboxed container that spins up on demand and tears down after. This keeps the Pi's RAM free and provides security isolation between skills. Skills that need host integration (music playback, memory, scheduling, the dashboard, skill installation) run natively instead; only bundled skills may do so.
 
 ## Features
 
-- Tiered intelligence — deterministic dispatch for instant commands, Claude Haiku for routine tool calls, Claude Sonnet for complex reasoning
-- Wake word detection via openWakeWord — lightweight bundled ONNX models (default `hey_jarvis`); ~order-of-magnitude lower CPU than the previous Whisper-window approach
+- Tiered intelligence (opt-in) — deterministic dispatch for instant commands, Claude Haiku for routine tool calls, Claude Sonnet for complex reasoning
+- Wake word detection via openWakeWord — lightweight bundled ONNX models (default `hey_jarvis`), ~1–3% of one Pi 5 core
+- Two-stage soft wake (opt-in via `WAKE_WORD_SOFT_THRESHOLD`) — borderline wake scores still start listening, but only count if the transcript contains the wake name (or Jev judges the words were addressed to the assistant); wake pre-roll keeps words said in the same breath as the wake word
+- Barge-in — say the wake word while Jarvis is talking to cut playback and start listening
+- Near-miss wake diagnostics — logs peak wake scores and saves the last 5s of near-miss audio to `~/.kaizen/wake_debug/` for tuning
+- Silero VAD endpointing (RMS threshold fallback)
 - Optional Hailo-backed full transcription on Raspberry Pi AI HAT+ 2 (wake detection is openWakeWord on CPU — Hailo doesn't run the wake loop)
+- Optional Meta streaming STT — final transcript ~0.1s after speech ends vs 1.5–3s for local Whisper on the Pi, with local Whisper as fallback
+- LLM → TTS streaming — Claude's text is spoken sentence-by-sentence as it arrives
+- Jev filler phrases — an optional classifier picks a topic-relevant line ("let me check the weather") to cover latency, and can answer identity/capability questions from cache without calling Claude
+- Tool-first prefetch — optionally runs the weather tool before calling Claude so Claude only phrases the answer (~1.7s faster on the Pi)
 - Conversation session mode — stays active between follow-ups until idle timeout
-- Streaming TTS — Kokoro chunks play as they're generated; ONNX backend ships fp32 + int8 variants (~2–3× faster than the PyTorch baseline on Pi 5). Optional ElevenLabs cloud backend (Flash v2.5, ~75ms first-audio) for lowest latency, with automatic fallback to local Kokoro when offline
+- Streaming TTS — Kokoro chunks play as they're generated. Backends: PyTorch Kokoro (default), Kokoro ONNX (fp32 default, faster than PyTorch on Pi 5; int8 is faster on x86_64), or ElevenLabs cloud (Flash v2.5, ~75ms first-audio). ElevenLabs falls back to local Kokoro only if it is unavailable at startup — a mid-session failure (network drop, exhausted quota) silences speech until restart
 - Voice skill installation — say "add a skill that does X" and Claude Code writes, builds, and loads it
-- Self-improving skills — bundled skills can autonomously refine their own routing hints based on usage
+- Self-improving skills — skills that opt in (`self_update.allow_body: true`) can refine their own routing hints based on usage; no bundled skill opts in by default
 - Persistent memory — plain markdown notes for transparency, with MemPalace preferred by default when installed
 - FTS5 session archive — every conversation turn is searchable via the `recall-session` skill
 - Cron-style scheduler — yaml-backed recurring tasks fire natural-language prompts through the orchestrator
-- Music: Spotify Connect (raspotify), SoundCloud (yt-dlp + mpv), unified `music-control` voice transport
+- Music: Spotify Connect via raspotify (tracks, genres, saved playlists, and "restart Spotify" to recover a dead Connect session), SoundCloud (yt-dlp + mpv), unified `music-control` voice transport
+- Bundled skills for weather, Brave web search, a Playwright scraper for JS-heavy sites, Homebridge smart-home control, and voice-driven `.env` setup (`set-env-var`)
 - Modular skill system — agentskills.io-compatible (single-directory, kebab-case)
 - OpenClaw skill compatibility — use existing community skills
 - Docker-sandboxed execution — security by default, resource-capped containers; native execution path for host-integration skills
 - Visual dashboard skill — voice-triggered monitor display with news/OSINT, weather, stocks, and music
-- R2-D2 style audio feedback — startup chime and thinking sound
+- R2-D2 style audio feedback — startup chime, thinking sound, pre-buffer cue, and an ack chime for direct commands
 - Run on boot via systemd — installer ships in-tree (see [Run on boot](#run-on-boot-raspberry-pi))
 - Text mode for development and testing without a microphone
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10–3.13 (Kokoro doesn't support 3.14 yet; CI runs 3.11)
 - Docker
 - Node.js 18+ with [Claude Code](https://claude.ai/code) (`npm install -g @anthropic-ai/claude-code`) — required for voice skill installation
 - [Anthropic API key](https://console.anthropic.com/)
@@ -58,8 +70,8 @@ The system uses two layers for extensibility:
 ### Recommended Hardware
 
 - Raspberry Pi 5 (8GB or 16GB RAM)
-- MicroSD for storage
-- Raspberry Pi AI HAT+ 2 (for Hailo-backed wake detection and transcription now, Kokoro offload later)
+- NVMe SSD via M.2 HAT+ (MicroSD works for the budget build)
+- Raspberry Pi AI HAT+ 2 (for Hailo-backed transcription now, Kokoro offload later)
 - Active cooler
 - USB microphone 
 - USB Speaker
@@ -95,7 +107,7 @@ Two practical build tiers:
 | Case | ~$10 |
 | **Total** | **~$297** |
 
-Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but recommended for always-on deployments — Kaizen uses it for Hailo-backed full transcription, with Kokoro acceleration still on the roadmap. Wake detection runs on CPU via openWakeWord; the Hailo wake offload was reverted (see Optional Hailo Whisper Offload below).
+Prices are approximate and vary by region and retailer. The AI HAT+ 2 is optional but recommended for always-on deployments — Kaizen uses it for Hailo-backed full transcription, with Kokoro acceleration still on the roadmap. Wake detection runs on CPU via openWakeWord.
 
 ### Yearly Electricity
 
@@ -103,8 +115,7 @@ See [Power Consumption](#power-consumption) below for the full breakdown. Summar
 
 | Build | Avg draw | Annual cost (US) | Annual cost (UK) |
 |---|---|---|---|
-| Current (openWakeWord CPU loop + Hailo transcription) | ~4–5W | ~$5/yr | ~$11/yr |
-| Pre-openWakeWord (Whisper-tiny CPU wake loop) | ~7W | ~$8/yr | ~$17/yr |
+| openWakeWord CPU loop + Hailo transcription | ~4–5W | ~$5/yr | ~$10–12/yr |
 
 Running costs are negligible — the hardware pays for itself in utility long before electricity becomes a concern.
 
@@ -113,22 +124,24 @@ Running costs are negligible — the hardware pays for itself in utility long be
 ```bash
 git clone https://github.com/M8SON/kaizen.git
 cd kaizen
-./run.sh --install-system-deps  # Debian/Ubuntu only: installs Docker + audio system deps
 cp .env.example .env
 # Edit .env with your API keys
+./run.sh --install-system-deps  # Debian/Ubuntu only: installs Docker + audio system deps
 ./run.sh          # text mode (default, no microphone needed)
 ./run.sh --voice  # voice mode
 ./run.sh --list   # list loaded skills and exit
 ```
 
-`run.sh` handles Python setup automatically: creates the virtual environment, installs Python dependencies, and builds any missing Docker containers before launching.
+`run.sh` handles Python setup automatically: creates the virtual environment (recreating it if broken), installs Python dependencies, and builds any missing Docker containers before launching. It stops with an error if `.env` is missing. Clone to `~/kaizen` if you plan to [run on boot](#run-on-boot-raspberry-pi) — the systemd unit assumes that path.
+
+Developer flags for `main.py`: `--skills-dir PATH` adds a skill directory to scan, and `--skill-select "query"` prints which skills semantic selection would pick, without calling Claude.
 
 ## Optional: Hailo Whisper Offload
 
-Kaizen can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection runs on CPU via openWakeWord and stays there — the earlier Hailo Whisper wake offload was reverted (the published Hailo wake encoder needs a 10s window, the wake loop buffers ~80ms, and silence padding produced hallucinations).
+Kaizen can offload **full post-wake transcription** to a Raspberry Pi AI HAT+ 2 / Hailo device. Wake detection stays on CPU via openWakeWord.
 
 - wake detection runs on openWakeWord (`WAKE_WORD_MODEL`, default `hey_jarvis`; `WAKE_WORD_THRESHOLD`, default `0.5`)
-- full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL_HAILO`, `base` or `tiny`)
+- full utterance transcription can run on Hailo Whisper (`WHISPER_MODEL_HAILO`, `base` or `tiny` on Hailo-8/8L; `tiny` or `tiny.en` on Hailo-10H)
 - the transcription path falls back to CPU automatically if the Hailo runtime or assets are missing
 
 ### Pi prerequisites
@@ -163,7 +176,7 @@ If `python3 -c "import hailo_platform"` already works inside `.venv`, you do not
 
 ### Download Kaizen Hailo assets
 
-Download the HEFs and decoder assets into Kaizen's user-scoped model store:
+Download the HEFs and decoder assets into Kaizen's user-scoped model store. Set `--hw-arch` to your chip (`hailo8`, `hailo8l`, or `hailo10h`; check with `hailortcli fw-control identify`):
 
 ```bash
 .venv/bin/python scripts/download_hailo_whisper_assets.py --variant base --hw-arch hailo8l
@@ -186,11 +199,11 @@ Run Kaizen in voice mode:
 Expected startup lines when transcription is on Hailo:
 
 ```text
-Wake backend: openwakeword (hey_jarvis, threshold=0.5)
 STT backend: Hybrid Whisper (transcription=hailo:base)
+HH:MM:SS [kaizen] INFO: Wake backend: openwakeword (hey_jarvis, threshold=0.5)
 ```
 
-Full CPU fallback line if Hailo is unavailable:
+Full CPU fallback line if Hailo is unavailable (the model is `WHISPER_MODEL_CPU`, default `small`; `openai-whisper` is used if faster-whisper isn't installed):
 
 ```text
 STT backend: cpu:small (faster-whisper) — <reason>
@@ -198,11 +211,12 @@ STT backend: cpu:small (faster-whisper) — <reason>
 
 If you see CPU fallback when expecting Hailo, the likely causes are:
 
-- `hailo_platform` is not visible inside `.venv` (recreate with `--system-site-packages`)
-- `~/.kaizen/models/hailo-whisper/base` is missing assets
-- the selected `WHISPER_MODEL_HAILO` variant has no published HEF (only `tiny` and `base` exist today)
+- `Hailo runtime unavailable` — `/dev/hailo0` is missing (no device, or the driver isn't loaded)
+- `hailo_platform python module not installed` — not visible inside `.venv` (recreate with `--system-site-packages`)
+- `transcription model asset missing` — `~/.kaizen/models/hailo-whisper/<variant>` doesn't exist
+- `Hailo transcription model variant unsupported` — the selected `WHISPER_MODEL_HAILO` has no published HEF for your chip
 
-Current limitation: Hailo currently accelerates Whisper only. TierRouter and Kokoro are unchanged, and Kokoro offload is still future work.
+Hailo accelerates Whisper only; Kokoro offload is future work.
 
 System packages are separate because they require privileged OS changes. On Debian/Ubuntu, you can opt into that setup with:
 
@@ -212,7 +226,7 @@ System packages are separate because they require privileged OS changes. On Debi
 
 That installs `docker.io`, `espeak-ng`, `mpv`, and `portaudio19-dev`, then starts the Docker service.
 
-On systems where Docker was just installed, `run.sh` also adds the current user to the `docker` group. If the current shell has not picked up the new group yet, the launcher will try to continue automatically via `sg docker` for that run.
+`--install-system-deps` also adds the current user to the `docker` group if needed. If the current shell has not picked up the new group yet, the launcher continues automatically via `sg docker`.
 
 If a later shell still does not have Docker access, refresh your login session and verify with:
 
@@ -223,19 +237,9 @@ docker info
 
 ## Testing
 
-Kaizen now includes a small `unittest` smoke suite for core non-audio behavior, including:
+The `tests/` directory holds a pytest suite covering non-audio behavior — orchestrator routing and streaming, prompt building, skill loading/policy/install pipeline, Dockerfile validation, memory, session archive, scheduler, filler classifier, Meta STT, barge-in, mic channels, Kokoro streaming, and more. Audio, Claude, and Docker are replaced with test doubles.
 
-- conversation history normalization and pruning
-- native config-writing behavior for `set_env_var`
-- the `install_skill` voice flow via injected test doubles instead of live voice, Claude Code, or Docker builds
-
-Run it with:
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-There is also a single standard test entry point:
+The standard entry point runs the fast suite (`pytest tests/`):
 
 ```bash
 ./scripts/test.sh
@@ -244,8 +248,9 @@ There is also a single standard test entry point:
 Optional layers:
 
 ```bash
-./scripts/test.sh --voice    # scripted voice-loop harness, no mic/speaker needed
-./scripts/test.sh --install  # real install_skill integration using Claude CLI + Docker
+./scripts/test.sh --voice      # scripted voice-loop harness, no mic/speaker needed
+./scripts/test.sh --install    # real install_skill integration using Claude CLI + Docker
+./scripts/test.sh --scheduler  # scheduler end-to-end harness
 ./scripts/test.sh --all
 ```
 
@@ -270,14 +275,26 @@ The scripted voice-loop harness exercises the real `run_voice_mode` control flow
 
 Just ask:
 
-> *"computer, add a skill that tells me a random joke"*
+> *"hey jarvis, add a skill that tells me a random joke"*
 
 Claude Code writes the skill files, validates them, and walks you through three confirmation steps before building and loading the skill. No coding required. See `skills/skill-tells-random/` for an example of a skill created this way.
 
 To port a community [OpenClaw](https://github.com/openclaw/openclaw) skill:
 
 ```bash
-python3 scripts/port-skill.py /path/to/openclaw-skill/
+.venv/bin/python scripts/port-openclaw-skill.py /path/to/openclaw-skill/
+```
+
+This scaffolds `skills/<name>/` with a `config.yaml`, Dockerfile, and a TODO `app.py` — you still write the handler and build the image.
+
+To manage skills from the command line:
+
+```bash
+python main.py skill install <url-or-path>   # install into ~/.kaizen/imported/
+python main.py skill validate <path>         # dry-run validation, no install
+python main.py skill dev <path>              # symlink a skill in for development
+python main.py skill list
+python main.py skill uninstall <name>
 ```
 
 For the skill file structure and developer details, see `CLAUDE.md`.
@@ -286,11 +303,11 @@ For the skill file structure and developer details, see `CLAUDE.md`.
 
 Kaizen can remember things across conversations. Just say:
 
-> *"computer, remember that my wife's name is Sarah"*
-> *"computer, don't forget I prefer temperatures in Celsius"*
-> *"computer, make a note that the garage code is 1234"*
+> *"hey jarvis, remember that my wife's name is Sarah"*
+> *"hey jarvis, don't forget I prefer temperatures in Celsius"*
+> *"hey jarvis, make a note that the garage code is 1234"*
 
-Memories are saved as markdown files in `~/.kaizen/memory/` (configurable via `MEMORY_VAULT_PATH`). Each file is named `YYYY-MM-DD_topic.md` with YAML frontmatter.
+Memories are saved as markdown files in `~/.kaizen/memory/` (configurable via `MEMORY_VAULT_PATH`). Each file is named `YYYY-MM-DD_topic_slug.md` with YAML frontmatter; saving the same topic again updates the existing note in place.
 
 **How recall works:**
 
@@ -316,7 +333,7 @@ If MemPalace is not installed, Kaizen still keeps semantic recall working throug
 
 ```bash
 pip install mempalace
-mempalace init ~/projects/kaizen-memory
+mempalace init ~/.mempalace/palace   # Kaizen's default; set MEMPALACE_PALACE_PATH to use another location
 ```
 
 Leave `MEMORY_BACKEND=auto` to get the default behavior: use MemPalace when installed and otherwise fall back to direct `chromadb` access. Set `MEMORY_BACKEND=mempalace` only if you want to force MemPalace usage, or `MEMORY_BACKEND=vault` to disable the MemPalace/chromadb semantic layer entirely.
@@ -327,16 +344,18 @@ Kaizen routes each voice command through a three-tier gate before any LLM runs:
 
 | Tier | Model | Latency | Examples |
 |---|---|---|---|
-| **Deterministic** | — (regex) | <5ms | "stop", "volume up", "goodbye" |
+| **Deterministic** | — (regex) | <5ms | "stop", "pause", "skip", "volume up", "goodbye" |
 | **Micro** | Claude Haiku | ~1–2s | "play some jazz", "what's the weather" |
 | **Claude** | Claude Sonnet | ~2–5s | "make a skill that...", "remember that...", ambiguous or multi-step requests |
 
 The router classifies each transcript (`core/tier_router.py`) using:
-1. **Dispatch patterns** — regex table (`config/intent_patterns.yaml`). Match → skill called directly, no LLM.
-2. **Escalate patterns** — phrases Haiku handles poorly (skill installation, memory edits, long explanations) → routed straight to Sonnet, skipping Haiku to avoid double latency.
-3. **Skill prediction** — reuses the existing `SkillSelector`. Skills in `CLAUDE_ONLY_SKILLS` go to Sonnet; everything else goes to Haiku.
+1. **Dispatch patterns** — regex table (`config/intent_patterns.yaml`). Match → skill called directly (music transport), or a session action ("goodbye" closes the session, which uses Sonnet to wrap up if there was a conversation).
+2. **Escalate patterns** — phrases Haiku handles poorly (skill installation, memory edits, long explanations, compound "and also…" requests) → routed straight to Sonnet, skipping Haiku to avoid double latency.
+3. **Skill prediction** — reuses the existing `SkillSelector` (a local MiniLM embedding, so slower than the regex steps but still no LLM). Skills in `CLAUDE_ONLY_SKILLS` go to Sonnet; everything else goes to Haiku.
 
-When Haiku errors (network blip, malformed response), the whole turn escalates to Sonnet via try/except — no history is lost.
+If the Haiku call raises (e.g. a network error), the turn is retried on Sonnet. A Haiku reply that is merely poor, or runs out of tool rounds, is not escalated.
+
+In voice mode, end-of-session phrases ("goodbye", "that's all", "never mind") and Jev's stop intent are handled before the router runs.
 
 **Enabling the micro tier:**
 
@@ -357,17 +376,27 @@ Key environment variables in `.env`:
 | `ANTHROPIC_API_KEY` | — | Required |
 | `WHISPER_MODEL_CPU` | `small` | faster-whisper model on CPU path (tiny/base/small/medium/large) |
 | `WHISPER_MODEL_HAILO` | `base` | Hailo HEF variant (only `tiny` and `base` are published) |
-| `WHISPER_MODEL` | — | Legacy single-model knob; overrides the above when set |
+| `WHISPER_MODEL` | `base` | Legacy single-model knob. A non-`base` value overrides `WHISPER_MODEL_CPU`; any value is used for Hailo when `WHISPER_MODEL_HAILO` is unset |
+| `STT_BACKEND` | `whisper` | `whisper` (local) or `meta` (Meta Muse Voice Transcribe streaming); local Whisper stays loaded as fallback |
+| `META_MODEL_API_KEY` | — | Required for `STT_BACKEND=meta` |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Main (Sonnet-tier) model |
+| `LLM_STREAM_TO_TTS` | `true` | Stream Claude's text into TTS sentence-by-sentence; `false` waits for the full response |
 | `ENABLE_TTS` | `true` | Set `false` to disable speech |
-| `TTS_BACKEND` | `kokoro` | `kokoro` (PyTorch), `kokoro-onnx` (ONNX, ~2–3× faster on Pi 5), or `elevenlabs` (cloud, ~75ms first-audio) |
+| `TTS_BACKEND` | `kokoro` | `kokoro` (PyTorch), `kokoro-onnx` (ONNX, faster on Pi 5), or `elevenlabs` (cloud, ~75ms first-audio) |
 | `KOKORO_ONNX_VARIANT` | `fp32` | `fp32` or `int8`; fp32 is faster on ARM, int8 on x86_64 |
+| `TTS_ONNX_THREADS` | all cores | ONNX Runtime intra-op threads for `kokoro-onnx`; lower it for thermals |
+| `KOKORO_PREBUFFER_MS` | `1500` (PyTorch), `0` (ONNX/ElevenLabs) | Audio buffered before playback starts |
+| `KOKORO_MIN_FIRST_FLUSH` | `30` | Minimum characters of streamed LLM text before the first TTS flush |
 | `TTS_VOICE` | `af_heart` | Kokoro voice (`af_heart`, `am_adam`, `bm_george`, etc.) |
 | `TTS_SPEED` | `1.2` | Speech rate (1.0 = normal, 1.3 = faster). ElevenLabs caps at 1.2 (values are clamped) |
-| `ELEVENLABS_API_KEY` | — | Required for `TTS_BACKEND=elevenlabs`; absent/unreachable at startup falls back to `kokoro-onnx` |
+| `ELEVENLABS_API_KEY` | — | Required for `TTS_BACKEND=elevenlabs`; absent/unreachable at startup falls back to `kokoro-onnx` (no runtime fallback) |
 | `ELEVENLABS_VOICE_ID` | `onwK4e9ZLuTAKqWW03F9` | ElevenLabs voice (default: Daniel, British) |
 | `ELEVENLABS_MODEL_ID` | `eleven_flash_v2_5` | ElevenLabs model (Flash v2.5 — lowest latency) |
-| `SILENCE_THRESHOLD` | `1000` | Mic amplitude to count as speech |
-| `SILENCE_DURATION` | `2.0` | Seconds of silence before ending recording |
+| `VAD_BACKEND` | `silero` | `silero` or `rms` (amplitude fallback) |
+| `VAD_THRESHOLD` | `0.5` | Silero speech-probability cutoff |
+| `VAD_MIN_SILENCE_MS` | `700` | Silence (ms) before Silero ends the recording |
+| `SILENCE_THRESHOLD` | `1000` | Mic amplitude to count as speech (`VAD_BACKEND=rms` only) |
+| `SILENCE_DURATION` | `2.0` | Seconds of silence before ending recording (`VAD_BACKEND=rms` only) |
 | `CONVERSATION_IDLE_TIMEOUT` | `8` | Seconds of no speech before returning to wake word |
 | `CONVERSATION_MAX_MESSAGES` | `24` | Max message-count budget for short-term context, retained as whole recent turns |
 | `CONVERSATION_MAX_TOKENS` | `6000` | Approximate token budget for short-term context sent to Claude |
@@ -375,24 +404,43 @@ Key environment variables in `.env`:
 | `MEMORY_MAX_TOKENS` | `2000` | Approximate token budget for persisted memory injected into the system prompt |
 | `MEMORY_RECALL_MAX_TOKENS` | `600` | Approximate token budget for live memory recall added per user turn |
 | `SKILL_PROMPT_MAX_TOKENS` | `4000` | Approximate token budget for skill instructions in the system prompt |
+| `SKILL_SELECT_TOP_K` | `2` | How many skills get full instructions per request; the rest are compacted |
 | `WAKE_WORD_MODEL` | `hey_jarvis` | openWakeWord bundled model (`hey_jarvis`, `alexa`, `hey_mycroft`, `timer`, `weather`) |
 | `WAKE_WORD_THRESHOLD` | `0.5` | Activation confidence (0.0–1.0); raise to reduce false fires |
+| `WAKE_WORD_SOFT_THRESHOLD` | `0` (off) | Two-stage wake: scores between this and `WAKE_WORD_THRESHOLD` start listening but only count if the transcript contains "Jarvis". The Pi uses `0.15` |
+| `WAKE_PREROLL_MS` | `600` | Audio from just before the wake word, prepended to the recording; leading wake phrase is stripped from the transcript. `0` disables |
+| `MIC_CHANNEL` | `1` | Primary channel on 2-channel mics (XVF3800); channel 0 suppresses speech while audio plays. Wake word runs on both |
 | `BARGE_IN_ENABLED` | `true` | Say the wake word during a response to interrupt playback and start listening; set false to disable |
 | `CONTAINER_MEMORY` | `256m` | Default Docker memory limit per skill |
 | `MEMORY_VAULT_PATH` | `~/.kaizen/memory` | Directory for memory notes (point Obsidian here) |
+| `SESSION_ARCHIVE_PATH` | `~/.kaizen/sessions.db` | sqlite+FTS5 archive of every conversation turn |
+| `SESSION_ARCHIVE_ENABLED` | `true` | Set `false` to disable the archive entirely |
+| `SESSION_RECALL_DEFAULT_LIMIT` | `5` | Default max hits returned by `recall-session` |
 | `MEMPALACE_PALACE_PATH` | `~/.mempalace/palace` | Override MemPalace data directory |
 | `MEMPALACE_WING` | — | Optional wing filter for MemPalace wake-up memory |
 | `MEMPALACE_SAVE_MEMORY` | `auto` | `auto`, `true`, or `false` for MemPalace mirroring on `save_memory` |
 | `MEMPALACE_MEMORY_WING` | `wing_kaizen` | Target wing when mirroring saved memories |
 | `MEMPALACE_MEMORY_ROOM` | `assistant-memory` | Target room when mirroring saved memories |
 | `BRAVE_API_KEY` | — | Required for web search skill |
-| `SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | — | Spotify Web API auth; redirect must use `127.0.0.1` (Spotify deprecated `localhost` in 2025) |
+| `OPENWEATHER_API_KEY` | — | Required for weather skill |
+| `HOMEBRIDGE_URL` / `_USERNAME` / `_PASSWORD` | — | Required for homebridge skill |
+| `WEATHER_LOCATION` | `New York,NY` | Default location for the dashboard weather panel |
+| `SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | — (redirect defaults to `http://localhost:8888/callback`) | Spotify Web API auth; set `SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback` and register the same URI in the Spotify app (Spotify deprecated `localhost` in 2025) |
 | `SPOTIFY_DEVICE_NAME` | — | Pin playback to one Spotify Connect device (e.g. `Kaizen`) so multi-device accounts don't spill onto phone/TV |
 | `MIC_DEVICE` | `Array` | Case-insensitive substring match against the ALSA/PortAudio device name |
 | `SPEAKER_DEVICE` | `KT USB` | Same — set to `pipewire` on Pi 5 if running raspotify alongside Kaizen |
 | `MICRO_TIER_ENABLED` | `false` | Enable Haiku micro-tier routing |
 | `MICRO_TIER_MODEL` | `claude-haiku-4-5` | Model used for the micro tier |
 | `CLAUDE_ONLY_SKILLS` | `install-skill` | Comma-separated skills always routed to Sonnet |
+| `TYPESAFE_API_KEY` | — | Enables the Jev filler-phrase classifier; unset = no filler (thinking sound still plays). Run `scripts/build_filler_audio.py` once after setting it |
+| `FILLER_CLASSIFIER_ENABLED` | `true` | Set `false` to disable Jev classification |
+| `FILLER_CLASSIFIER_TIMEOUT_MS` | `800` | Hard timeout for the Jev call; exceeding it skips the filler for that turn |
+| `FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.6` | Minimum confidence to speak a specific filler |
+| `FILLER_ANSWER_CONFIDENCE_THRESHOLD` | `0.85` | Minimum confidence to speak a cached full answer (identity, capabilities) instead of calling Claude |
+| `TOOL_FIRST_ENABLED` | `false` | Run the tool for Jev categories with a `prefetch` block (weather) before calling Claude. Weather needs a `topic: location` memory note |
+| `THINKING_SOUND_ENABLED` | `true` | R2-D2 warble the instant you stop talking |
+| `PREBUFFER_CUE_ENABLED` | `true` | Looping R2-D2 bloops from the first streamed LLM text until first TTS audio |
+| `KAIZEN_PROFILE` | `false` | Log a per-turn `[TIMING-SUMMARY]` line with stage timings |
 
 ## Power Consumption
 
@@ -402,12 +450,11 @@ Wake word detection runs **openWakeWord** — a lightweight melspectrogram → e
 
 | Mode | Avg system draw | Est. annual usage | US (~$0.13/kWh) | UK (~$0.28/kWh) |
 |---|---|---|---|---|
-| Current — openWakeWord wake loop + Hailo transcription | ~4–5W | ~35–44 kWh | ~$5/yr | ~$10–12/yr |
-| Previous — Whisper-tiny wake loop on CPU | ~7W | ~61 kWh | ~$8/yr | ~$17/yr |
+| openWakeWord wake loop + Hailo transcription | ~4–5W | ~35–44 kWh | ~$5/yr | ~$10–12/yr |
 
 All numbers are approximate — actual draw depends on USB DAC, mic, network activity, and Pi 5 board revision. Measure on your own hardware if it matters.
 
-**Wake-loop CPU:** openWakeWord on Pi 5 (Cortex-A76) typically runs at ~1–3% utilization of a single core in the always-listening state, an order of magnitude below the previous Whisper-tiny window which sat at 15–40% continuously. The drop is the dominant factor in the ~2W lower average draw.
+**Wake-loop CPU:** openWakeWord on Pi 5 (Cortex-A76) typically runs at ~1–3% utilization of a single core in the always-listening state.
 
 **Hailo mode:** the Hailo-backed path accelerates the heavier full-transcription step after wake, reducing post-wake CPU load and latency. It doesn't touch the wake loop — openWakeWord stays on CPU.
 
@@ -419,12 +466,14 @@ To make Kaizen start automatically when the Pi powers on:
 ./scripts/install_systemd_service.sh
 ```
 
-The installer is idempotent — re-run it any time the unit file changes. It will:
+The unit runs `~/kaizen/run.sh --voice`, so the repo must be cloned at `~/kaizen`. The installer is idempotent — re-run it any time the unit file changes. It will:
 
 - Copy `config/systemd/kaizen.service` to `~/.config/systemd/user/`.
+- Create `/var/log/journal` for persistent logs (asks for sudo). Raspberry Pi OS forces `Storage=volatile`, so on the Pi logs still don't survive a reboot.
 - Enable `loginctl enable-linger` so user services start at boot (asks for sudo).
-- Ensure `/var/log/journal` exists so logs survive reboot (asks for sudo).
+- If raspotify is installed, add a sudoers rule (`/etc/sudoers.d/kaizen-raspotify`) letting Kaizen run `systemctl restart raspotify.service`. The unit uses it to restart raspotify on every Kaizen start, and the Spotify skill uses it to self-heal and for "restart Spotify".
 - Enable + start the service.
+- Warn if no network-online wait service is enabled.
 
 ### Day-to-day
 
@@ -433,8 +482,8 @@ systemctl --user status kaizen      # is it running?
 systemctl --user start kaizen       # start after a manual stop
 systemctl --user restart kaizen     # restart after a config change
 systemctl --user stop kaizen        # stop until next boot or manual start
-journalctl --user -u kaizen -f      # tail live logs
-journalctl --user -u kaizen -p err --since '1 hour ago'   # crashes only
+journalctl _SYSTEMD_USER_UNIT=kaizen.service -f      # tail live logs
+journalctl _SYSTEMD_USER_UNIT=kaizen.service -p err --since '1 hour ago'   # errors only
 ```
 
 ### Uninstall
@@ -443,37 +492,69 @@ journalctl --user -u kaizen -p err --since '1 hour ago'   # crashes only
 ./scripts/uninstall_systemd_service.sh
 ```
 
+This also removes the raspotify sudoers rule and asks whether to disable linger.
+
 ## Project Structure
 
 ```
 kaizen/
-├── main.py                        # Entry point (voice, text, or list mode)
+├── main.py                        # Entry point (voice, text, list mode, or `skill` CLI)
+├── conftest.py                    # pytest root config
 ├── run.sh                         # Setup + launch script (auto-discovers containers)
 ├── config/
 │   ├── intent_patterns.yaml       # Dispatch + escalate patterns for TierRouter
-│   └── systemd/kaizen.service   # User-level unit for boot auto-start
+│   ├── filler_phrases.yaml        # Jev filler categories, phrases, cached answers, prefetch
+│   └── systemd/kaizen.service     # User-level unit for boot auto-start
 ├── core/
 │   ├── orchestrator.py            # Tiered routing gate + Claude API + conversation history
 │   ├── tier_router.py             # TierRouter: deterministic/micro/claude classification
 │   ├── tool_loop.py               # Shared tool loop (serves both Haiku micro and Sonnet)
 │   ├── prompt_builder.py          # Token-budgeted prompt assembly (full + slim micro variant)
-│   ├── skill_loader.py            # Parses SKILL.md files, enforces three-tier policy
+│   ├── conversation_state.py      # Turn-aware, token-budgeted short-term history
+│   ├── skill_loader.py            # Scans tier search paths, builds Claude tool definitions
+│   ├── skill_policy.py            # Per-tier trust limits (bundled/authored/imported)
+│   ├── skill_selector.py          # Semantic skill ranking (chromadb embeddings)
+│   ├── skill_eligibility.py       # requires.env / bins / os checks
+│   ├── skill_validator.py         # Structural skill validation
+│   ├── skill_self_update.py       # Self-improving routing hints (git-committed)
+│   ├── skill_cli.py               # `python main.py skill {install,uninstall,list,validate,dev}`
+│   ├── install_pipeline.py        # Shared install pipeline for skills
+│   ├── install_metadata.py        # .install.json provenance sidecar
+│   ├── apt_allowlist.py           # apt-get allowlist for imported skills
+│   ├── dockerfile_validator.py    # Security allowlist for voice-installed skills
 │   ├── container_manager.py       # Docker + native skill execution
-│   ├── voice.py                   # STT + Kokoro TTS + R2-D2 sounds + streaming pipeline
-│   ├── voice_backends.py          # FasterWhisper / Hailo Whisper backend selection
-│   ├── session_archive.py         # FTS5 sqlite archive of every conversation turn
 │   ├── meta_skill.py              # Voice skill installation executor
-│   └── dockerfile_validator.py    # Security allowlist for voice-installed skills
+│   ├── voice.py                   # Mic input, STT, Kokoro TTS, R2-D2 sounds, streaming pipeline
+│   ├── voice_backends.py          # openWakeWord, Silero/RMS VAD, Whisper (CPU/Hailo), TTS backends
+│   ├── hailo_whisper_runtime.py   # Hailo Whisper inference runtime
+│   ├── meta_stt.py                # Meta Muse Voice Transcribe streaming STT
+│   ├── audio_devices.py           # ALSA device resolution by name substring
+│   ├── filler_classifier.py       # Jev (TypeSafe AI) filler-phrase classifier
+│   ├── memory_provider.py         # Vault + semantic memory recall
+│   ├── mempalace_bridge.py        # Optional MemPalace / chromadb integration
+│   ├── location_preference.py     # Remembered location for weather
+│   ├── session_archive.py         # FTS5 sqlite archive of every conversation turn
+│   ├── scheduler.py               # Recurring task execution
+│   ├── spotify_auth.py            # Spotify OAuth token cache + client
+│   ├── dashboard_defaults.py      # Default hazard config for the dashboard
+│   └── profiling.py               # Per-turn stage timing (KAIZEN_PROFILE)
 ├── scripts/
+│   ├── test.sh                    # Standard test entry point
+│   ├── test_voice_mode_harness.py # Scripted voice-loop harness
+│   ├── test_install_skill_integration.py
+│   ├── test_scheduler_harness.py
 │   ├── install_systemd_service.sh # Idempotent systemd installer (boot auto-start)
 │   ├── uninstall_systemd_service.sh
 │   ├── download_hailo_whisper_assets.py
 │   ├── download_kokoro_onnx.py    # Fetch Kokoro ONNX models for the fast TTS backend
+│   ├── build_filler_audio.py      # Pre-synthesize Jev filler phrases via ElevenLabs
 │   ├── spotify_login.py           # One-time Spotify OAuth bootstrap
+│   ├── preview_dashboard.sh       # Run the dashboard locally without Kaizen
 │   ├── port-openclaw-skill.py     # Scaffold a skill from an OpenClaw definition
+│   ├── rename_to_kaizen.sh        # One-time rename of the project's old name to Kaizen
 │   └── build_new_skill.sh         # Host-side Docker build for voice-installed skills
 ├── skills/                        # agentskills.io layout: SKILL.md + config.yaml + scripts/
-│   ├── dashboard/                 # Visual dashboard (native)
+│   ├── dashboard/                 # Visual dashboard (native; serves scripts/app.py on the host)
 │   ├── homebridge/                # Smart home control via Homebridge UI X (Docker)
 │   ├── install-skill/             # Voice skill installation (native)
 │   ├── music-control/             # Unified pause/resume/skip/volume across active source (native)
@@ -483,33 +564,43 @@ kaizen/
 │   ├── schedule/                  # Cron-style yaml-backed recurring tasks (native)
 │   ├── set-env-var/               # Voice-driven .env edit + skill reload (native)
 │   ├── skill-tells-random/        # Example voice-installed skill (Docker)
-│   ├── soundcloud/                # SoundCloud playback via yt-dlp + mpv, narrowed to remix scope (native)
-│   ├── spotify/                   # Spotify Connect playback via raspotify (native)
+│   ├── soundcloud/                # SoundCloud playback via yt-dlp + mpv — remixes, DJ sets, explicit SoundCloud requests (native)
+│   ├── spotify/                   # Spotify Connect playback + raspotify restart (native)
 │   ├── update-skill-hints/        # Self-improving skill routing hints (native)
 │   ├── weather/                   # OpenWeatherMap (Docker)
 │   └── web-search/                # Brave Search (Docker)
 ├── containers/
 │   └── base/                      # Shared Docker base (python:3.11-slim + requests)
-├── tests/                         # pytest suite — fast suite + scheduler harness in CI
+├── tests/                         # pytest suite (run via scripts/test.sh; also runs in CI)
+├── docs/                          # Research notes, design specs, and implementation plans
+├── .github/workflows/ci.yml       # CI: fast suite + scheduler harness on Python 3.11
+├── CLAUDE.md                      # Developer guide for Claude Code sessions
+├── WORKING_MEMORY.md              # Shared project memory: decisions and current direction
 ├── requirements.txt
 ├── .env.example
+├── LICENSE
 └── .gitignore
 ```
 
-Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + app.py). The standalone `containers/<name>/` layout was retired during the agentskills.io migration.
+Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + app.py). Images are built only for `type: docker` skills, so the Dockerfiles in the native `dashboard` and `soundcloud` skills are unused.
 
 ## Roadmap
 
 - [x] Core orchestrator + skill loader
 - [x] Docker container execution + native execution path for host-integration skills
 - [x] OpenClaw skill compatibility layer + agentskills.io single-directory layout
-- [x] Wake word detection via openWakeWord (replaced the earlier Whisper sliding-window approach)
+- [x] Wake word detection via openWakeWord
 - [x] faster-whisper CPU backend for post-wake transcription
+- [x] Silero VAD endpointing (RMS fallback)
+- [x] Meta streaming STT backend (local Whisper fallback)
+- [x] Two-stage soft wake + wake pre-roll + near-miss wake diagnostics
 - [x] Conversation session mode (stay active between follow-ups)
 - [x] Kokoro TTS with streaming playback (chunks play as generated)
 - [x] Kokoro ONNX backend (fp32/int8, ~2–3× faster than PyTorch on Pi 5)
 - [x] ElevenLabs cloud TTS backend (Flash v2.5, ~75ms first-audio, startup fallback to Kokoro)
 - [x] R2-D2 style audio feedback (startup chime + thinking sound)
+- [x] Jev filler phrases + cached identity/capability answers
+- [x] Tool-first prefetch for weather
 - [x] Voice skill installation via Claude Code
 - [x] Self-improving skills (additive routing-hint refinement, git-tracked)
 - [x] Playwright web scraper skill (handles JS-rendered + bot-protected sites)
@@ -518,7 +609,7 @@ Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + 
 - [x] FTS5 session archive + `recall-session` skill
 - [x] Cron-style scheduler skill
 - [x] SoundCloud transport (pause/resume/skip/volume via mpv IPC)
-- [x] Spotify Connect playback via raspotify + unified `music-control` skill
+- [x] Spotify Connect playback via raspotify + unified `music-control` skill (genres, playlists, voice "restart Spotify")
 - [x] Visual dashboard skill (news/OSINT, weather, stocks, music — voice-triggered, auto-closes)
 - [x] EONET hazard ranking in dashboard news flow
 - [x] Tiered intelligence — deterministic dispatch + Haiku micro-tier + Sonnet (feature-flagged, enable with `MICRO_TIER_ENABLED=true`)
@@ -529,8 +620,6 @@ Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + 
 - [ ] GPIO / hardware module skills (lights, sensors, displays)
 - [ ] Camera + vision skills via AI HAT+ 2
 - [ ] Community skill registry
-
-> Hailo wake offload was implemented and reverted: the published wake encoder needs a 10s window, but the wake loop only buffers 2s of audio, so silence padding produced hallucinations. To re-enable, the wake loop would need to accumulate 10s before invoking the Hailo transcriber, or Hailo would need to publish a shorter-window wake HEF.
 
 ## Contributing
 

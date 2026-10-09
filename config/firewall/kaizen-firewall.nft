@@ -1,0 +1,54 @@
+#!/usr/sbin/nft -f
+# Kaizen host firewall. Lives in its own table and never flushes the rest of
+# the ruleset, so Docker's rules (iptables-nft) are left alone.
+# Installed by scripts/install_firewall.sh; loaded by kaizen-firewall.service.
+
+table inet kaizen_firewall
+delete table inet kaizen_firewall
+
+table inet kaizen_firewall {
+	set lan4 {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }
+	}
+	set lan6 {
+		type ipv6_addr
+		flags interval
+		elements = { fe80::/10, fc00::/7 }
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+
+		ct state established,related accept
+		ct state invalid drop
+		iif "lo" accept
+
+		# Skill containers may not reach the Pi's own services.
+		iifname { "docker0", "br-*" } drop
+
+		meta l4proto { icmp, ipv6-icmp } accept
+
+		# DHCP replies (broadcast, not matched by conntrack)
+		udp sport 67 udp dport 68 accept
+		udp sport 547 udp dport 546 accept
+
+		# Home network only: SSH, Spotify Connect discovery (librespot,
+		# pinned to 4070), mDNS.
+		ip saddr @lan4 tcp dport { 22, 4070 } accept
+		ip6 saddr @lan6 tcp dport { 22, 4070 } accept
+		ip saddr @lan4 udp dport 5353 accept
+		ip6 saddr @lan6 udp dport 5353 accept
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+
+		# Skill containers: internet yes, home network no (DNS to the
+		# router excepted, since containers use the host's resolver).
+		iifname { "docker0", "br-*" } ip daddr @lan4 meta l4proto { tcp, udp } th dport 53 accept
+		iifname { "docker0", "br-*" } ip daddr @lan4 drop
+		iifname { "docker0", "br-*" } ip6 daddr @lan6 drop
+	}
+}

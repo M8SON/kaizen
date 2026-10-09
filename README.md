@@ -292,7 +292,7 @@ To manage skills from the command line:
 ```bash
 python main.py skill install <url-or-path>   # install into ~/.kaizen/imported/
 python main.py skill validate <path>         # dry-run validation, no install
-python main.py skill dev <path>              # symlink a skill in for development
+python main.py skill dev <path>              # symlink a skill in for development (authored-tier checks)
 python main.py skill list
 python main.py skill uninstall <name>
 ```
@@ -494,6 +494,21 @@ journalctl _SYSTEMD_USER_UNIT=kaizen.service -p err --since '1 hour ago'   # err
 
 This also removes the raspotify sudoers rule and asks whether to disable linger.
 
+### Firewall (recommended)
+
+```bash
+./scripts/install_firewall.sh
+```
+
+Installs an nftables firewall in its own table (it never flushes Docker's rules):
+
+- Inbound is denied by default. SSH (22), Spotify Connect discovery (4070; librespot is pinned to it via a raspotify drop-in) and mDNS are allowed from the home network only.
+- Skill containers can reach the internet but not the Pi's own services or other devices on the home network (DNS to the router excepted).
+
+The rules are applied live with an automatic rollback after 120 seconds: check SSH still works from another terminal, then confirm to keep them and enable `kaizen-firewall.service` at boot. Remove with `sudo systemctl disable --now kaizen-firewall.service`.
+
+On Raspberry Pi OS, also enable the memory cgroup so per-skill memory limits apply — append `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` and reboot.
+
 ## Project Structure
 
 ```
@@ -504,6 +519,7 @@ kaizen/
 ├── config/
 │   ├── intent_patterns.yaml       # Dispatch + escalate patterns for TierRouter
 │   ├── filler_phrases.yaml        # Jev filler categories, phrases, cached answers, prefetch
+│   ├── firewall/                  # nftables ruleset, its systemd unit, librespot port drop-in
 │   └── systemd/kaizen.service     # User-level unit for boot auto-start
 ├── core/
 │   ├── orchestrator.py            # Tiered routing gate + Claude API + conversation history
@@ -544,6 +560,7 @@ kaizen/
 │   ├── test_install_skill_integration.py
 │   ├── test_scheduler_harness.py
 │   ├── install_systemd_service.sh # Idempotent systemd installer (boot auto-start)
+│   ├── install_firewall.sh        # nftables host firewall with auto-rollback
 │   ├── uninstall_systemd_service.sh
 │   ├── download_hailo_whisper_assets.py
 │   ├── download_kokoro_onnx.py    # Fetch Kokoro ONNX models for the fast TTS backend

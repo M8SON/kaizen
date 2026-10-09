@@ -587,9 +587,10 @@ class ContainerManager:
         if not self.docker_available:
             return f"Dashboard unavailable: {self.docker_error or 'Docker is not running'}."
 
-        # Ensure ~/.kaizen exists (volume mount target)
-        kaizen_dir = Path.home() / ".kaizen"
-        kaizen_dir.mkdir(parents=True, exist_ok=True)
+        # The container only reads now_playing.json, so it gets just that
+        # file's directory, read-only — not the rest of ~/.kaizen.
+        share_dir = _now_playing_path().parent
+        share_dir.mkdir(parents=True, exist_ok=True)
 
         # --- Build RSS feed list from selected source groups ---
         rss_source_map = {
@@ -619,15 +620,25 @@ class ContainerManager:
         weather_loc = resolved_location or "New York,NY"
 
         # --- Start Flask container (detached) ---
+        # It parses remote feeds, so it is isolated like untrusted skills:
+        # own network with the port published on localhost only (the kiosk
+        # browser runs on this host), no capabilities, non-root, read-only.
+        uid = os.getuid()
         docker_cmd = [
             "docker", "run", "-d",
-            "--network=host",
+            "--network=bridge",
+            "-p", f"127.0.0.1:{DASHBOARD_PORT}:{DASHBOARD_PORT}",
             "--memory=512m",
             "--cpus=1.5",
+            f"--pids-limit={self.PIDS_LIMIT}",
+            "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
+            "--user", f"{uid}:{os.getgid()}" if uid != 0 else "65534:65534",
+            "-e", "HOME=/tmp",
+            "--read-only",
             "--tmpfs=/tmp:size=64m",
             "--tmpfs=/dev/shm:size=256m",
-            "-v", f"{kaizen_dir}:/kaizen",
+            "-v", f"{share_dir}:/kaizen:ro",
             "-e", f"SKILL_INPUT={json.dumps({'panels': panels, 'timeout_minutes': timeout_minutes})}",
             "-e", f"DASHBOARD_CONFIG={dashboard_config}",
             "-e", f"WEATHER_LOCATION={weather_loc}",
@@ -813,7 +824,7 @@ class ContainerManager:
             start_new_session=True,
         )
 
-        now_playing_path = Path.home() / ".kaizen" / "now_playing.json"
+        now_playing_path = _now_playing_path()
         try:
             import time as _time
             now_playing_path.parent.mkdir(parents=True, exist_ok=True)
@@ -862,7 +873,7 @@ class ContainerManager:
                 os.unlink(self._mpv_socket_path)
             except OSError:
                 pass
-        now_playing = Path.home() / ".kaizen" / "now_playing.json"
+        now_playing = _now_playing_path()
         try:
             now_playing.unlink(missing_ok=True)
         except OSError:
@@ -1483,6 +1494,11 @@ class ContainerManager:
             if val := os.environ.get(var):
                 env[var] = val
         return env
+
+
+def _now_playing_path() -> Path:
+    """SoundCloud now-playing state, shared read-only with the dashboard."""
+    return Path.home() / ".kaizen" / "dashboard" / "now_playing.json"
 
 
 def _device_gids(devices: list[str]) -> set[int]:

@@ -124,10 +124,10 @@ class ContainerManagerTests(unittest.TestCase):
             "Docker is installed but this session cannot access the daemon",
         )
 
-    def test_open_dashboard_includes_default_hazards_in_dashboard_config(self):
+    def _open_dashboard_capture(self):
+        """Run _open_dashboard with docker/chromium faked; return (result, docker_cmd, kaizen_home)."""
         container_manager = _load_container_manager()
         ContainerManager = container_manager.ContainerManager
-        dashboard_defaults = importlib.import_module("core.dashboard_defaults")
         manager = ContainerManager()
         manager.docker_available = True
 
@@ -182,13 +182,29 @@ class ContainerManagerTests(unittest.TestCase):
                  patch("core.container_manager.threading.Timer", side_effect=DummyTimer):
                 result = manager._open_dashboard(["news", "weather"], 5, "Burlington,VT", ["osint"], [])
 
+        return result, captured["docker_cmd"], kaizen_home
+
+    def test_open_dashboard_includes_default_hazards_in_dashboard_config(self):
+        dashboard_defaults = importlib.import_module("core.dashboard_defaults")
+        result, docker_cmd, _ = self._open_dashboard_capture()
+
         self.assertEqual(result, "Dashboard is up with news, weather.")
-        docker_cmd = captured["docker_cmd"]
         cfg_arg = next(arg for arg in docker_cmd if arg.startswith("DASHBOARD_CONFIG="))
         dashboard_cfg = json.loads(cfg_arg.split("=", 1)[1])
 
         self.assertIn("hazards", dashboard_cfg)
         self.assertEqual(dashboard_cfg["hazards"], dashboard_defaults.default_hazard_config(enabled=True))
+
+    def test_open_dashboard_container_is_isolated(self):
+        _, cmd, kaizen_home = self._open_dashboard_capture()
+        self.assertNotIn("--network=host", cmd)
+        self.assertIn("--network=bridge", cmd)
+        self.assertEqual(cmd[cmd.index("-p") + 1], "127.0.0.1:7860:7860")
+        self.assertIn("--cap-drop=ALL", cmd)
+        self.assertIn("--read-only", cmd)
+        self.assertNotEqual(cmd[cmd.index("--user") + 1].split(":")[0], "0")
+        mounts = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
+        self.assertEqual(mounts, [f"{kaizen_home / '.kaizen' / 'dashboard'}:/kaizen:ro"])
 
     def test_open_dashboard_refresh_failure_keeps_existing_lock(self):
         container_manager = _load_container_manager()

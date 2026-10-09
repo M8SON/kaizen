@@ -204,8 +204,8 @@ class TestStop(unittest.TestCase):
             sock_path_obj = Path(sock_path)
             sock_path_obj.touch()
 
-            now_playing_dir = tmp_p / ".kaizen"
-            now_playing_dir.mkdir()
+            now_playing_dir = tmp_p / ".kaizen" / "dashboard"
+            now_playing_dir.mkdir(parents=True)
             now_playing = now_playing_dir / "now_playing.json"
             now_playing.write_text('{"title": "test"}')
 

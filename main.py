@@ -220,6 +220,9 @@ def _build_tts_backend(enable_tts: bool, voice: str, speed: float):
                 speed=speed,
                 output_device=output_device,
                 output_samplerate=output_sr,
+                fallback_factory=lambda: _build_kokoro_onnx_fallback(
+                    voice, speed, output_device, output_sr, "elevenlabs failed mid-session",
+                )[0],
             )
             voice_backends.elevenlabs_self_check(backend)
             return backend, (

@@ -827,6 +827,9 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
     PREBUFFER_MS = 0
     MODEL_ID = "eleven_flash_v2_5"
     DEFAULT_VOICE_ID = "onwK4e9ZLuTAKqWW03F9"  # Daniel — British, Jarvis-like
+    # After a mid-session failure, speak with the local fallback this long
+    # before trying ElevenLabs again (quota resets, network returns).
+    FALLBACK_RETRY_S = 600
 
     def __init__(
         self,
@@ -837,7 +840,10 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
         output_device: int | None = None,
         output_samplerate: int | None = None,
         client=None,
+        fallback_factory=None,
     ):
+        """fallback_factory: zero-arg callable returning a local backend (or
+        None), built lazily the first time ElevenLabs fails mid-session."""
         if client is None:
             if not _ELEVENLABS_AVAILABLE:
                 raise ImportError("elevenlabs not installed")
@@ -845,6 +851,9 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
         self._client = client
         self._voice_id = voice_id
         self._model_id = model_id
+        self._fallback_factory = fallback_factory
+        self._fallback = None
+        self._fallback_until = 0.0
         # ElevenLabs caps speed at ELEVENLABS_SPEED_MAX; clamp rather than error
         # so a Kokoro-tuned TTS_SPEED (e.g. 1.4) still works (capped at 1.2).
         super().__init__(
@@ -859,6 +868,30 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
         )
 
     def _synth_audio(self, text: str):
+        """ElevenLabs audio, or the local fallback's when ElevenLabs fails
+        before producing any audio (e.g. quota exhausted, network down)."""
+        if time.monotonic() >= self._fallback_until:
+            produced = False
+            try:
+                for audio in self._synth_elevenlabs(text):
+                    produced = True
+                    yield audio
+                return
+            except Exception as exc:
+                if produced or self._fallback_factory is None:
+                    raise
+                logger.warning(
+                    "ElevenLabs failed (%s); speaking with local Kokoro for %ds",
+                    exc, self.FALLBACK_RETRY_S,
+                )
+                self._fallback_until = time.monotonic() + self.FALLBACK_RETRY_S
+        if self._fallback is None:
+            self._fallback = self._fallback_factory()
+            if self._fallback is None:
+                raise RuntimeError("ElevenLabs unavailable and local Kokoro could not load")
+        yield from self._fallback._synth_audio(text)
+
+    def _synth_elevenlabs(self, text: str):
         audio_stream = self._client.text_to_speech.stream(
             voice_id=self._voice_id,
             text=text,
@@ -886,5 +919,5 @@ def elevenlabs_self_check(backend: "ElevenLabsTTSBackend") -> None:
     """Prove key + connectivity by synthesising one character and consuming
     the first streamed chunk. Raises on any failure so the caller can fall
     back to a local backend."""
-    for _ in backend._synth_audio("."):
+    for _ in backend._synth_elevenlabs("."):
         break

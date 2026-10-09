@@ -91,6 +91,8 @@ class ContainerManager:
     """Manages Docker containers for skill execution."""
 
     DEFAULT_TIMEOUT = 30
+
+    PIDS_LIMIT = 256  # Chromium (playwright-scraper) runs ~100+ threads
     DEFAULT_MEMORY_LIMIT = "256m"
     _MUSIC_CONTROL_ACTIONS = (
         "stop", "pause", "resume", "skip", "volume_up", "volume_down",
@@ -195,6 +197,7 @@ class ContainerManager:
 
         cmd = self._build_docker_cmd(
             image=image,
+            name=f"kaizen-{skill.name}-{uuid.uuid4().hex[:8]}",
             env_vars=self._collect_env_vars(config.get("env_passthrough", []), skill.tier),
             devices=config.get("devices", []),
             input_data=json.dumps(tool_input),
@@ -209,6 +212,7 @@ class ContainerManager:
     def _build_docker_cmd(
         self,
         image: str,
+        name: str | None = None,
         env_vars: dict[str, str] | None = None,
         devices: list[str] | None = None,
         input_data: str = "",
@@ -221,16 +225,29 @@ class ContainerManager:
 
         read_only and extra_tmpfs can be overridden per skill via config.yaml
         for skills that need a writable filesystem (e.g. browser automation).
+
+        Isolation: Docker's own bridge network (no access to the host's
+        loopback services or interfaces), every Linux capability dropped, the
+        host user's uid (never root; keeps scoped volumes writable), and a
+        process limit. `name` lets a timed-out call kill its container.
         """
+        uid = os.getuid()
+        user = f"{uid}:{os.getgid()}" if uid != 0 else "65534:65534"
         cmd = [
             "docker", "run",
             "--rm",
             "-i",
-            "--network=host",
+            "--network=bridge",
             f"--memory={memory or self.memory_limit}",
             "--cpus=1.0",
+            f"--pids-limit={self.PIDS_LIMIT}",
+            "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
+            "--user", user,
+            "-e", "HOME=/tmp",
         ]
+        if name:
+            cmd.extend(["--name", name])
 
         if read_only:
             cmd.append("--read-only")
@@ -253,6 +270,9 @@ class ContainerManager:
         if devices:
             for device in devices:
                 cmd.extend(["--device", device])
+            # Non-root user: join the host groups that own the devices (e.g. audio).
+            for gid in sorted(_device_gids(devices)):
+                cmd.extend(["--group-add", str(gid)])
 
         cmd.append(image)
         return cmd
@@ -305,6 +325,12 @@ class ContainerManager:
 
         except subprocess.TimeoutExpired:
             logger.warning("Container timed out after %ds", timeout)
+            # Killing the docker client doesn't stop the container; kill it by name.
+            if "--name" in cmd:
+                subprocess.run(
+                    ["docker", "kill", cmd[cmd.index("--name") + 1]],
+                    capture_output=True, timeout=15,
+                )
             return f"Skill timed out after {timeout} seconds"
 
         except Exception as e:
@@ -1453,3 +1479,18 @@ class ContainerManager:
             if val := os.environ.get(var):
                 env[var] = val
         return env
+
+
+def _device_gids(devices: list[str]) -> set[int]:
+    """Host group ids owning the given --device paths (and, for a directory
+    like /dev/snd, its entries)."""
+    gids = set()
+    for device in devices:
+        path = Path(device.split(":", 1)[0])
+        try:
+            paths = [path, *path.iterdir()] if path.is_dir() else [path]
+            gids.update(p.stat().st_gid for p in paths)
+        except OSError:
+            continue
+    gids.discard(0)
+    return gids

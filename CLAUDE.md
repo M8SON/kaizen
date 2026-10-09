@@ -198,7 +198,12 @@ CMD ["python", "app.py"]
 ### Container Security
 
 Default constraints:
-`--rm --memory=256m --cpus=1.0 --read-only --tmpfs=/tmp:size=64m --security-opt=no-new-privileges`
+`--rm --network=bridge --memory=256m --cpus=1.0 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges --user <host uid:gid> -e HOME=/tmp --read-only --tmpfs=/tmp:size=64m --name kaizen-<skill>-<id>`
+
+- `--network=bridge`: the container can reach the internet but not the host's loopback services, and can't sniff host traffic (raw sockets fail with all caps dropped). Other LAN hosts are still reachable through NAT.
+- `--user`: the host user's uid (65534 if Kaizen runs as root) — never root in the container, and scoped volumes stay writable. Device passthrough adds the devices' host groups (`--group-add`).
+- On timeout the container is `docker kill`ed by name (killing the client alone leaves it running).
+- Memory limits need the memory cgroup: Raspberry Pi OS boots with `cgroup_disable=memory`, so add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` or Docker silently ignores `--memory`.
 
 Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are supported via `config.yaml`.
 

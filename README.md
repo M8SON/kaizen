@@ -599,7 +599,7 @@ kaizen/
 └── .gitignore
 ```
 
-Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + app.py). Images are built only for `type: docker` skills, so the Dockerfiles in the native `dashboard` and `soundcloud` skills are unused.
+Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + app.py); `run.sh` builds an image for every one it finds. The native `dashboard` skill starts its `kaizen/dashboard` image itself; the `soundcloud` image is built but unused (playback runs on the host).
 
 ## Roadmap
 

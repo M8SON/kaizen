@@ -168,6 +168,11 @@ ok "venv active"
 
 if ! python3 -c "import anthropic, chromadb, dotenv, pyaudio, whisper, yaml" &>/dev/null 2>&1; then
     echo "  Installing dependencies..."
+    # CPU-only PyTorch first: the default Linux wheels pull ~2.8GB of CUDA
+    # libraries that Kaizen never uses (and the Pi has no NVIDIA GPU).
+    if [ "$(uname -s)" = "Linux" ]; then
+        pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+    fi
     pip install -r requirements.txt -q
     ok "dependencies installed"
 else

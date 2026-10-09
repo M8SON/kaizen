@@ -1,7 +1,6 @@
-image: kaizen/homebridge:latest
+type: process
 env_passthrough:
   - HOMEBRIDGE_URL
   - HOMEBRIDGE_USERNAME
   - HOMEBRIDGE_PASSWORD
 timeout_seconds: 20
-devices: []

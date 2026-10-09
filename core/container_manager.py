@@ -10,6 +10,7 @@ should not persist between calls.
 """
 
 import os
+import sys
 import re
 import json
 import random
@@ -180,6 +181,9 @@ class ContainerManager:
         if config.get("type") == "native":
             return self._execute_native_skill(skill, tool_input)
 
+        if config.get("type") == "process":
+            return self._execute_process_skill(skill, tool_input)
+
         if not self.docker_available:
             return f"Skill unavailable: {self.docker_error or 'Docker is unavailable'}"
 
@@ -253,8 +257,28 @@ class ContainerManager:
         cmd.append(image)
         return cmd
 
-    def _run_container(self, cmd: list[str], tool_input: dict, timeout: int) -> str:
-        """Run the container and return its stdout output."""
+    def _execute_process_skill(self, skill, tool_input: dict) -> str:
+        """Run a trusted bundled skill's scripts/app.py as a host subprocess:
+        the same SKILL_INPUT/stdout contract as Docker, without the ~0.4s
+        container start-up on the Pi. Only bundled skills may declare
+        type: process; the child gets a minimal env plus its env_passthrough."""
+        config = skill.execution_config
+        app = Path(skill.skill_dir) / "scripts" / "app.py"
+        if not app.is_file():
+            return f"Error: {app} not found for skill '{skill.name}'"
+        env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "TZ") if k in os.environ}
+        env.update(self._collect_env_vars(config.get("env_passthrough", []), skill.tier))
+        env["SKILL_INPUT"] = json.dumps(tool_input)
+        timeout = config.get("timeout_seconds", self.DEFAULT_TIMEOUT)
+        return self._run_container(
+            [sys.executable, str(app)], tool_input, timeout, env=env, cwd=str(app.parent),
+        )
+
+    def _run_container(
+        self, cmd: list[str], tool_input: dict, timeout: int,
+        env: dict | None = None, cwd: str | None = None,
+    ) -> str:
+        """Run the container (or process skill) and return its stdout output."""
         logger.info("Running container: %s", " ".join(cmd[-3:]))
         start_time = time.time()
 
@@ -264,6 +288,8 @@ class ContainerManager:
                 input=json.dumps(tool_input).encode(),
                 capture_output=True,
                 timeout=timeout,
+                env=env,
+                cwd=cwd,
             )
 
             elapsed = time.time() - start_time

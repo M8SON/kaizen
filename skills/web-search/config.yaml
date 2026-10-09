@@ -1,5 +1,4 @@
-image: kaizen/web-search:latest
+type: process
 env_passthrough:
   - BRAVE_API_KEY
 timeout_seconds: 15
-devices: []

@@ -143,8 +143,8 @@ class SkillValidator:
         policy = policy_for(tier)
 
         execution_type = config.get("type", "docker")
-        if execution_type not in {"docker", "native"}:
-            raise ValueError("config type must be 'docker' or 'native'")
+        if execution_type not in {"docker", "native", "process"}:
+            raise ValueError("config type must be 'docker', 'native' or 'process'")
 
         if execution_type == "native":
             if not policy.allow_native:
@@ -154,6 +154,14 @@ class SkillValidator:
                 )
             if "image" in config:
                 raise ValueError("native skills must not define an image")
+        elif execution_type == "process":
+            if not policy.allow_native:
+                raise ValueError(
+                    f"type: process is not allowed for tier {tier!r} "
+                    "(only bundled skills may run outside Docker)"
+                )
+            if "image" in config:
+                raise ValueError("process skills must not define an image")
         else:
             image = config.get("image")
             if not isinstance(image, str) or not image.strip():

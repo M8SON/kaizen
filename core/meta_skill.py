@@ -42,7 +42,7 @@ CLAUDE_CODE_ALLOWED_TOOLS = [
 ]
 # Entries a staged skill may contain at its top level.
 ALLOWED_STAGED_ENTRIES = {"SKILL.md", "config.yaml", "scripts", "references", "assets"}
-REFERENCE_SKILL = "web-search"
+REFERENCE_SKILL = "skill-tells-random"
 
 
 class MetaSkillExecutor:

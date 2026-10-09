@@ -24,7 +24,7 @@ The system uses two layers for extensibility:
 
 **Skill layer** — Lightweight `SKILL.md` files that teach Claude *when* and *how* to use a tool. These are just markdown with YAML metadata, costing zero memory until invoked. Compatible with OpenClaw's skill format, giving you access to community-built skills.
 
-**Container layer** — Docker skills execute inside a sandboxed container that spins up on demand and tears down after. This keeps the Pi's RAM free and provides security isolation between skills. Skills that need host integration (music playback, memory, scheduling, the dashboard, skill installation) run natively instead; only bundled skills may do so.
+**Container layer** — Docker skills execute inside a sandboxed container that spins up on demand and tears down after. Every skill you write by voice or install from elsewhere runs this way, as does the bundled web scraper (it renders untrusted pages). Trusted bundled skills skip the container to save ~0.4s per call on the Pi: simple ones (weather, web search, Homebridge) run as a plain subprocess, and ones that need host integration (music playback, memory, scheduling, the dashboard, skill installation) run natively.
 
 ## Features
 
@@ -50,7 +50,7 @@ The system uses two layers for extensibility:
 - Bundled skills for weather, Brave web search, a Playwright scraper for JS-heavy sites, Homebridge smart-home control, and voice-driven `.env` setup (`set-env-var`)
 - Modular skill system — agentskills.io-compatible (single-directory, kebab-case)
 - OpenClaw skill compatibility — use existing community skills
-- Docker-sandboxed execution — security by default, resource-capped containers; native execution path for host-integration skills
+- Docker-sandboxed execution for untrusted skills (voice-authored and imported); trusted bundled skills run directly for speed
 - Visual dashboard skill — voice-triggered monitor display with news/OSINT, weather, stocks, and music
 - R2-D2 style audio feedback — startup chime, thinking sound, pre-buffer cue, and an ack chime for direct commands
 - Run on boot via systemd — installer ships in-tree (see [Run on boot](#run-on-boot-raspberry-pi))
@@ -422,7 +422,7 @@ Key environment variables in `.env`:
 | `MEMPALACE_MEMORY_WING` | `wing_kaizen` | Target wing when mirroring saved memories |
 | `MEMPALACE_MEMORY_ROOM` | `assistant-memory` | Target room when mirroring saved memories |
 | `BRAVE_API_KEY` | — | Required for web search skill |
-| `OPENWEATHER_API_KEY` | — | Required for weather skill |
+| `OPENWEATHER_API_KEY` | — | Optional: adds current weather to the startup greeting (the weather skill uses Open-Meteo and needs no key) |
 | `HOMEBRIDGE_URL` / `_USERNAME` / `_PASSWORD` | — | Required for homebridge skill |
 | `WEATHER_LOCATION` | `New York,NY` | Default location for the dashboard weather panel |
 | `SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | — (redirect defaults to `http://localhost:8888/callback`) | Spotify Web API auth; set `SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback` and register the same URI in the Spotify app (Spotify deprecated `localhost` in 2025) |
@@ -555,7 +555,7 @@ kaizen/
 │   └── build_new_skill.sh         # Host-side Docker build for voice-installed skills
 ├── skills/                        # agentskills.io layout: SKILL.md + config.yaml + scripts/
 │   ├── dashboard/                 # Visual dashboard (native; serves scripts/app.py on the host)
-│   ├── homebridge/                # Smart home control via Homebridge UI X (Docker)
+│   ├── homebridge/                # Smart home control via Homebridge UI X (process)
 │   ├── install-skill/             # Voice skill installation (native)
 │   ├── music-control/             # Unified pause/resume/skip/volume across active source (native)
 │   ├── playwright-scraper/        # Headless Chromium scraper (Docker)
@@ -567,8 +567,8 @@ kaizen/
 │   ├── soundcloud/                # SoundCloud playback via yt-dlp + mpv — remixes, DJ sets, explicit SoundCloud requests (native)
 │   ├── spotify/                   # Spotify Connect playback + raspotify restart (native)
 │   ├── update-skill-hints/        # Self-improving skill routing hints (native)
-│   ├── weather/                   # OpenWeatherMap (Docker)
-│   └── web-search/                # Brave Search (Docker)
+│   ├── weather/                   # Open-Meteo forecast, no API key (process)
+│   └── web-search/                # Brave Search (process)
 ├── containers/
 │   └── base/                      # Shared Docker base (python:3.11-slim + requests)
 ├── tests/                         # pytest suite (run via scripts/test.sh; also runs in CI)

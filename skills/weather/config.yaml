@@ -1,3 +1,2 @@
-image: kaizen/weather:latest
+type: process
 timeout_seconds: 15
-devices: []

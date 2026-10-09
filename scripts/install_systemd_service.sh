@@ -93,7 +93,7 @@ fi
 echo ""
 systemctl --user --no-pager status kaizen.service || true
 echo ""
-echo "Live logs: journalctl --user -u kaizen -f"
+echo "Live logs: journalctl _SYSTEMD_USER_UNIT=kaizen.service -f"
 echo "Start:     systemctl --user start kaizen"
 echo "Stop:      systemctl --user stop kaizen"
 echo "Disable:   ./scripts/uninstall_systemd_service.sh"

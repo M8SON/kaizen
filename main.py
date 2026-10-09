@@ -656,13 +656,13 @@ def main():
     skill_paths = build_skill_paths(args.skills_dir)
 
     # Initialize orchestrator
-    from core.orchestrator import Orchestrator
+    from core.orchestrator import DEFAULT_CLAUDE_MODEL, Orchestrator
 
     archive = SessionArchive()
 
     orchestrator = Orchestrator(
         anthropic_api_key=api_key,
-        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
+        model=os.getenv("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL),
         skill_paths=skill_paths,
         container_memory=os.getenv("CONTAINER_MEMORY", "256m"),
         conversation_max_messages=int(os.getenv("CONVERSATION_MAX_MESSAGES", "24")),

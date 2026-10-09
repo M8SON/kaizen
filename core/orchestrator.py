@@ -31,6 +31,9 @@ from core.tool_loop import ToolLoop
 
 logger = logging.getLogger(__name__)
 
+# Main (Sonnet-tier) model; CLAUDE_MODEL overrides it in main.py.
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+
 
 def _parse_float(value: str | None, default: float) -> float:
     """Parse a float env var, falling back to default on invalid values."""
@@ -61,7 +64,7 @@ class Orchestrator:
     def __init__(
         self,
         anthropic_api_key: str,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = DEFAULT_CLAUDE_MODEL,
         skill_paths: list[Path] | None = None,
         container_memory: str = "256m",
         conversation_max_messages: int | None = 24,

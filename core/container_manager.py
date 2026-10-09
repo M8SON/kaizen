@@ -961,7 +961,7 @@ class ContainerManager:
         return f"Unhandled action: {action}"
 
     def _execute_spotify(self, tool_input: dict) -> str:
-        """Native handler for the spotify skill: play, play_genre, play_playlist."""
+        """Native handler for the spotify skill: play, play_genre, play_playlist, restart."""
         from core.spotify_auth import get_spotify_client, SpotifyAuthMissing
 
         action = str(tool_input.get("action") or "play").strip().lower()
@@ -995,6 +995,11 @@ class ContainerManager:
             except SpotifyAuthMissing as exc:
                 return f"Spotify isn't set up: {exc}"
             return self._spotify_play_playlist(sp, name)
+
+        if action == "restart":
+            if self._restart_spotify_connect():
+                return "Restarted the Spotify connection on the Pi."
+            return "Couldn't restart raspotify; check the sudoers rule on the Pi."
 
         return f"Unknown spotify action: {action!r}"
 

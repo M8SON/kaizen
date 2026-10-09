@@ -435,3 +435,18 @@ class SpotifyDeviceIdSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpotifyRestartAction(unittest.TestCase):
+    def test_restart_success(self):
+        m = _make_manager()
+        m._restart_spotify_connect.return_value = True
+        result = m._execute_spotify({"action": "restart"})
+        m._restart_spotify_connect.assert_called_once()
+        self.assertIn("restarted", result.lower())
+
+    def test_restart_failure_is_reported(self):
+        m = _make_manager()
+        result = m._execute_spotify({"action": "restart"})
+        m._restart_spotify_connect.assert_called_once()
+        self.assertIn("couldn't restart", result.lower())

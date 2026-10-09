@@ -18,6 +18,7 @@ This is the DEFAULT music source. Prefer it for:
 - **Play a specific track or artist** — "play [song]", "play [artist]" → `play`
 - **Play a genre, mood, or vibe** — "play some EDM", "put on country", "play chill music", "something to study to" → `play_genre` (continuous, shuffled playlist — `play` would stop after one song)
 - **Play a saved playlist** — "play my [name] playlist", "play my COUNTRY", "start my morning playlist"
+- **Restart Spotify** — "restart Spotify", "restart librespot", "Spotify isn't working", or a bare "restart" → `restart` (restarts the Pi's Spotify Connect service; use when the Pi doesn't show up as a device or playback silently fails)
 
 For DJ remixes, bootlegs, mashups, or specific SoundCloud tracks, use the `soundcloud` skill instead. Trigger words that indicate SoundCloud: "remix", "bootleg", "mashup", "DJ set", "live set", or "on SoundCloud".
 
@@ -28,8 +29,8 @@ type: object
 properties:
   action:
     type: string
-    enum: [play, play_genre, play_playlist]
-    description: play plays one specific song/artist match; play_genre plays a genre or mood continuously from a shuffled playlist; play_playlist plays a saved user playlist by name.
+    enum: [play, play_genre, play_playlist, restart]
+    description: play plays one specific song/artist match; play_genre plays a genre or mood continuously from a shuffled playlist; play_playlist plays a saved user playlist by name; restart restarts the Pi's Spotify Connect service (raspotify).
   query:
     type: string
     description: For play — song / artist query. For play_genre — the genre or mood (e.g. "edm", "country", "chill").
@@ -42,7 +43,7 @@ required:
 
 ## How to respond
 
-For `play`, confirm what's playing ("Now playing X by Y"). For `play_genre`, confirm the genre briefly ("Playing some EDM"). For `play_playlist`, confirm the playlist name. If setup is incomplete or the Connect device is unavailable, relay the error verbatim — it tells the user what to fix.
+For `play`, confirm what's playing ("Now playing X by Y"). For `play_genre`, confirm the genre briefly ("Playing some EDM"). For `play_playlist`, confirm the playlist name. For `restart`, say it's restarted and that the Pi should show up in Spotify again in a few seconds. If setup is incomplete or the Connect device is unavailable, relay the error verbatim — it tells the user what to fix.
 
 ## Setup (one-time)
 

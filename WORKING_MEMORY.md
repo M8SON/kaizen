@@ -13,12 +13,29 @@ Update this file when durable project context changes. Do not create overlapping
 ## What It Is
 
 - Modular Raspberry Pi voice assistant built around markdown-defined skills.
-- Main flow: Whisper STT -> TierRouter -> direct native skill or Claude Haiku micro tier or Claude Sonnet -> native or Docker skill execution -> Kokoro TTS.
+- Main flow: Whisper/Meta STT -> (optional TierRouter) -> Claude -> native, process, or Docker skill execution -> ElevenLabs or Kokoro ONNX TTS.
 
 ## Stable Decisions
 
-- Hardware-adjacent or host-integrated capabilities should be native, not Docker.
-- Stateless HTTP/text tools are good Docker skill candidates.
+- Skill execution follows trust, not convenience (Mason, 2026-10-09):
+  bundled (repo) skills are vetted and skip Docker — `type: native` for host
+  integration, `type: process` (scripts/app.py as a host subprocess, ~0.4s
+  faster per call on the Pi) for simple tools. Docker is for untrusted code:
+  authored (voice-written) and imported skills always, plus bundled skills that
+  handle untrusted content (`playwright-scraper`, the dashboard container).
+- Untrusted containers: bridge network, all caps dropped, host uid (non-root),
+  pids limit, killed by name on timeout; no reserved secrets
+  (`RESERVED_ENV_VARS`, `ANTHROPIC_*`). Dev-tier (symlinked) skills get
+  authored-tier checks.
+- Voice-authored skills: Claude Code runs in a throwaway staging dir with file
+  tools scoped to it (`Read/Write/Edit(./**)`, no Bash, `--setting-sources ""`,
+  minimal env), then the shared InstallPipeline validates at the authored tier
+  and installs to `~/.kaizen/authored/`.
+- Tool output is untrusted data: nothing in a skill result is acted on
+  automatically (the `## remember:` auto-filing was removed).
+- Local TTS is Kokoro ONNX only (PyTorch Kokoro removed 2026-10-09). ElevenLabs
+  falls back to it at startup and mid-session (10 min, then retries).
+- Linux installs use CPU-only PyTorch (CUDA wheels were ~2.8GB unused on the Pi).
 - Memory source of truth is the markdown vault at `~/.kaizen/memory`.
 - chromadb is the default semantic memory layer.
 - MemPalace is optional and not required for normal operation.
@@ -43,8 +60,9 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Skill Split
 
-- Native: `dashboard`, `soundcloud`, `install-skill`, `set-env-var`, `save-memory`, `schedule`, `recall-session`
-- Container: `weather`, `web-search`, `playwright-scraper`, `homebridge`, `skill-tells-random`
+- Native: `dashboard` (starts its own isolated container), `soundcloud`, `spotify`, `music-control`, `install-skill`, `set-env-var`, `save-memory`, `schedule`, `recall-session`, `update-skill-hints`
+- Process: `weather`, `web-search`, `homebridge`
+- Docker: `playwright-scraper`, `skill-tells-random` (the authoring reference)
 
 ## Current State
 
@@ -63,6 +81,14 @@ Update this file when durable project context changes. Do not create overlapping
   Kaizen selects `HybridWhisperBackend` when `/dev/hailo0`, `hailo_platform`, and `~/.kaizen/models/hailo-whisper/<variant>` assets are present.
 
 ## Recent Durable Milestones
+
+- 2026-10-09: security + footprint pass. Installed skills now actually load
+  (main.py was overriding the tier search paths); voice authoring sandboxed;
+  reserved secrets; container hardening; `type: process`; dashboard isolated;
+  set-env-var newline injection closed. Pi: nftables firewall in its own table
+  (`scripts/install_firewall.sh`, never `flush ruleset` — that wipes Docker's
+  rules), librespot zeroconf pinned to 4070, `cgroup_enable=memory` so container
+  memory limits apply, raspotify `Restart=on-failure`, venv 5.4GB -> 1.6GB.
 
 - 2026-09-25/26: Jev filler + canned answers shipped and validated on the Pi.
   - Jev (TypeSafe) classifies each voice transcript (~150-360ms on the Pi); a cached
@@ -253,7 +279,9 @@ Update this file when durable project context changes. Do not create overlapping
 ## Known Gaps
 
 - `ContainerManager` still uses post-construction injection for `_orchestrator` and `_meta_skill_executor`.
-- Dashboard end-to-end validation on real Pi hardware is still pending.
+- Dashboard end-to-end validation on real Pi hardware is still pending (the
+  isolated container was verified serving on 127.0.0.1:7860 on 2026-10-09; the
+  kiosk display path was not).
 - ~~Voice stop/pause control for music is still incomplete.~~ Closed 2026-04-25.
   soundcloud handler now supports play / stop / pause / resume / skip / volume_up / volume_down via mpv IPC. play queues 20 tracks; transport actions are regex-dispatched through TierRouter (no LLM round-trip).
 - Hailo-backed wake detection and full transcription are both implemented; on-device Pi validation is still pending.

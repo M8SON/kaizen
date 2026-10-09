@@ -623,6 +623,18 @@ def list_skills(orchestrator):
     print()
 
 
+def build_skill_paths(skills_dir: str | None) -> list[Path]:
+    """Bundled, authored and imported tier dirs (where the installers write).
+    SkillLoader assigns tiers by list position, so an extra --skills-dir goes
+    last and loads untrusted (imported tier)."""
+    from core.skill_loader import SkillLoader
+
+    paths = list(SkillLoader.DEFAULT_SEARCH_PATHS)
+    if skills_dir:
+        paths.append(Path(skills_dir))
+    return paths
+
+
 def main():
     parser = argparse.ArgumentParser(description="Kaizen")
     parser.add_argument(
@@ -651,13 +663,7 @@ def main():
         print("Error: ANTHROPIC_API_KEY not set. Add it to your .env file.")
         sys.exit(1)
 
-    # Build skill search paths
-    skill_paths = [
-        Path("./skills"),
-        Path.home() / ".kaizen" / "skills",
-    ]
-    if args.skills_dir:
-        skill_paths.insert(0, Path(args.skills_dir))
+    skill_paths = build_skill_paths(args.skills_dir)
 
     # Initialize orchestrator
     from core.orchestrator import Orchestrator

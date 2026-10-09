@@ -28,6 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import tempfile
+
+from core import meta_skill
 from core.meta_skill import MetaSkillExecutor, _derive_skill_name
 from core.skill_loader import SkillLoader
 
@@ -84,15 +87,12 @@ def _check_prerequisites() -> list[str]:
 
 
 def _cleanup(skill_name: str):
-    for path in [
-        REPO_ROOT / "skills" / skill_name,
-        REPO_ROOT / "containers" / skill_name,
-    ]:
-        if path.exists():
-            shutil.rmtree(path)
-            print(f"[cleanup] removed {path}")
+    path = meta_skill.AUTHORED_ROOT / skill_name
+    if path.exists():
+        shutil.rmtree(path)
+        print(f"[cleanup] removed {path}")
 
-    image_name = f"kaizen/{skill_name.replace('_', '-')}:latest"
+    image_name = f"kaizen/{skill_name}:latest"
     subprocess.run(
         ["docker", "image", "rm", "-f", image_name],
         capture_output=True,
@@ -122,6 +122,9 @@ def main() -> int:
             print(f"error: {error}", file=sys.stderr)
         return 2
 
+    # Install into a throwaway authored dir, not the real ~/.kaizen/authored.
+    meta_skill.AUTHORED_ROOT = Path(tempfile.mkdtemp(prefix="kaizen-authored-"))
+
     token = uuid.uuid4().hex[:8]
     description = args.description or (
         f"integration {token[:4]} {token[4:]} create a test skill that returns a short hello message"
@@ -133,12 +136,12 @@ def main() -> int:
     print(f"[info] expected skill name: {skill_name}")
 
     orchestrator = IntegrationOrchestrator(
-        skill_loader=SkillLoader(search_paths=[REPO_ROOT / "skills"])
+        skill_loader=SkillLoader(search_paths=[REPO_ROOT / "skills", meta_skill.AUTHORED_ROOT])
     )
     orchestrator.skill_loader.load_all()
 
     voice = FakeVoice(
-        ["confirm install", "confirm build", "confirm restart"]
+        ["confirm create", "confirm install", "confirm build", "confirm restart"]
     )
     executor = MetaSkillExecutor(voice=voice, orchestrator=orchestrator)
 

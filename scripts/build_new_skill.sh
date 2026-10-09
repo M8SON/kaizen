@@ -1,33 +1,25 @@
 #!/bin/bash
-# build_new_skill.sh <skill_name>
+# build_new_skill.sh <skill_dir> <image>
 #
-# Called by meta_skill.py after Dockerfile validation passes.
-# Builds the Docker image for a voice-installed skill.
-# This script holds the Docker socket access — meta_skill.py does not.
+# Called by core.install_pipeline.DockerBuilder after validation and the
+# user's confirmations. Builds <skill_dir>/scripts/Dockerfile as <image>.
+# This script holds the Docker socket access — Claude Code never does.
 
 set -e
 
-SKILL_NAME="$1"
-if [ -z "$SKILL_NAME" ]; then
-    echo "Usage: build_new_skill.sh <skill_name>" >&2
+SKILL_DIR="$1"
+IMAGE_NAME="$2"
+if [ -z "$SKILL_DIR" ] || [ -z "$IMAGE_NAME" ]; then
+    echo "Usage: build_new_skill.sh <skill_dir> <image>" >&2
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-CONTAINER_DIR="$REPO_ROOT/containers/$SKILL_NAME"
-IMAGE_NAME="kaizen/${SKILL_NAME//_/-}:latest"
-
-if [ ! -d "$CONTAINER_DIR" ]; then
-    echo "Container directory not found: $CONTAINER_DIR" >&2
-    exit 1
-fi
-
-if [ ! -f "$CONTAINER_DIR/Dockerfile" ]; then
-    echo "No Dockerfile found in $CONTAINER_DIR" >&2
+BUILD_DIR="$SKILL_DIR/scripts"
+if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
+    echo "No Dockerfile found in $BUILD_DIR" >&2
     exit 1
 fi
 
 echo "Building $IMAGE_NAME..."
-docker build -t "$IMAGE_NAME" "$CONTAINER_DIR"
+docker build -t "$IMAGE_NAME" "$BUILD_DIR"
 echo "Done: $IMAGE_NAME"

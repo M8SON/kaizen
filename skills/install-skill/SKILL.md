@@ -2,8 +2,8 @@
 name: install-skill
 description: Install a new skill — either author from scratch via Claude Code, or
   install an existing agentskills.io-compliant skill from a URL or filesystem path.
-  All installs go through three voice confirmation gates before the skill is built
-  and loaded.
+  New skills are written in a sandbox and every install goes through voice
+  confirmation gates before the skill is built and loaded.
 ---
 # Install Skill
 

@@ -1,20 +1,21 @@
 """
 Meta Skill Executor — allows users to install new Kaizen skills by voice.
 
-Claude Code runs as a restricted subprocess (no Docker socket, no core file access)
-and writes skill files into skills/<name>/ and containers/<name>/ only.
+Authoring ("add a skill that does X"):
+  1. "confirm create" — before Claude Code runs (it costs API calls).
+  2. Claude Code writes the skill into a throwaway staging directory outside
+     the repo. Its file tools are scoped to that directory, Bash is denied,
+     user/project Claude settings are ignored, and it gets a minimal
+     environment (no .env secrets beyond its own API key).
+  3. The staged tree is checked: expected entries only, no symlinks.
+  4. The shared InstallPipeline validates it at the *authored* tier (no
+     native execution, resource clamps, device allowlist, scoped volumes,
+     Dockerfile allowlist), speaks a permission summary, and walks the
+     "confirm install" / "confirm build" / "confirm restart" gates before
+     copying it into ~/.kaizen/authored/<name>, building and reloading.
 
-Three voice confirmation gates prevent accidental or injected installs:
-  1. "confirm install"  — before Claude Code writes any files
-  2. "confirm build"    — after files pass validation, before docker build
-  3. "confirm restart"  — after successful build, before skills hot-reload
-
-Security measures applied at each stage:
-  - Path traversal check: all written paths must resolve inside the two skill dirs
-  - Dockerfile validator: allowlist of safe instructions only
-  - env_passthrough audit: any requested API keys spoken aloud before build
-  - Git commit: every installed skill is committed for audit trail / reversibility
-  - Cleanup on any failure or cancellation
+Installing an existing skill from a URL or path uses the same pipeline at the
+imported tier.
 """
 
 import os
@@ -22,15 +23,26 @@ import re
 import shutil
 import logging
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
-import yaml
+from core.skill_policy import TIER_AUTHORED, TIER_IMPORTED
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+AUTHORED_ROOT = Path.home() / ".kaizen" / TIER_AUTHORED
+IMPORTED_ROOT = Path.home() / ".kaizen" / TIER_IMPORTED
 CONFIRM_TIMEOUT = 25  # seconds to wait for each spoken confirmation
+
+# Claude Code tool rules: file tools only inside its cwd (the staging dir).
+CLAUDE_CODE_ALLOWED_TOOLS = [
+    "Read(./**)", "Write(./**)", "Edit(./**)", "Glob", "Grep", "WebSearch", "WebFetch",
+]
+# Entries a staged skill may contain at its top level.
+ALLOWED_STAGED_ENTRIES = {"SKILL.md", "config.yaml", "scripts", "references", "assets"}
+REFERENCE_SKILL = "web-search"
 
 
 class MetaSkillExecutor:
@@ -41,33 +53,20 @@ class MetaSkillExecutor:
         orchestrator,
         *,
         run_claude_code=None,
-        trigger_build=None,
-        cleanup=None,
+        builder=None,
     ):
         self.voice = voice
         self.orchestrator = orchestrator
         self._run_claude_code = run_claude_code or _run_claude_code
-        self._trigger_build = trigger_build or _trigger_build
-        self._cleanup = cleanup or _cleanup
+        self._builder = builder
 
-    # ── URL install branch ────────────────────────────────────────────────
-
-    def _install_from_source(self, source: str) -> str:
-        """
-        Voice-driven install of an existing agentskills.io-format skill from
-        a URL or path. Routes through the shared InstallPipeline with a
-        voice-backed confirmer.
-        """
-        from pathlib import Path as _Path
-
-        from core.install_pipeline import (
-            DockerBuilder,
-            InstallDecision,
-            InstallPipeline,
-        )
-        from core.skill_policy import TIER_IMPORTED
+    def _install(self, staging: Path, *, tier: str, install_root: Path, from_url: str = ""):
+        """Run the shared InstallPipeline with voice gates.
+        Returns (decision, reloaded)."""
+        from core.install_pipeline import DockerBuilder, InstallPipeline
 
         outer = self
+        reloaded = []
 
         class VoiceConfirmer:
             def confirm_gate(self, gate: str, summary: str) -> bool:
@@ -78,25 +77,40 @@ class MetaSkillExecutor:
                 return outer._confirm(f"confirm {gate}")
 
         class OrchestratorReloader:
-            def __init__(self, orch):
-                self.orch = orch
-
             def reload(self):
-                self.orch.reload_skills()
+                outer.orchestrator.reload_skills()
+                reloaded.append(True)
 
-        install_root = _Path.home() / ".kaizen" / TIER_IMPORTED
         install_root.mkdir(parents=True, exist_ok=True)
         pipeline = InstallPipeline(
             confirmer=VoiceConfirmer(),
-            builder=DockerBuilder(),
-            reloader=OrchestratorReloader(self.orchestrator),
+            builder=self._builder or DockerBuilder(),
+            reloader=OrchestratorReloader(),
             install_root=install_root,
         )
+        if from_url:
+            decision = pipeline.install_from_url(from_url, tier=tier)
+        else:
+            decision = pipeline.install_from_path(staging, tier=tier)
+        return decision, bool(reloaded)
+
+    # ── URL install branch ────────────────────────────────────────────────
+
+    def _install_from_source(self, source: str) -> str:
+        """
+        Voice-driven install of an existing agentskills.io-format skill from
+        a URL or path, at the imported tier.
+        """
+        from core.install_pipeline import InstallDecision
 
         if source.startswith(("http://", "https://")):
-            decision = pipeline.install_from_url(source, tier=TIER_IMPORTED)
+            decision, _ = self._install(
+                Path(), tier=TIER_IMPORTED, install_root=IMPORTED_ROOT, from_url=source,
+            )
         else:
-            decision = pipeline.install_from_path(_Path(source), tier=TIER_IMPORTED)
+            decision, _ = self._install(
+                Path(source), tier=TIER_IMPORTED, install_root=IMPORTED_ROOT,
+            )
 
         if decision == InstallDecision.INSTALLED:
             return "Skill installed."
@@ -107,6 +121,8 @@ class MetaSkillExecutor:
     # ── Public entry point ────────────────────────────────────────────────
 
     def run(self, tool_input: dict) -> str:
+        from core.install_pipeline import InstallDecision
+
         source = tool_input.get("source", "").strip()
         if source:
             return self._install_from_source(source)
@@ -116,76 +132,42 @@ class MetaSkillExecutor:
             return "Please describe what the skill should do or provide a source URL."
 
         skill_name = _derive_skill_name(description)
-        spoken_name = skill_name.replace("_", " ")
+        spoken_name = skill_name.replace("-", " ")
 
-        # ── Phase 1: Confirm install ──────────────────────────────────────
         self._speak(
-            f"I will create a new skill called {spoken_name}. "
-            f"Say 'confirm install' to continue, or 'cancel' to stop."
+            f"I will write a new skill called {spoken_name}. "
+            f"Say 'confirm create' to continue, or 'cancel' to stop."
         )
-        if not self._confirm("confirm install"):
-            return "Skill installation cancelled."
+        if not self._confirm("confirm create"):
+            return "Skill creation cancelled."
 
-        self._speak("Writing skill files now. This may take a minute.")
-        success, output = self._run_claude_code(skill_name, description)
+        staging_root = Path(tempfile.mkdtemp(prefix="kaizen-author-"))
+        try:
+            skill_dir = staging_root / skill_name
+            skill_dir.mkdir()
+            self._speak("Writing skill files now. This may take a minute.")
+            success, output = self._run_claude_code(skill_name, description, skill_dir)
+            if not success:
+                return f"Skill file generation failed. {output[:150]}"
 
-        if not success:
-            self._cleanup(skill_name)
-            return f"Skill file generation failed. {output[:150]}"
+            problems = _check_staged_skill(skill_dir)
+            if problems:
+                logger.warning("Rejected authored skill %s: %s", skill_name, problems)
+                return "Security check failed: the generated skill contains unexpected files. Installation aborted."
 
-        # Path traversal check
-        ok, violations = _validate_paths(skill_name)
-        if not ok:
-            self._cleanup(skill_name)
-            logger.warning("Path traversal detected: %s", violations)
-            return "Security check failed: files written outside allowed directories. Installation aborted."
-
-        # Dockerfile validation
-        dockerfile = REPO_ROOT / "containers" / skill_name / "Dockerfile"
-        if dockerfile.exists():
-            from core.dockerfile_validator import validate, DockerfileValidationError
-            try:
-                validate(dockerfile)
-            except DockerfileValidationError as e:
-                self._cleanup(skill_name)
-                return f"Dockerfile validation failed: {e}. Installation aborted."
-
-        # ── Phase 2: Confirm build ────────────────────────────────────────
-        file_summary = _summarize_written_files(skill_name)
-        env_keys = _audit_env_passthrough(skill_name)
-        env_notice = ""
-        if env_keys:
-            env_notice = (
-                f" This skill requests access to these environment variables: "
-                f"{', '.join(env_keys)}. Add them to your .env file before using it."
+            decision, reloaded = self._install(
+                skill_dir, tier=TIER_AUTHORED, install_root=AUTHORED_ROOT,
             )
+        finally:
+            shutil.rmtree(staging_root, ignore_errors=True)
 
-        self._speak(
-            f"{file_summary}.{env_notice} "
-            f"Say 'confirm build' to build the Docker image, or 'cancel'."
-        )
-        if not self._confirm("confirm build"):
-            self._cleanup(skill_name)
-            return "Skill installation cancelled before build."
-
-        self._speak("Building Docker image. This may take a few minutes.")
-        build_ok, build_msg = self._trigger_build(skill_name)
-        if not build_ok:
-            self._cleanup(skill_name)
-            return f"Docker build failed. {build_msg[:150]}"
-
-        # ── Phase 3: Confirm restart ──────────────────────────────────────
-        self._speak(
-            f"Build complete. Say 'confirm restart' to load {spoken_name} now, or 'cancel'."
-        )
-        if not self._confirm("confirm restart"):
-            return (
-                f"Skill {spoken_name} is installed but not yet active. "
-                f"Restart Kaizen to load it."
-            )
-
-        self.orchestrator.reload_skills()
-        return f"Skill {spoken_name} is now active. You can use it right away."
+        if decision == InstallDecision.INSTALLED:
+            if reloaded:
+                return f"Skill {spoken_name} is now active."
+            return f"Skill {spoken_name} is installed. Restart Kaizen to load it."
+        if decision == InstallDecision.CANCELLED:
+            return "Skill install cancelled."
+        return "Skill install failed."
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -227,83 +209,103 @@ class MetaSkillExecutor:
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
 
+def _skill_roots() -> list[Path]:
+    return [REPO_ROOT / "skills", AUTHORED_ROOT, IMPORTED_ROOT]
+
+
 def _derive_skill_name(description: str) -> str:
-    """Derive a safe snake_case name from the description (first 3 meaningful words)."""
+    """Derive a kebab-case name from the description (first 3 meaningful words)."""
     words = re.sub(r"[^a-z0-9 ]", "", description.lower()).split()
     # Drop common filler words
     stop = {"a", "an", "the", "that", "can", "to", "for", "and", "or", "i", "me"}
     words = [w for w in words if w not in stop][:3]
-    name = "_".join(words)[:32] or "new_skill"
+    name = "-".join(words)[:32].strip("-") or "new-skill"
 
-    # Avoid collisions with existing skill directories
-    existing = {p.name for p in (REPO_ROOT / "skills").iterdir() if p.is_dir()}
+    # Avoid collisions with skills in any tier
+    existing = {
+        p.name for root in _skill_roots() if root.is_dir() for p in root.iterdir()
+    }
     base, i = name, 2
     while name in existing:
-        name = f"{base}_{i}"
+        name = f"{base}-{i}"
         i += 1
     return name
 
 
-def _run_claude_code(skill_name: str, description: str) -> tuple[bool, str]:
-    """
-    Invoke Claude Code as a restricted subprocess to write skill files.
+def _reference_skill_text() -> str:
+    """The bundled reference skill's files, inlined because Claude Code
+    cannot read outside its staging directory."""
+    ref = REPO_ROOT / "skills" / REFERENCE_SKILL
+    parts = []
+    for rel in ("SKILL.md", "config.yaml", "scripts/Dockerfile", "scripts/app.py"):
+        parts.append(f"--- {rel} ---\n{(ref / rel).read_text(encoding='utf-8')}")
+    return "\n".join(parts)
 
-    Allowed tools: Read, Write, Edit, Glob, Grep, WebSearch, WebFetch.
-    Bash is excluded so Claude Code cannot run shell commands.
-    The prompt explicitly restricts writes to skills/<name>/ and containers/<name>/.
-    """
-    image_name = f"kaizen/{skill_name.replace('_', '-')}:latest"
 
-    prompt = textwrap.dedent(f"""
-        You are implementing a new Kaizen skill named '{skill_name}'.
-        The user wants: {description}
-
-        First read CLAUDE.md to understand the project architecture.
-        Then study these reference files:
-          skills/web_search/SKILL.md
-          skills/web_search/config.yaml
-          containers/web_search/Dockerfile
-          containers/web_search/app.py
-
-        Create EXACTLY these four files (no others):
-          skills/{skill_name}/SKILL.md
-          skills/{skill_name}/config.yaml
-          containers/{skill_name}/Dockerfile
-          containers/{skill_name}/app.py
-
-        Rules you MUST follow:
-          - Dockerfile MUST start with: FROM kaizen/base:latest
-          - Only allowed Dockerfile instructions: FROM, RUN (pip install or apt-get only),
-            COPY (local files only), WORKDIR, CMD, ENV
-          - config.yaml must set image: {image_name}
-          - config.yaml network field: omit it (inherits host networking)
-          - Do NOT write any file outside skills/{skill_name}/ or containers/{skill_name}/
-          - Do NOT modify run.sh, main.py, any core/ file, or any existing skill
-    """).strip()
-
-    # Pass ANTHROPIC_API_KEY from .env if not already in environment
-    env = {**os.environ}
-    if "ANTHROPIC_API_KEY" not in env:
+def _claude_code_env() -> dict:
+    """Minimal environment for Claude Code: no .env secrets except its own key."""
+    env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "USER")
+           if k in os.environ}
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
         env_file = REPO_ROOT / ".env"
         if env_file.exists():
             for line in env_file.read_text().splitlines():
                 if line.startswith("ANTHROPIC_API_KEY="):
-                    env["ANTHROPIC_API_KEY"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
+    if api_key:
+        env["ANTHROPIC_API_KEY"] = api_key
+    return env
+
+
+def _run_claude_code(skill_name: str, description: str, skill_dir: Path) -> tuple[bool, str]:
+    """
+    Run Claude Code in skill_dir (a staging directory outside the repo) to
+    write the skill. File tools are scoped to skill_dir, Bash is denied, and
+    user/project settings are ignored so no wider allow rules apply.
+    """
+    image_name = f"kaizen/{skill_name}:latest"
+
+    prompt = textwrap.dedent(f"""
+        You are writing a new Kaizen voice-assistant skill named '{skill_name}'.
+        The user wants: {description}
+
+        Write these files in the current directory (relative paths only):
+          SKILL.md            — YAML frontmatter with name: {skill_name} and a
+                                description, then when-to-use, an Inputs JSON
+                                schema, and how to respond (spoken, no markdown)
+          config.yaml         — image: {image_name}, env_passthrough (only the
+                                API keys this skill needs), timeout_seconds
+          scripts/Dockerfile  — MUST start with: FROM kaizen/base:latest
+          scripts/app.py      — reads JSON from the SKILL_INPUT env var, prints
+                                the result to stdout
+
+        Rules:
+          - Only these Dockerfile instructions: FROM, RUN (pip install or apt-get
+            only), COPY (local files only), WORKDIR, CMD, ENV
+          - Do not set type: native, volumes, or devices in config.yaml
+          - Do not create any other files
+
+        Reference skill (an existing bundled skill to follow):
+        {{reference}}
+    """).strip().replace("{reference}", _reference_skill_text())
 
     try:
         result = subprocess.run(
             [
                 "claude",
-                "--allowedTools", "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch",
+                "--allowedTools", *CLAUDE_CODE_ALLOWED_TOOLS,
+                "--disallowedTools", "Bash",
+                "--setting-sources", "",
                 "--output-format", "text",
                 "-p", prompt,
             ],
-            cwd=str(REPO_ROOT),
+            cwd=str(skill_dir),
             capture_output=True,
             text=True,
             timeout=300,
-            env=env,
+            env=_claude_code_env(),
         )
         success = result.returncode == 0
         output = result.stdout.strip() if success else (result.stderr or result.stdout).strip()
@@ -314,92 +316,16 @@ def _run_claude_code(skill_name: str, description: str) -> tuple[bool, str]:
         return False, "Claude Code timed out after 5 minutes."
 
 
-def _validate_paths(skill_name: str) -> tuple[bool, list[str]]:
-    """
-    Verify every file written by Claude Code resolves strictly within
-    skills/<skill_name>/ or containers/<skill_name>/.
-    """
-    allowed = [
-        (REPO_ROOT / "skills" / skill_name).resolve(),
-        (REPO_ROOT / "containers" / skill_name).resolve(),
-    ]
-    violations = []
-
-    for root in allowed:
-        if not root.is_dir():
-            continue
-        for p in root.rglob("*"):
-            resolved = p.resolve()
-            if not any(_is_within_path(resolved, a) for a in allowed):
-                violations.append(str(p))
-            if p.is_symlink():
-                target = p.resolve()
-                if not any(_is_within_path(target, a) for a in allowed):
-                    violations.append(f"symlink {p} -> {target}")
-
-    return len(violations) == 0, violations
-
-
-def _is_within_path(path: Path, root: Path) -> bool:
-    """Return True when path is equal to root or contained beneath it."""
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def _audit_env_passthrough(skill_name: str) -> list[str]:
-    """Return any env_passthrough keys from the generated config.yaml."""
-    config_path = REPO_ROOT / "skills" / skill_name / "config.yaml"
-    if not config_path.exists():
-        return []
-    try:
-        data = yaml.safe_load(config_path.read_text()) or {}
-        return data.get("env_passthrough", []) or []
-    except yaml.YAMLError:
-        return []
-
-
-def _summarize_written_files(skill_name: str) -> str:
-    """Return a brief TTS-friendly summary of files written."""
-    files = []
-    for root in [
-        REPO_ROOT / "skills" / skill_name,
-        REPO_ROOT / "containers" / skill_name,
-    ]:
-        if root.is_dir():
-            files.extend(p.name for p in root.iterdir() if p.is_file())
-
-    if not files:
-        return "Skill files written"
-    if len(files) == 1:
-        return f"1 file written: {files[0]}"
-    return f"{len(files)} files written: {', '.join(files[:-1])}, and {files[-1]}"
-
-
-def _trigger_build(skill_name: str) -> tuple[bool, str]:
-    """Run build_new_skill.sh on the host to build the Docker image."""
-    script = REPO_ROOT / "scripts" / "build_new_skill.sh"
-    try:
-        result = subprocess.run(
-            ["bash", str(script), skill_name],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        output = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, output
-    except subprocess.TimeoutExpired:
-        return False, "Docker build timed out after 5 minutes."
-
-
-def _cleanup(skill_name: str):
-    """Remove partially-created skill files on failure or cancellation."""
-    for path in [
-        REPO_ROOT / "skills" / skill_name,
-        REPO_ROOT / "containers" / skill_name,
-    ]:
-        if path.exists():
-            shutil.rmtree(path)
-            logger.info("Cleaned up %s", path)
+def _check_staged_skill(skill_dir: Path) -> list[str]:
+    """Problems with a Claude-written skill tree: unexpected top-level
+    entries, symlinks, or anything that isn't a regular file or directory."""
+    problems = []
+    for entry in skill_dir.iterdir():
+        if entry.name not in ALLOWED_STAGED_ENTRIES:
+            problems.append(f"unexpected entry {entry.name}")
+    for p in skill_dir.rglob("*"):
+        if p.is_symlink():
+            problems.append(f"symlink {p.relative_to(skill_dir)}")
+        elif not (p.is_file() or p.is_dir()):
+            problems.append(f"special file {p.relative_to(skill_dir)}")
+    return problems

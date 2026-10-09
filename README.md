@@ -277,7 +277,7 @@ Just ask:
 
 > *"hey jarvis, add a skill that tells me a random joke"*
 
-Claude Code writes the skill files, validates them, and walks you through three confirmation steps before building and loading the skill. No coding required. See `skills/skill-tells-random/` for an example of a skill created this way.
+After you say "confirm create", Claude Code writes the skill in a sandboxed scratch folder (it can't read or change anything else, including `.env`). Kaizen then checks it at the restricted *authored* tier, reads you a summary of what it's allowed to access, and walks you through "confirm install", "confirm build", and "confirm restart" before saving it to `~/.kaizen/authored/` and loading it. No coding required. See `skills/skill-tells-random/` for an example skill.
 
 To port a community [OpenClaw](https://github.com/openclaw/openclaw) skill:
 

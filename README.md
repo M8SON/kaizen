@@ -428,6 +428,9 @@ Key environment variables in `.env`:
 | `SPOTIFY_DEVICE_NAME` | — | Pin playback to one Spotify Connect device (e.g. `Kaizen`) so multi-device accounts don't spill onto phone/TV |
 | `MIC_DEVICE` | `Array` | Case-insensitive substring match against the ALSA/PortAudio device name |
 | `SPEAKER_DEVICE` | `KT USB` | Same — set to `pipewire` on Pi 5 if running raspotify alongside Kaizen |
+| `FAST_MODEL` | `claude-haiku-5-5` | Model for Jev-confident simple skill turns (categories marked `fast: true`: weather, music, web search, memory); failures and refusals retry on `CLAUDE_MODEL`. Empty disables |
+| `FAST_MODEL_EFFORT` | `low` | Thinking effort for `FAST_MODEL` |
+| `JEV_FAST_CONFIDENCE` | `0.8` | Minimum Jev confidence to use `FAST_MODEL` |
 | `MICRO_TIER_ENABLED` | `false` | Enable Haiku micro-tier routing |
 | `MICRO_TIER_MODEL` | `claude-haiku-4-5` | Model used for the micro tier |
 | `CLAUDE_ONLY_SKILLS` | `install-skill` | Comma-separated skills always routed to Sonnet |

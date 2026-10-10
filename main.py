@@ -455,6 +455,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
                     intent_hint = None
                     prefetch = None
+                    fast = False
                     if category is not None and filler_classifier.is_answer(category):
                         # Canned full answer (identity, capabilities):
                         # play it instead of calling Claude. Missing
@@ -472,6 +473,8 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                         # so Claude only phrases the answer (one round).
                         prefetch = filler_classifier.prefetch_call(category)
                         intent_hint = filler_classifier.intent_hint(category, prefetch)
+                        # Confident simple skill request -> fast model (Haiku).
+                        fast = filler_classifier.fast_model(category)
 
                     if os.getenv("LLM_STREAM_TO_TTS", "true").lower() == "true":
                         # Fire the R2-D2 pre-buffer cue when the first delta
@@ -490,6 +493,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                                 on_ack_success=voice.play_ack_sound,
                                 intent_hint=intent_hint,
                                 prefetch=prefetch,
+                                fast=fast,
                             )
                             # Empty response = direct-tier ack chime was played
                             # in lieu of TTS; nothing to speak or print.
@@ -511,6 +515,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                             on_ack_success=voice.play_ack_sound,
                             intent_hint=intent_hint,
                             prefetch=prefetch,
+                            fast=fast,
                         )
                         if response:
                             print(f"Assistant: {response}\n")

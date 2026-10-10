@@ -29,6 +29,14 @@ CHECKPOINT_NUDGE = (
 
 logger = logging.getLogger(__name__)
 
+# Tool-use ids Kaizen assigns to tool-first prefetch calls (read-only tools run
+# before the model is called), so callers can tell them from model tool calls.
+PREFETCH_ID_PREFIX = "toolu_kaizen_"
+
+
+class ModelRefusal(Exception):
+    """The model declined the request (stop_reason "refusal")."""
+
 # Full request dumps (KAIZEN_LOG_REQUESTS=true). The Pi's journal is volatile,
 # so this file is how to see later exactly what was sent to Claude.
 REQUEST_LOG_PATH = Path.home() / ".kaizen" / "logs" / "claude_requests.jsonl"
@@ -49,6 +57,7 @@ class ToolLoop:
         max_rounds: int = 10,
         skill_selector=None,
         max_tokens: int = 4096,
+        output_config: dict | None = None,
     ):
         self.client = client
         self.model = model
@@ -62,6 +71,8 @@ class ToolLoop:
         # micro-tier (Haiku) where we want minimum input tokens.
         self.skill_selector = skill_selector
         self.max_tokens = max_tokens
+        # e.g. {"effort": "low"} for the fast model; None sends nothing.
+        self.output_config = output_config
 
     def run(
         self,
@@ -124,7 +135,7 @@ class ToolLoop:
         if prefetch and any(td["name"] == prefetch["tool"] for td in tool_definitions):
             block = {
                 "type": "tool_use",
-                "id": f"toolu_kaizen_{uuid.uuid4().hex[:20]}",
+                "id": f"{PREFETCH_ID_PREFIX}{uuid.uuid4().hex[:20]}",
                 "name": prefetch["tool"],
                 "input": prefetch["input"],
             }
@@ -169,6 +180,7 @@ class ToolLoop:
 
             self._log_request(rounds, round_system, tool_definitions)
 
+            extra = {"output_config": self.output_config} if self.output_config else {}
             with profiling.stage("llm_claude"):
                 if on_chunk is None:
                     response = self.client.messages.create(
@@ -177,6 +189,7 @@ class ToolLoop:
                         system=round_system,
                         messages=self.conversation_state.select_messages_for_prompt(),
                         tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
+                        **extra,
                     )
                 else:
                     # Stream text deltas to on_chunk as they arrive; the final
@@ -188,6 +201,7 @@ class ToolLoop:
                         system=round_system,
                         messages=self.conversation_state.select_messages_for_prompt(),
                         tools=tool_definitions if tool_definitions else anthropic.NOT_GIVEN,
+                        **extra,
                     ) as stream:
                         for delta in stream.text_stream:
                             try:
@@ -202,6 +216,9 @@ class ToolLoop:
                         response.content = [
                             self._sanitize_block(block) for block in response.content
                         ]
+
+            if response.stop_reason == "refusal":
+                raise ModelRefusal(f"{self.model} declined the request")
 
             if response.stop_reason == "tool_use":
                 tool_results = self._handle_tool_calls(response, tool_activity)
@@ -340,9 +357,9 @@ class ToolLoop:
         )
         flat = lambda s: " ".join(s.split())
         logger.info(
-            "Claude request (round %d): user=%r | history=%d msgs | tools(%d)=%s | "
+            "Claude request (round %d, %s): user=%r | history=%d msgs | tools(%d)=%s | "
             "system: %d cached chars + uncached %r",
-            round_n, last_user, len(messages), len(tool_names), ", ".join(tool_names),
+            round_n, self.model, last_user, len(messages), len(tool_names), ", ".join(tool_names),
             len(cached), flat(uncached),
         )
         if os.getenv("KAIZEN_LOG_REQUESTS", "false").lower() != "true":

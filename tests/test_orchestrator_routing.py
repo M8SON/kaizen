@@ -39,6 +39,7 @@ def _make_orchestrator_with_mocks():
     orch.system_prompt = "system prompt"
     orch._tier_router = None
     orch._micro_loop = None
+    orch._fast_loop = None
     orch.archive = None
     orch._current_session_id = None
     return orch

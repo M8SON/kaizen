@@ -6,6 +6,10 @@
 #              primitive so it can classify a transcript against this label.
 #   phrases  — one or more spoken lines; a random one is picked each turn so
 #              repeated fillers don't sound robotic.
+#   fast     — optional. When Jev picks this category with confidence >=
+#              JEV_FAST_CONFIDENCE (0.8), the turn goes to FAST_MODEL (Haiku)
+#              instead of the main model; a failure or refusal is retried on
+#              the main model. Only for simple skill categories.
 #   prefetch — optional {tool, input}. With TOOL_FIRST_ENABLED=true, Kaizen
 #              runs this tool itself as soon as Jev picks the category, and
 #              Claude only phrases the answer (skips one Claude round).
@@ -29,6 +33,7 @@
 
 categories:
   weather:
+    fast: true
     criteria: "Questions about the weather: current conditions, temperature, rain or snow, or the forecast for today, tomorrow or later in the week (for example \"what's the weather\", \"is it going to rain tomorrow\", \"how cold is it outside\", \"do I need a jacket\", \"what's it like this weekend\")."
     prefetch:
       tool: weather
@@ -40,18 +45,21 @@ categories:
       - "One moment, pulling up the forecast."
 
   music:
+    fast: true
     criteria: "Requests to play music or change what is playing: a song, artist, album, genre, mood or playlist, or skip, next track, resume, turn it up or down (for example \"play some jazz\", \"put on my workout playlist\", \"play something chill\", \"skip this song\", \"next\", \"resume the music\", \"turn it up\", \"louder\", \"volume down\"). Stopping or pausing is stop."
     phrases:
       - "On it."
       - "Sure thing, one second."
 
   web_search:
+    fast: true
     criteria: "Questions that need looking something up: facts, news, current events, prices, scores, people, places, or reading a web page (for example \"who won the game last night\", \"what's in the news today\", \"how tall is Mount Everest\", \"what's the price of bitcoin\", \"when does the hardware store close\", \"read me this article\")."
     phrases:
       - "Let me look that up."
       - "Give me a second to search for that."
 
   memory:
+    fast: true
     criteria: "Requests to remember, recall or forget a fact or preference, or questions about past conversations (for example \"remember that my dog is called Rex\", \"don't forget I prefer Celsius\", \"what's my sister's name\", \"what did we talk about yesterday\", \"forget my old address\")."
     phrases:
       - "Got it, one moment."

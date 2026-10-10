@@ -27,7 +27,7 @@ from core.memory_provider import MemoryProvider
 from core.prompt_builder import PromptBuilder
 from core.session_archive import SessionArchive
 from core.skill_selector import SkillSelector
-from core.tool_loop import ToolLoop
+from core.tool_loop import PREFETCH_ID_PREFIX, ToolLoop
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,22 @@ class Orchestrator:
             conversation_state=self.conversation_state,
             memory_provider=self.memory_provider,
         )
+
+        # Fast model for simple skill turns (Jev-confident weather, music, web
+        # search, memory): same prompt, history and tools, low effort.
+        # FAST_MODEL="" disables it; failures retry on the main model.
+        self._fast_loop = None
+        fast_model = os.getenv("FAST_MODEL", "claude-haiku-5-5").strip()
+        if fast_model:
+            self._fast_loop = ToolLoop(
+                client=self.client,
+                model=fast_model,
+                skill_loader=self.skill_loader,
+                container_manager=self.container_manager,
+                conversation_state=self.conversation_state,
+                memory_provider=self.memory_provider,
+                output_config={"effort": os.getenv("FAST_MODEL_EFFORT", "low")},
+            )
 
         # Startup context (date/time/weather) stored separately so
         # per-request prompts can append it after semantic skill selection.
@@ -312,6 +328,7 @@ class Orchestrator:
     def process_message(
         self, user_message: str, on_chunk=None, on_ack_success=None,
         intent_hint: str | None = None, prefetch: dict | None = None,
+        fast: bool = False,
     ) -> str:
         """Process a user message through the tiered intelligence stack.
 
@@ -328,6 +345,10 @@ class Orchestrator:
 
         prefetch: optional {"tool", "input"} run before the first LLM call
         (tool-first, see ToolLoop.run).
+
+        fast: run the turn on the fast model (FAST_MODEL) when one is
+        configured; the voice loop sets it for Jev-confident simple skill
+        requests. Failures are retried on the main model.
         """
         # Reuse the outer profiling.turn() if the voice loop already opened
         # one; otherwise own the scope so text-mode turns still produce a
@@ -337,7 +358,7 @@ class Orchestrator:
         with ctx:
             return self._process_message(
                 user_message, on_chunk=on_chunk, on_ack_success=on_ack_success,
-                intent_hint=intent_hint, prefetch=prefetch,
+                intent_hint=intent_hint, prefetch=prefetch, fast=fast,
             )
 
     def _split_with_hint(self, user_message: str, intent_hint: str | None) -> tuple[str, str]:
@@ -351,7 +372,15 @@ class Orchestrator:
     def _process_message(
         self, user_message: str, on_chunk=None, on_ack_success=None,
         intent_hint: str | None = None, prefetch: dict | None = None,
+        fast: bool = False,
     ) -> str:
+        if fast and self._fast_loop is not None:
+            stable, dynamic = self._split_with_hint(user_message, intent_hint)
+            return self._run_with_retry(
+                self._fast_loop, user_message, stable, dynamic,
+                on_chunk=on_chunk, prefetch=prefetch, intent_hint=intent_hint,
+            )
+
         if self._tier_router is None:
             stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(
@@ -392,36 +421,52 @@ class Orchestrator:
         micro_system_prompt = f"{self.prompt_builder.build_for_micro_tier()}\n\n{_now_line()}"
         if intent_hint:
             micro_system_prompt = f"{micro_system_prompt}\n\n{intent_hint}"
+        return self._run_with_retry(
+            self._micro_loop, user_message, micro_system_prompt, "",
+            on_chunk=on_chunk, prefetch=prefetch, intent_hint=intent_hint,
+        )
+
+    def _run_with_retry(
+        self, loop, user_message: str, system_prompt: str, system_dynamic: str,
+        *, on_chunk=None, prefetch: dict | None = None, intent_hint: str | None = None,
+    ) -> str:
+        """Run a turn on a cheaper loop (fast model / micro tier). If it raises
+        or the model declines, its partial turn is rolled back and the turn is
+        retried on the main model — but only if it hadn't yet run a tool or
+        spoken; otherwise a retry would repeat actions and speech. Prefetched
+        tool calls are read-only and don't count."""
         snapshot = self.conversation_state.snapshot()
         spoke = []
 
-        def micro_chunk(text):
+        def chunk(text):
             spoke.append(text)
             on_chunk(text)
 
         try:
-            return self._micro_loop.run(
+            return loop.run(
                 user_message=user_message,
-                system_prompt=micro_system_prompt,
+                system_prompt=system_prompt,
+                system_prompt_dynamic=system_dynamic,
                 archive_callback=self._archive_callback,
-                on_chunk=micro_chunk if on_chunk else None,
+                on_chunk=chunk if on_chunk else None,
                 prefetch=prefetch,
             )
         except Exception:
             ran_tool = any(
                 block.get("type") == "tool_use"
+                and not str(block.get("id", "")).startswith(PREFETCH_ID_PREFIX)
                 for msg in self.conversation_state.messages
                 if not any(msg is old for old in snapshot) and isinstance(msg.get("content"), list)
                 for block in msg["content"] if isinstance(block, dict)
             )
             self.conversation_state.restore(snapshot)
             if ran_tool or spoke:
-                logger.exception("Micro tier failed after acting — not retrying on Claude")
+                logger.exception("%s failed after acting — not retrying on %s", loop.model, self.model)
                 reply = "Sorry, something went wrong partway through that."
                 self.conversation_state.append_user_text(user_message)
                 self.conversation_state.append_assistant_content([{"type": "text", "text": reply}])
                 return reply
-            logger.exception("Micro tier failed → escalating to Claude")
+            logger.exception("%s failed → retrying on %s", loop.model, self.model)
             stable, dynamic = self._split_with_hint(user_message, intent_hint)
             return self.tool_loop.run(
                 user_message=user_message,

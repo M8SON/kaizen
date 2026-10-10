@@ -130,6 +130,17 @@ def load_min_confidence(path: Path) -> dict[str, float]:
     }
 
 
+def load_fast_categories(path: Path) -> set[str]:
+    """Categories marked `fast: true`: when Jev is confident in one, the turn
+    goes to the fast model (Haiku) instead of the main one. Never raises."""
+    try:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return set()
+    return {name for name, entry in (data.get("categories") or {}).items()
+            if (entry or {}).get("fast") is True}
+
+
 def load_prefetch(path: Path) -> dict[str, dict]:
     """Load {category: {"tool": str, "input": dict}} for categories with a
     `prefetch` block. Never raises; malformed entries are skipped."""
@@ -169,6 +180,8 @@ class FillerClassifier:
         prefetch: dict[str, dict] | None = None,
         actions: dict[str, str] | None = None,
         min_confidence: dict[str, float] | None = None,
+        fast_categories: set[str] | None = None,
+        fast_confidence: float = 0.8,
     ):
         self._categories = dict(categories)
         self._timeout_s = timeout_s
@@ -177,6 +190,8 @@ class FillerClassifier:
         self._answer_confidence_threshold = answer_confidence_threshold
         self.last_confidence: float | None = None
         self._prefetch = dict(prefetch or {})
+        self._fast_categories = set(fast_categories or ())
+        self._fast_confidence = fast_confidence
         self._actions = dict(actions or {})
         self._min_confidence = dict(min_confidence or {})
         self._client = client
@@ -213,6 +228,15 @@ class FillerClassifier:
                 "answer from that result, calling a tool only for what it doesn't cover."
             )
         return hint
+
+    def fast_model(self, category: str | None) -> bool:
+        """True when this turn should go to the fast model: a `fast: true`
+        category classified at >= fast_confidence."""
+        return (
+            category in self._fast_categories
+            and self.last_confidence is not None
+            and self.last_confidence >= self._fast_confidence
+        )
 
     def prefetch_call(self, category: str) -> dict | None:
         """The tool call to run before Claude for `category`, with {location}
@@ -426,4 +450,6 @@ def build_filler_classifier() -> "FillerClassifier | None":
             if os.getenv("TOOL_FIRST_ENABLED", "false").strip().lower() == "true"
             else None
         ),
+        fast_categories=load_fast_categories(DEFAULT_PATTERNS_PATH),
+        fast_confidence=float(os.getenv("JEV_FAST_CONFIDENCE", "0.8")),
     )

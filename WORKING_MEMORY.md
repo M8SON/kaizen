@@ -39,6 +39,11 @@ Update this file when durable project context changes. Do not create overlapping
 - Local TTS is Kokoro ONNX only (PyTorch Kokoro removed 2026-10-09). ElevenLabs
   falls back to it at startup and mid-session (10 min, then retries).
 - Linux installs use CPU-only PyTorch (CUDA wheels were ~2.8GB unused on the Pi).
+- Model split (Mason, 2026-10-10): Jev-confident (>= 0.8) weather/music/web
+  search/memory turns run on Haiku 5.5 (effort low, same prompt and tools);
+  everything else on Sonnet. Jev tool *narrowing* was tested and rejected:
+  narrowed prompts lose prompt caching, so it saved ~nothing. Cache TTL is 1h.
+  Experiments: `docs/experiments/2026-10-10-*.md`.
 - Skill guidance reaches Claude only through cached tool definitions
   (description + `## Tool notes` + `## Inputs`); SKILL.md bodies are not in the
   system prompt (2026-10-10). Uncached input per request fell ~2,500 -> ~100

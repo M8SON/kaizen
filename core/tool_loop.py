@@ -6,8 +6,12 @@ one user message.
 """
 
 import json
+import os
+import re
 import logging
+import time
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import anthropic
@@ -24,6 +28,11 @@ CHECKPOINT_NUDGE = (
 )
 
 logger = logging.getLogger(__name__)
+
+# Full request dumps (KAIZEN_LOG_REQUESTS=true). The Pi's journal is volatile,
+# so this file is how to see later exactly what was sent to Claude.
+REQUEST_LOG_PATH = Path.home() / ".kaizen" / "logs" / "claude_requests.jsonl"
+REQUEST_LOG_MAX_BYTES = 5 * 1024 * 1024
 
 
 class ToolLoop:
@@ -99,6 +108,7 @@ class ToolLoop:
             dynamic_block = self._augment_dynamic_block(
                 dynamic_text=system_prompt_dynamic,
                 user_message=user_message,
+                stable_text=system_prompt,
             )
             effective_system_prompt = system_prompt  # unused in cached path
         else:
@@ -156,6 +166,8 @@ class ToolLoop:
                     )
                 else:
                     round_system = effective_system_prompt
+
+            self._log_request(rounds, round_system, tool_definitions)
 
             with profiling.stage("llm_claude"):
                 if on_chunk is None:
@@ -277,7 +289,9 @@ class ToolLoop:
         if not self.memory_provider:
             return system_prompt
 
-        recalled = self.memory_provider.recall_for_message(user_message)
+        recalled = self._new_recall(
+            self.memory_provider.recall_for_message(user_message), system_prompt
+        )
         if not recalled:
             return system_prompt
 
@@ -289,11 +303,16 @@ class ToolLoop:
             f"{recalled}\n"
         )
 
-    def _augment_dynamic_block(self, dynamic_text: str, user_message: str) -> str:
-        """Append memory recall to the (non-cached) dynamic block."""
+    def _augment_dynamic_block(
+        self, dynamic_text: str, user_message: str, stable_text: str = "",
+    ) -> str:
+        """Append memory recall to the (non-cached) dynamic block, minus
+        anything the cached stable prompt already contains."""
         if not self.memory_provider:
             return dynamic_text
-        recalled = self.memory_provider.recall_for_message(user_message)
+        recalled = self._new_recall(
+            self.memory_provider.recall_for_message(user_message), stable_text
+        )
         if not recalled:
             return dynamic_text
         return (
@@ -303,6 +322,58 @@ class ToolLoop:
             "before making claims about prior preferences, projects, or past events.\n"
             f"{recalled}\n"
         )
+
+    def _log_request(self, round_n: int, system, tool_definitions: list) -> None:
+        """One readable INFO line per Claude request — the latest user text as
+        sent, the tools, and the per-turn (uncached) system text — plus the
+        full request in REQUEST_LOG_PATH when KAIZEN_LOG_REQUESTS=true."""
+        messages = self.conversation_state.select_messages_for_prompt()
+        tool_names = [t.get("name", "?") for t in tool_definitions or []]
+        if isinstance(system, list):
+            cached = "".join(b["text"] for b in system if b.get("cache_control"))
+            uncached = "".join(b["text"] for b in system if not b.get("cache_control"))
+        else:
+            cached, uncached = "", system
+        last_user = next(
+            (m["content"] for m in reversed(messages)
+             if m["role"] == "user" and isinstance(m["content"], str)), "",
+        )
+        flat = lambda s: " ".join(s.split())
+        logger.info(
+            "Claude request (round %d): user=%r | history=%d msgs | tools(%d)=%s | "
+            "system: %d cached chars + uncached %r",
+            round_n, last_user, len(messages), len(tool_names), ", ".join(tool_names),
+            len(cached), flat(uncached),
+        )
+        if os.getenv("KAIZEN_LOG_REQUESTS", "false").lower() != "true":
+            return
+        record = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "round": round_n, "model": self.model,
+            "max_tokens": self.max_tokens, "tools": tool_names,
+            "system": system if isinstance(system, list) else [{"type": "text", "text": system}],
+            "messages": messages,
+        }
+        try:
+            REQUEST_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            if REQUEST_LOG_PATH.exists() and REQUEST_LOG_PATH.stat().st_size > REQUEST_LOG_MAX_BYTES:
+                REQUEST_LOG_PATH.replace(REQUEST_LOG_PATH.with_suffix(".jsonl.1"))
+            with REQUEST_LOG_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.warning("Could not write request log: %s", exc)
+
+    @staticmethod
+    def _new_recall(recalled: str, prompt: str) -> str:
+        """Recalled memory paragraphs ("topic", blank line, "content") that
+        are not already in the prompt as a paragraph or a line — the saved
+        memories in the cached prompt would otherwise be sent a second time."""
+        if not recalled:
+            return ""
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", prompt)]
+        have = set(paragraphs) | {line.strip() for line in prompt.splitlines()}
+        fresh = [p.strip() for p in re.split(r"\n\s*\n", recalled)
+                 if p.strip() and p.strip() not in have]
+        return "\n\n".join(fresh)
 
     @staticmethod
     def _build_cached_system(stable: str, dynamic: str) -> list[dict]:

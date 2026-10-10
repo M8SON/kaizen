@@ -158,14 +158,15 @@ class AnswerCategoryTests(unittest.TestCase):
         self.assertIn("-> Claude (below answer threshold 0.85)", joined)
         self.assertIn("-> skip (below 0.60)", joined)
 
-    def test_intent_hint_names_category_criteria_and_confidence(self):
+    def test_intent_hint_names_category_and_confidence_briefly(self):
         clf = self._clf("weather", 0.92)
         clf.classify("to the weather today")
         hint = clf.intent_hint("weather")
-        self.assertIn("'weather'", hint)
-        self.assertIn("Weather.", hint)
+        self.assertIn("weather", hint)
         self.assertIn("0.92", hint)
-        self.assertIn("instead of asking", hint)
+        self.assertIn("act on", hint)
+        self.assertNotIn("Weather.", hint)  # category criteria are not repeated
+        self.assertLess(len(hint), 260)
 
     def test_real_config_prefetches_weather_with_location_template(self):
         self.assertEqual(

@@ -202,19 +202,15 @@ class FillerClassifier:
     def intent_hint(self, category: str, prefetch: dict | None = None) -> str:
         """System-prompt note telling Claude what Jev classified this turn as,
         so a clipped or misheard transcript doesn't force a clarifying question."""
-        conf = "" if self.last_confidence is None else f", confidence {self.last_confidence:.2f}"
+        conf = "" if self.last_confidence is None else f" ({self.last_confidence:.2f})"
         hint = (
-            f"Voice intent classifier: this request was classified as '{category}' "
-            f"({self._categories.get(category, '')}{conf}). The transcript comes from speech "
-            "recognition and may be clipped or misheard. If it is unclear but consistent with "
-            "this intent, act on the intent instead of asking a clarifying question. Still "
-            "confirm anything with side effects."
+            f"Voice intent: {category}{conf}. If the transcript is unclear but fits this "
+            "intent, act on it; still confirm anything with side effects."
         )
         if prefetch:
             hint += (
-                f" Kaizen already ran the {prefetch['tool']} tool with {prefetch['input']} for "
-                "this request; answer from that result. Only call a tool again if the user asked "
-                "about something that result doesn't cover (e.g. another place or day)."
+                f" Kaizen already ran the {prefetch['tool']} tool with {prefetch['input']}; "
+                "answer from that result, calling a tool only for what it doesn't cover."
             )
         return hint
 

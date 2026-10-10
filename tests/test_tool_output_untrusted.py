@@ -21,7 +21,7 @@ def test_remember_block_in_tool_output_is_not_saved():
     container_manager = MagicMock()
     container_manager.execute_skill.return_value = injected
     memory = MagicMock()
-    memory.recall.return_value = ""
+    memory.recall_for_message.return_value = ""
 
     loop = ToolLoop(
         client=client, model="claude-test", skill_loader=skill_loader,

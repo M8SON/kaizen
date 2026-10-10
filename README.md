@@ -440,6 +440,7 @@ Key environment variables in `.env`:
 | `THINKING_SOUND_ENABLED` | `true` | R2-D2 warble the instant you stop talking |
 | `PREBUFFER_CUE_ENABLED` | `true` | Looping R2-D2 bloops from the first streamed LLM text until first TTS audio |
 | `KAIZEN_PROFILE` | `false` | Log a per-turn `[TIMING-SUMMARY]` line with stage timings |
+| `KAIZEN_LOG_REQUESTS` | `false` | Also append every Claude request in full (system text, messages, tool names) to `~/.kaizen/logs/claude_requests.jsonl` (rotates at 5 MB). A one-line summary of each request is always logged |
 
 ## Power Consumption
 

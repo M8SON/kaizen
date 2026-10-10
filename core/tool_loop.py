@@ -383,7 +383,10 @@ class ToolLoop:
             {
                 "type": "text",
                 "text": stable,
-                "cache_control": {"type": "ephemeral"},
+                # 1-hour TTL: voice requests often come 5-60 min apart
+                # (57 of 360 archived gaps), which would expire a 5-minute
+                # entry; the 2x write pays off from the third request.
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
             }
         ]
         if dynamic:

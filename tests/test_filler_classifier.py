@@ -171,7 +171,7 @@ class AnswerCategoryTests(unittest.TestCase):
     def test_real_config_prefetches_weather_with_location_template(self):
         self.assertEqual(
             load_prefetch(DEFAULT_PATTERNS_PATH)["weather"],
-            {"tool": "weather", "input": {"query": "{location}"}},
+            {"tool": "weather", "input": {"query": "{location}", "days": 2}},
         )
 
     def test_prefetch_call_resolves_location(self):

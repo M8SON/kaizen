@@ -29,47 +29,48 @@
 
 categories:
   weather:
-    criteria: "Questions about current or forecast weather, temperature, rain, snow, or other conditions."
+    criteria: "Questions about the weather: current conditions, temperature, rain or snow, or the forecast for today, tomorrow or later in the week (for example \"what's the weather\", \"is it going to rain tomorrow\", \"how cold is it outside\", \"do I need a jacket\", \"what's it like this weekend\")."
     prefetch:
       tool: weather
       input:
         query: "{location}"
+        days: 2
     phrases:
       - "Let me check the weather for you."
       - "One moment, pulling up the forecast."
 
   music:
-    criteria: "Requests to play, pause, skip, or otherwise control music or audio."
+    criteria: "Requests to play music or change what is playing: a song, artist, album, genre, mood or playlist, or skip, next track, resume, turn it up or down (for example \"play some jazz\", \"put on my workout playlist\", \"play something chill\", \"skip this song\", \"next\", \"resume the music\", \"turn it up\", \"louder\", \"volume down\"). Stopping or pausing is stop."
     phrases:
       - "On it."
       - "Sure thing, one second."
 
   web_search:
-    criteria: "General knowledge questions or requests to look something up online."
+    criteria: "Questions that need looking something up: facts, news, current events, prices, scores, people, places, or reading a web page (for example \"who won the game last night\", \"what's in the news today\", \"how tall is Mount Everest\", \"what's the price of bitcoin\", \"when does the hardware store close\", \"read me this article\")."
     phrases:
       - "Let me look that up."
       - "Give me a second to search for that."
 
   memory:
-    criteria: "Requests to remember, recall, or forget something."
+    criteria: "Requests to remember, recall or forget a fact or preference, or questions about past conversations (for example \"remember that my dog is called Rex\", \"don't forget I prefer Celsius\", \"what's my sister's name\", \"what did we talk about yesterday\", \"forget my old address\")."
     phrases:
       - "Got it, one moment."
       - "Sure, let me pull that up."
 
   skill_install:
-    criteria: "Requests to add, build, or install a new skill or capability."
+    criteria: "Requests to add, build or install a new skill or capability, or giving an API key for one (for example \"add a skill that tells me the tides\", \"can you learn to track packages\", \"install the skill from this link\", \"here is my API key\")."
     phrases:
       - "Let's set that up — one moment."
       - "Okay, give me a second to build that."
 
   schedule:
-    criteria: "Requests about calendars, schedules, reminders, or recurring tasks."
+    criteria: "Requests to set up, list, change or cancel recurring tasks or reminders (for example \"every morning at 8 tell me the weather\", \"what do I have scheduled\", \"cancel my morning briefing\", \"move my briefing to 9\")."
     phrases:
       - "Let me check your schedule."
       - "One moment, checking your calendar."
 
   smalltalk:
-    criteria: "Greetings, chit-chat, or requests with no specific task."
+    criteria: "Greetings, thanks, chit-chat, jokes, opinions or comments with no task to look up or perform (for example \"hello\", \"thanks Jarvis\", \"how are you\", \"tell me a joke\", \"what do you think about pizza\", \"that's cool\")."
     phrases:
       - "Mm-hm, one sec."
 

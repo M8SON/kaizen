@@ -73,7 +73,7 @@ def parse_location(query: str) -> tuple[str, str | None]:
     return query, None
 
 
-def get_weather(location: str) -> str:
+def get_weather(location: str, days: int = 7) -> str:
     try:
         city, state = parse_location(location)
         geo_resp = requests.get(
@@ -109,7 +109,7 @@ def get_weather(location: str) -> str:
                 "windspeed_unit": "mph",
                 "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
                 "timezone": "auto",
-                "forecast_days": 7,
+                "forecast_days": max(1, min(7, int(days))),
             },
             timeout=10,
         )
@@ -177,14 +177,16 @@ def main():
     try:
         data = json.loads(raw_input)
         query = data.get("query", "")
+        days = data.get("days", 7)
     except json.JSONDecodeError:
         query = raw_input.strip()
+        days = 7
 
     if not query:
         print("No location provided")
         sys.exit(1)
 
-    print(get_weather(query))
+    print(get_weather(query, days))
 
 
 if __name__ == "__main__":

@@ -67,7 +67,8 @@ class TestToolLoopCaching(unittest.TestCase):
         stable_block, dynamic_block = system
         self.assertEqual(stable_block["type"], "text")
         self.assertEqual(stable_block["text"], "STABLE PREFIX")
-        self.assertEqual(stable_block["cache_control"], {"type": "ephemeral"})
+        # 1-hour TTL: 57 of 360 archived request gaps were 5-60 minutes.
+        self.assertEqual(stable_block["cache_control"], {"type": "ephemeral", "ttl": "1h"})
 
         self.assertEqual(dynamic_block["type"], "text")
         self.assertEqual(dynamic_block["text"], "DYNAMIC SUFFIX")

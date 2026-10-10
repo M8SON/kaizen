@@ -95,11 +95,19 @@ class SkillValidator:
             return None, raw
         return frontmatter, match.group(2)
 
+    TOOL_NOTES_PATTERN = r"^##\s*Tool notes\s*\n(.*?)(?=^##\s|\Z)"
+
     def build_tool_definition(self, name: str, description: str, body: str) -> dict:
-        """Build a Claude-compatible tool definition from skill metadata."""
+        """Build a Claude-compatible tool definition from skill metadata.
+
+        This is all Claude sees of a skill: the SKILL.md body is not sent.
+        An optional `## Tool notes` section (routing rules, confirmation
+        protocols) is appended to the description."""
+        match = re.search(self.TOOL_NOTES_PATTERN, body, re.DOTALL | re.MULTILINE)
+        notes = match.group(1).strip() if match else ""
         return {
             "name": name,
-            "description": description,
+            "description": f"{description}\n\n{notes}" if notes else description,
             "input_schema": self.extract_input_schema(body),
         }
 

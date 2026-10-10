@@ -24,6 +24,10 @@ to an agentskills.io-format skill:
 
 Do NOT use this for general questions or tasks the assistant can already do.
 
+## Tool notes
+
+Use description to write a new skill, source for a URL or path. Tell the user you will walk them through spoken confirmations before anything is built.
+
 ## Inputs
 
 ```yaml

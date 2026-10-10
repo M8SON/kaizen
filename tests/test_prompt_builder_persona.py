@@ -72,7 +72,7 @@ class TestPromptBuilderPersona(unittest.TestCase):
 
     def test_build_emits_persona_in_full_prompt(self):
         with _WakeEnv(WAKE_WORD_MODEL="alexa"):
-            pb = PromptBuilder(max_skill_tokens=None)
+            pb = PromptBuilder()
         prompt = pb.build(skills={}, skipped_skills={})
         self.assertIn("Your name is Alexa.", prompt)
 
@@ -139,7 +139,8 @@ class TestBuildForGreeting(unittest.TestCase):
             pb = PromptBuilder(memory_provider=memory)
         full = pb.build(skills={"weather": skill}, skipped_skills={})
         lean = pb.build_for_greeting("It is Friday.")
-        self.assertLess(len(lean), len(full) // 3)
+        self.assertLess(len(lean), len(full))
+        self.assertNotIn("Y" * 100, lean)
 
 
 if __name__ == "__main__":

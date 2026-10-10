@@ -36,6 +36,10 @@ Check memory for location and news preferences. Use them silently if found. Ask 
 - Climate → `"climate environment"`
 - User specifies a topic → build a precise query string for it
 
+## Tool notes
+
+Check remembered location and news preferences first; ask only if missing, then save them with save-memory (topics "location", "dashboard news preferences"). Panels: news, weather, stocks, music; all four when unspecified. Set news_sources only for named feeds (osint, world, local_vt); for a specific topic use a precise gdelt_queries entry and omit news_sources. Calling open again updates an open dashboard. Keep replies short; the user is looking at the screen.
+
 ## Inputs
 
 ```yaml

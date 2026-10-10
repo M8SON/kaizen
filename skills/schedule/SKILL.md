@@ -51,3 +51,34 @@ Input: `{"action": "modify", "id_or_label": "morning briefing", "cron": "0 9 * *
 ## Confirmation rule
 
 For create, cancel, and modify: always read the resolved action back to the user and wait for a "confirm" before calling the tool. This mirrors the `set_env_var` and `save_memory` patterns.
+
+## Tool notes
+
+For recurring tasks only (no one-shot reminders yet). Convert the timing to a 5-field cron. Delivery: immediate for "remind me" or "right away", silent for "silently" or "in the background", otherwise next_wake. For create, cancel and modify, read the resolved action back in plain English and call only after the user says confirm; if several schedules match, ask which one.
+
+## Inputs
+
+```yaml
+type: object
+properties:
+  action:
+    type: string
+    enum: [create, list, cancel, modify]
+  cron:
+    type: string
+    description: 5-field cron expression, e.g. "0 8 * * *" (create; modify when changing the time)
+  prompt:
+    type: string
+    description: The natural-language request to run when it fires (create)
+  delivery:
+    type: string
+    enum: [immediate, next_wake, silent]
+  label:
+    type: string
+    description: Short, voice-friendly name (optional)
+  id_or_label:
+    type: string
+    description: Which schedule to cancel or modify
+required:
+  - action
+```

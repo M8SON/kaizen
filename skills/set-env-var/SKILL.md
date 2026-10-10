@@ -23,6 +23,10 @@ Before invoking this tool you MUST complete both confirmation steps conversation
 
 If the user says no at either step, ask them to repeat the key.
 
+## Tool notes
+
+Never call this immediately. First read the value back in short groups ("I heard A-B-C-1-2-3, is that right?"); after the user confirms, ask "Shall I save that now?"; call only after both confirmations. After saving, do not read the value aloud.
+
 ## Inputs
 
 ```yaml

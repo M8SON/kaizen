@@ -21,3 +21,25 @@ Input (JSON via SKILL_INPUT):
 
 Output: dated snippets ordered by relevance, each with surrounding turns for context.
 Tell the user when matches were from and quote the relevant lines. If nothing matches, say so plainly.
+
+## Tool notes
+
+For what was said in past conversations. Saved preferences are already in your prompt, and the current conversation is in your context.
+
+## Inputs
+
+```yaml
+type: object
+properties:
+  query:
+    type: string
+    description: Keywords or a short phrase to search past conversations for
+  since:
+    type: string
+    description: Optional lower bound, ISO date ("2026-04-15") or relative ("yesterday", "last week", "3 days ago")
+  limit:
+    type: integer
+    description: Maximum results (default 5)
+required:
+  - query
+```

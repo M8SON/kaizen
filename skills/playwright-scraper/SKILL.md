@@ -12,6 +12,10 @@ anti-bot protection that would block a plain HTTP request.
 
 Do NOT use this for general web searches. Use search_web for that.
 
+## Tool notes
+
+For reading a specific URL. Use web-search for general searches.
+
 ## Inputs
 
 ```yaml

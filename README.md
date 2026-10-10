@@ -403,8 +403,7 @@ Key environment variables in `.env`:
 | `MEMORY_BACKEND` | `auto` | `vault`, `mempalace`, or `auto` |
 | `MEMORY_MAX_TOKENS` | `2000` | Approximate token budget for persisted memory injected into the system prompt |
 | `MEMORY_RECALL_MAX_TOKENS` | `600` | Approximate token budget for live memory recall added per user turn |
-| `SKILL_PROMPT_MAX_TOKENS` | `4000` | Approximate token budget for skill instructions in the system prompt |
-| `SKILL_SELECT_TOP_K` | `2` | How many skills get full instructions per request; the rest are compacted |
+| `SKILL_SELECT_TOP_K` | `2` | How many tools the Haiku micro tier gets per request (semantic top-K) |
 | `WAKE_WORD_MODEL` | `hey_jarvis` | openWakeWord bundled model (`hey_jarvis`, `alexa`, `hey_mycroft`, `timer`, `weather`) |
 | `WAKE_WORD_THRESHOLD` | `0.5` | Activation confidence (0.0–1.0); raise to reduce false fires |
 | `WAKE_WORD_SOFT_THRESHOLD` | `0` (off) | Two-stage wake: scores between this and `WAKE_WORD_THRESHOLD` start listening but only count if the transcript contains "Jarvis". The Pi uses `0.15` |

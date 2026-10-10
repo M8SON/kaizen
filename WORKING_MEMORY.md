@@ -39,6 +39,10 @@ Update this file when durable project context changes. Do not create overlapping
 - Local TTS is Kokoro ONNX only (PyTorch Kokoro removed 2026-10-09). ElevenLabs
   falls back to it at startup and mid-session (10 min, then retries).
 - Linux installs use CPU-only PyTorch (CUDA wheels were ~2.8GB unused on the Pi).
+- Skill guidance reaches Claude only through cached tool definitions
+  (description + `## Tool notes` + `## Inputs`); SKILL.md bodies are not in the
+  system prompt (2026-10-10). Uncached input per request fell ~2,500 -> ~100
+  tokens with routing unchanged: `docs/experiments/2026-10-10-slim-prompt-tokens-and-routing.md`.
 - Memory source of truth is the markdown vault at `~/.kaizen/memory`.
 - chromadb is the default semantic memory layer.
 - MemPalace is optional and not required for normal operation.

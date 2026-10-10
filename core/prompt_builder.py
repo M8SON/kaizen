@@ -5,7 +5,6 @@ Assembles the system prompt from static assistant policy, persisted memories,
 and skill instructions.
 """
 
-import json
 import os
 
 from core.memory_provider import MemoryProvider
@@ -58,8 +57,6 @@ take effort to clean up.
 class PromptBuilder:
     """Build the full system prompt used for Claude requests."""
 
-    ALWAYS_FULL_SKILLS = {"set-env-var", "save-memory", "install-skill"}
-
     BASE_PROMPT_TEMPLATE = (
         "Your name is {persona}. You are Mason's personal voice assistant, running on a Raspberry Pi. "
         "You have a warm and direct personality. You value truth above everything else — never flatter, "
@@ -98,13 +95,9 @@ class PromptBuilder:
     def __init__(
         self,
         memory_provider: MemoryProvider | None = None,
-        max_skill_tokens: int | None = 4000,
-        skill_selector=None,
         persona_name: str | None = None,
     ):
         self.memory_provider = memory_provider or MemoryProvider()
-        self.max_skill_tokens = max_skill_tokens
-        self._skill_selector = skill_selector
         self.persona_name = persona_name or persona_name_from_env()
         self.BASE_PROMPT = self.BASE_PROMPT_TEMPLATE.format(persona=self.persona_name)
 
@@ -138,7 +131,6 @@ class PromptBuilder:
         skills: dict,
         skipped_skills: dict,
         invalid_skills: dict | None = None,
-        user_message: str | None = None,
     ) -> tuple[str, str]:
         """Return (stable_prefix, dynamic_suffix) for Anthropic prompt caching.
 
@@ -146,8 +138,10 @@ class PromptBuilder:
         vault memory, unavailable/invalid skill lists, self-update guidance.
         Callers may append additional stable content (e.g. startup context).
 
-        dynamic_suffix carries per-turn variance — the selector-driven skill
-        context — and must NOT be cached.
+        Skill guidance is not in the prompt: Claude gets it from the tool
+        definitions (description + `## Tool notes` + input schema), which
+        are cached. dynamic_suffix is "" here; callers append per-turn
+        content (intent hint, memory recall) and must NOT cache it.
         """
         stable = self.BASE_PROMPT
 
@@ -178,25 +172,20 @@ class PromptBuilder:
 
         stable = self.add_self_update_guidance(stable, skills=skills)
 
-        dynamic = self._render_skill_context(skills, user_message=user_message) or ""
-
-        return stable, dynamic
+        return stable, ""
 
     def build(
         self,
         skills: dict,
         skipped_skills: dict,
         invalid_skills: dict | None = None,
-        user_message: str | None = None,
     ) -> str:
         """Build the full system prompt as a single string.
 
         Equivalent to concatenating the two parts from `build_cacheable_parts`.
         Kept for callers that don't need caching (greet path, internal calls).
         """
-        stable, dynamic = self.build_cacheable_parts(
-            skills, skipped_skills, invalid_skills, user_message=user_message
-        )
+        stable, dynamic = self.build_cacheable_parts(skills, skipped_skills, invalid_skills)
         return stable + dynamic
 
     def add_self_update_guidance(self, prompt: str, *, skills: dict) -> str:
@@ -210,137 +199,3 @@ class PromptBuilder:
         if not any_opted_in:
             return prompt
         return prompt + "\n\n--- Self-update guidance ---\n" + SELF_UPDATE_GUIDANCE
-
-    def _render_with_selector(self, skills: dict, user_message: str) -> str:
-        """
-        Render skill context using semantic selection.
-
-        Skills in the selected set (plus ALWAYS_FULL_SKILLS) get full
-        instructions. All others get a single compact line.
-        """
-        selected = self._skill_selector.select(user_message)
-        expand_names = selected | self.ALWAYS_FULL_SKILLS
-
-        full_blocks = []
-        compact_lines = []
-
-        for skill in skills.values():
-            if skill.name in expand_names:
-                full_blocks.append(f"\n### {skill.name}\n{skill.instructions}\n")
-            else:
-                compact_lines.append(f"- {skill.name}: {skill.description}")
-
-        result = "\n--- Available Skills ---\n"
-        result += "".join(full_blocks)
-        if compact_lines:
-            result += "\nOther available skills (ask to use them):\n"
-            result += "\n".join(compact_lines) + "\n"
-        return result
-
-    def _render_skill_context(self, skills: dict, user_message: str | None = None) -> str:
-        """Render available skill instructions within the configured budget."""
-        if not skills:
-            return ""
-
-        # Use semantic selection when selector is active and we have a user message
-        if (
-            user_message
-            and self._skill_selector is not None
-            and self._skill_selector.available
-        ):
-            return self._render_with_selector(skills, user_message)
-
-        full_blocks = {
-            skill.name: f"\n### {skill.name}\n{skill.instructions}\n"
-            for skill in skills.values()
-        }
-        full_body = "".join(full_blocks.values())
-        if not self._exceeds_budget(full_body, self.max_skill_tokens):
-            return "\n--- Available Skills ---\n" + full_body
-
-        rendered_blocks = []
-        retained_tokens = 0
-
-        for skill in skills.values():
-            if skill.name not in self.ALWAYS_FULL_SKILLS:
-                continue
-
-            full_block = full_blocks[skill.name]
-            rendered_blocks.append(full_block)
-            retained_tokens += self._estimate_tokens(full_block)
-
-        compact_blocks = {
-            skill.name: self._compact_skill_block(skill.name, skill.description)
-            for skill in skills.values()
-        }
-        minimal_blocks = {
-            skill.name: self._minimal_skill_block(skill.name, skill.description)
-            for skill in skills.values()
-        }
-
-        for skill in skills.values():
-            if skill.name in self.ALWAYS_FULL_SKILLS:
-                continue
-
-            full_block = full_blocks[skill.name]
-            compact_block = compact_blocks[skill.name]
-            minimal_block = minimal_blocks[skill.name]
-
-            chosen_block = self._choose_skill_block(
-                retained_tokens=retained_tokens,
-                full_block=full_block,
-                compact_block=compact_block,
-                minimal_block=minimal_block,
-            )
-            rendered_blocks.append(chosen_block)
-            retained_tokens += self._estimate_tokens(chosen_block)
-
-        intro = (
-            "\n--- Available Skills ---\n"
-            "\nSome skills are summarized compactly to stay within the prompt budget.\n"
-        )
-        return intro + "".join(rendered_blocks)
-
-    def _choose_skill_block(
-        self,
-        retained_tokens: int,
-        full_block: str,
-        compact_block: str,
-        minimal_block: str,
-    ) -> str:
-        """Choose the richest skill block that still fits the remaining budget."""
-        if not self._would_exceed_budget(retained_tokens, full_block):
-            return full_block
-        if not self._would_exceed_budget(retained_tokens, compact_block):
-            return compact_block
-        return minimal_block
-
-    def _compact_skill_block(self, name: str, description: str) -> str:
-        """Render a shortened skill description when full instructions do not fit."""
-        return (
-            f"\n### {name}\n"
-            f"Description: {description}\n"
-            "Use this tool when the request matches this capability. "
-            "Rely on the tool schema for exact inputs.\n"
-        )
-
-    def _minimal_skill_block(self, name: str, description: str) -> str:
-        """Render the smallest fallback so every skill remains represented."""
-        return f"\n- {name}: {description}\n"
-
-    def _would_exceed_budget(self, retained_tokens: int, block: str) -> bool:
-        """Return True if adding a block would exceed the skill-context budget."""
-        if self.max_skill_tokens is None or self.max_skill_tokens <= 0:
-            return False
-        return retained_tokens + self._estimate_tokens(block) > self.max_skill_tokens
-
-    def _exceeds_budget(self, text: str, budget: int | None) -> bool:
-        """Return True if text exceeds the configured approximate token budget."""
-        if budget is None or budget <= 0:
-            return False
-        return self._estimate_tokens(text) > budget
-
-    def _estimate_tokens(self, text: str) -> int:
-        """Approximate token count from serialized text length."""
-        serialized = json.dumps(text, ensure_ascii=False)
-        return max(1, len(serialized) // 4)

@@ -18,6 +18,10 @@ Use for transport commands while music is already playing:
 
 This skill does NOT start music. Use `spotify` or `soundcloud` for that.
 
+## Tool notes
+
+Call it directly for any stop, pause, resume, skip or volume request; it finds the active player itself and reports if nothing is playing. It does not start music; use spotify or soundcloud for that.
+
 ## Inputs
 
 ```yaml

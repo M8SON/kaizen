@@ -10,6 +10,10 @@ conditions in a specific location — now or on any day in the next week
 ("tomorrow", "Monday", "this weekend"). One call returns both current
 conditions and a daily `forecast` list; don't web-search for forecasts.
 
+## Tool notes
+
+One call returns current conditions and a 7-day forecast; don't web-search forecasts. Answer only what was asked.
+
 ## Inputs
 
 ```yaml

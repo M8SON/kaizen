@@ -71,7 +71,6 @@ class Orchestrator:
         conversation_max_tokens: int | None = 6000,
         memory_max_tokens: int | None = 2000,
         memory_recall_max_tokens: int | None = 600,
-        skill_prompt_max_tokens: int | None = 4000,
         skill_select_top_k: int = 2,
         archive: SessionArchive | None = None,
     ):
@@ -103,8 +102,6 @@ class Orchestrator:
         )
         self.prompt_builder = PromptBuilder(
             memory_provider=self.memory_provider,
-            max_skill_tokens=skill_prompt_max_tokens,
-            skill_selector=self.skill_selector,
         )
         self.tool_loop = ToolLoop(
             client=self.client,
@@ -248,13 +245,12 @@ class Orchestrator:
 
         stable carries persona + memory + skipped/invalid + self-update + startup
         context — byte-stable across turns in a session. dynamic carries the
-        selector-driven skill context, which changes per user message.
+        per-turn live clock; skill guidance lives in the tool definitions.
         """
         stable, dynamic = self.prompt_builder.build_cacheable_parts(
             skills=self.skills,
             skipped_skills=self.skill_loader.skipped_skills,
             invalid_skills=self.skill_loader.invalid_skills,
-            user_message=user_message,
         )
         if self._startup_context:
             stable += f"\n--- Current Context ---\n{self._startup_context}\n"

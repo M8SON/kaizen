@@ -22,6 +22,10 @@ Extract the core fact or preference worth remembering. Keep it concise. For exam
 - "The garage door code is 1234"
 - "User is working on Kaizen routing reliability"
 
+## Tool notes
+
+Save durable facts only: preferences, ongoing projects, facts about Mason, or anything he asks you to remember. Not passing remarks. Content is one concise factual statement. Acknowledge briefly; don't read it back.
+
 ## Inputs
 
 ```yaml

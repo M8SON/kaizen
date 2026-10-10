@@ -669,7 +669,6 @@ def main():
         conversation_max_tokens=int(os.getenv("CONVERSATION_MAX_TOKENS", "6000")),
         memory_max_tokens=int(os.getenv("MEMORY_MAX_TOKENS", "2000")),
         memory_recall_max_tokens=int(os.getenv("MEMORY_RECALL_MAX_TOKENS", "600")),
-        skill_prompt_max_tokens=int(os.getenv("SKILL_PROMPT_MAX_TOKENS", "4000")),
         skill_select_top_k=int(os.getenv("SKILL_SELECT_TOP_K", "2")),
         archive=archive,
     )

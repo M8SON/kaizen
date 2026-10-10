@@ -141,6 +141,8 @@ Native skill handlers are registered in `container_manager._execute_native_skill
 - `self._meta_skill_executor` — injected in `main.py` (voice mode only), used by `install-skill`
 - `self._orchestrator` — injected in `main.py` for all modes, used by `set-env-var` to call `reload_skills()`
 
+**What Claude sees of a skill:** only its tool definition — `description` + the body's optional `## Tool notes` section + the `## Inputs` schema. Put anything Claude must know to call the skill correctly (routing rules, confirmation steps) in `## Tool notes`, kept to a few sentences; the rest of the body is human documentation.
+
 **`SKILL.md`** frontmatter fields (agentskills.io-compliant):
 ```yaml
 ---
@@ -213,7 +215,7 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 - **`set_env_var` skill**: Native skill that writes a key/value to `.env`, updates `os.environ`, and calls `orchestrator.reload_skills()`. Security constraints: key must match `^[A-Z][A-Z0-9_]*$` and must be in `skill_loader.get_missing_env_vars()` (only keys required by currently skipped skills are accepted). Claude is instructed to read the value back character-by-character and require two voice confirmations before calling the tool.
 - **`recall_session` skill**: Native skill that searches an FTS5 sqlite archive of past conversation turns at `~/.kaizen/sessions.db` (override via `SESSION_ARCHIVE_PATH`). Every user/assistant/tool turn from voice and text mode is appended via the orchestrator's archive callback as a session-bounded record. Search uses porter+unicode61 tokenizer with BM25 ranking and returns ±1 surrounding turns for context. The archive is failure-tolerant — any sqlite error degrades to a no-op so the voice loop never crashes. Disable entirely by setting `SESSION_ARCHIVE_ENABLED=false`.
 - **`save_memory` skill**: Native skill that writes a markdown note to the memory vault (`MEMORY_VAULT_PATH` env var, default `~/.kaizen/memory`). Files are named `YYYY-MM-DD_topic_slug.md` with YAML frontmatter. The orchestrator loads vault `.md` files at startup and injects the newest whole notes that fit `MEMORY_MAX_TOKENS` into the system prompt under `--- Remembered from past conversations ---`. This is the Obsidian integration — point Obsidian at the vault directory to browse/edit memories.
-- **System prompt**: Claude is instructed to avoid markdown, asterisks, and emojis (responses go through TTS) and to repeat back unclear transcriptions before acting. Skill instructions are separately budgeted by `SKILL_PROMPT_MAX_TOKENS`; when the full markdown for every skill does not fit, the prompt builder falls back to compact or minimal per-skill summaries rather than dropping skills entirely.
+- **System prompt**: Claude is instructed to avoid markdown, asterisks, and emojis (responses go through TTS) and to repeat back unclear transcriptions before acting. Skill guidance is not in the system prompt: Claude sees each skill only through its tool definition — the frontmatter `description`, an optional `## Tool notes` section (routing rules, confirmation protocols), and the `## Inputs` schema — which is cached. The rest of SKILL.md is documentation and is not sent.
 - **Conversation window**: Short-term conversation history is bounded by `ConversationState(max_messages=..., max_tokens=...)`, configured via `CONVERSATION_MAX_MESSAGES` and `CONVERSATION_MAX_TOKENS`. Retention is turn-aware: it keeps whole recent user requests and their assistant/tool-result exchanges rather than cutting the window in the middle of a turn. Prompt selection uses an approximate token estimator based on serialized message size.
 - **Tool input/output**: Input is always JSON via `SKILL_INPUT` env var; output is plain text or JSON printed to stdout.
 - **OpenClaw porting**: Community OpenClaw skills can be ported by adding a `config.yaml` and `Dockerfile` alongside their `SKILL.md`. Use `scripts/port-openclaw-skill.py` to scaffold these files.
@@ -245,7 +247,6 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `CONVERSATION_MAX_MESSAGES` | `24` | Max message-count budget for short-term context, retained as whole recent turns |
 | `CONVERSATION_MAX_TOKENS` | `6000` | Approximate token budget for short-term context sent to Claude |
 | `MEMORY_MAX_TOKENS` | `2000` | Approximate token budget for persisted memory injected into the system prompt |
-| `SKILL_PROMPT_MAX_TOKENS` | `4000` | Approximate token budget for skill instructions in the system prompt |
 | `CONTAINER_MEMORY` | `256m` | Default Docker memory limit per skill |
 | `MEMORY_VAULT_PATH` | `~/.kaizen/memory` | Directory for Obsidian memory notes |
 | `SESSION_ARCHIVE_PATH` | `~/.kaizen/sessions.db` | sqlite+FTS5 archive of every conversation turn |

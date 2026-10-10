@@ -128,8 +128,20 @@ class SkillLoader:
         )
         return self.skills
 
+    SELF_UPDATE_SKILL = "update-skill-hints"
+
     def get_tool_definitions(self) -> list[dict]:
-        return [s.tool_definition for s in self.skills.values()]
+        # update-skill-hints can only edit skills that opt in to self-update;
+        # with none opted in it is inert, so don't spend tokens offering it.
+        opted_in = any(
+            (s.frontmatter or {}).get("metadata", {}).get("kaizen", {})
+            .get("self_update", {}).get("allow_body") is True
+            for s in self.skills.values()
+        )
+        return [
+            s.tool_definition for s in self.skills.values()
+            if opted_in or s.name != self.SELF_UPDATE_SKILL
+        ]
 
     def get_skill(self, tool_name: str) -> Skill | None:
         return self.skills.get(tool_name)

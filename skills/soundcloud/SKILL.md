@@ -21,6 +21,10 @@ Transport (stop/pause/skip/volume) is handled by `music-control`, not this skill
 Triggers covered by this skill:
 - **Play music** — "play remix of [song]", "play [DJ name] live set", "play that [thing] on SoundCloud"
 
+## Tool notes
+
+Only for remixes, bootlegs, mashups, DJ or live sets, obscure artists, or when the user says "on SoundCloud"; otherwise use spotify. Use music-control, not this tool, for stop, pause, resume, skip and volume.
+
 ## Inputs
 
 ```yaml

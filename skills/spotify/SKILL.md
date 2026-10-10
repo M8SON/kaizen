@@ -22,6 +22,10 @@ This is the DEFAULT music source. Prefer it for:
 
 For DJ remixes, bootlegs, mashups, or specific SoundCloud tracks, use the `soundcloud` skill instead. Trigger words that indicate SoundCloud: "remix", "bootleg", "mashup", "DJ set", "live set", or "on SoundCloud".
 
+## Tool notes
+
+Default music source. Use play_genre for a genre, mood or vibe (play stops after one song) and play_playlist for the user's saved playlists. For remixes, bootlegs, mashups, DJ or live sets, or "on SoundCloud", use soundcloud instead. If it returns an error, relay it as-is: it says what to fix.
+
 ## Inputs
 
 ```yaml

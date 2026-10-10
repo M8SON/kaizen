@@ -10,15 +10,14 @@ Built around a skill-based architecture where capabilities are defined as lightw
 
 ```
 Microphone → openWakeWord → STT (local Whisper on CPU/Hailo, or Meta streaming)
-    → TierRouter (optional, MICRO_TIER_ENABLED; no LLM)
-        ├─ deterministic → skill/action called directly   (stop, pause, skip, volume, goodbye)
-        ├─ micro         → Claude Haiku → skill → Haiku response
-        │                  (turn retried on Sonnet if Haiku raises)
-        └─ claude        → Claude Sonnet → skill → Sonnet response
+    → Jev classifier (~150ms, optional): filler line · cached answer · stop · tool-first prefetch
+        ├─ confident weather / music / web search / memory → Claude Haiku → skill → reply
+        │                                   (retried on Sonnet if Haiku fails or declines)
+        └─ everything else                                  → Claude Sonnet → skill → reply
     → TTS (Kokoro ONNX, or ElevenLabs) → Speaker
 ```
 
-**Tiered intelligence** (opt-in via `MICRO_TIER_ENABLED=true`) keeps Claude Sonnet as the premium reasoning layer — invoked only for complex, ambiguous, or meta requests. Routine tool calls route to Claude Haiku (the "micro" tier) with a slimmer prompt, and the most common commands bypass LLMs entirely. With it off (the default), every turn goes to Sonnet. See [Intelligence Tiers](#intelligence-tiers) for details.
+**Model split** — when Jev is at least 80% sure a request is weather, music, web search or memory, it runs on Claude Haiku (fast, inexpensive) with the same prompt, history and tools; everything else — conversation, scheduling, skill installs, ambiguous requests — runs on Claude Sonnet. On real archived requests Haiku picked the same tool as Sonnet 30 of 32 times and answered ~30% faster. An older, optional TierRouter ("micro tier") does a similar split without Jev. See [Intelligence Tiers](#intelligence-tiers) for details.
 
 The system uses two layers for extensibility:
 
@@ -28,7 +27,8 @@ The system uses two layers for extensibility:
 
 ## Features
 
-- Tiered intelligence (opt-in) — deterministic dispatch for instant commands, Claude Haiku for routine tool calls, Claude Sonnet for complex reasoning
+- Model split — Claude Haiku for requests Jev confidently classifies as weather, music, web search or memory; Claude Sonnet for everything else (optional TierRouter micro tier as an alternative)
+- Lean prompts — skill guidance lives in short, cached tool definitions instead of the system prompt; a 1-hour prompt cache covers spaced-out voice requests
 - Wake word detection via openWakeWord — lightweight bundled ONNX models (default `hey_jarvis`), ~1–3% of one Pi 5 core
 - Two-stage soft wake (opt-in via `WAKE_WORD_SOFT_THRESHOLD`) — borderline wake scores still start listening, but only count if the transcript contains the wake name (or Jev judges the words were addressed to the assistant); wake pre-roll keeps words said in the same breath as the wake word
 - Barge-in — say the wake word while Jarvis is talking to cut playback and start listening
@@ -340,7 +340,13 @@ Leave `MEMORY_BACKEND=auto` to get the default behavior: use MemPalace when inst
 
 ## Intelligence Tiers
 
-Kaizen routes each voice command through a three-tier gate before any LLM runs:
+### Default: Jev model split
+
+In voice mode the Jev classifier already labels every request (for the filler line). Categories marked `fast: true` in `config/filler_phrases.yaml` — weather, music, web search, memory — run on `FAST_MODEL` (default `claude-haiku-5-5`, effort `low`) when Jev's confidence is at least `JEV_FAST_CONFIDENCE` (0.8). Haiku gets the same system prompt, conversation history and tools as Sonnet, so follow-ups work across models. If Haiku raises or declines, the turn is rolled back and retried on `CLAUDE_MODEL`, unless it had already run a tool or started speaking. Everything else — small talk, scheduling, skill installs, setting API keys, low-confidence or ambiguous requests, and all text-mode requests — goes to Sonnet. Set `FAST_MODEL=` (empty) to send every request to Sonnet. Measurements: `docs/experiments/2026-10-10-haiku-fast-model.md`.
+
+### Optional: TierRouter micro tier
+
+The older micro tier (off by default) routes each command through a three-tier gate before any LLM runs:
 
 | Tier | Model | Latency | Examples |
 |---|---|---|---|
@@ -527,8 +533,8 @@ kaizen/
 ├── core/
 │   ├── orchestrator.py            # Tiered routing gate + Claude API + conversation history
 │   ├── tier_router.py             # TierRouter: deterministic/micro/claude classification
-│   ├── tool_loop.py               # Shared tool loop (serves both Haiku micro and Sonnet)
-│   ├── prompt_builder.py          # Token-budgeted prompt assembly (full + slim micro variant)
+│   ├── tool_loop.py               # Shared tool loop (Haiku and Sonnet), request logging
+│   ├── prompt_builder.py          # System prompt assembly (full + slim micro variant)
 │   ├── conversation_state.py      # Turn-aware, token-budgeted short-term history
 │   ├── skill_loader.py            # Scans tier search paths, builds Claude tool definitions
 │   ├── skill_policy.py            # Per-tier trust limits (bundled/authored/imported)
@@ -593,8 +599,11 @@ kaizen/
 │   └── base/                      # Shared Docker base (python:3.11-slim + requests)
 ├── tests/                         # pytest suite (run via scripts/test.sh; also runs in CI)
 ├── docs/                          # Research notes, design specs, and implementation plans
+│   └── experiments/               # Dated results of every real-hardware/API measurement
+├── .claude/                       # Project Claude Code hook: reminds sessions to log experiments
 ├── .github/workflows/ci.yml       # CI: fast suite + scheduler harness on Python 3.11
 ├── CLAUDE.md                      # Developer guide for Claude Code sessions
+├── AGENTS.md                      # Short pointer for other coding agents
 ├── WORKING_MEMORY.md              # Shared project memory: decisions and current direction
 ├── requirements.txt
 ├── .env.example
@@ -633,6 +642,8 @@ Per-skill Docker build assets live under `skills/<name>/scripts/` (Dockerfile + 
 - [x] Visual dashboard skill (news/OSINT, weather, stocks, music — voice-triggered, auto-closes)
 - [x] EONET hazard ranking in dashboard news flow
 - [x] Tiered intelligence — deterministic dispatch + Haiku micro-tier + Sonnet (feature-flagged, enable with `MICRO_TIER_ENABLED=true`)
+- [x] Jev model split — Haiku for confident skill requests, Sonnet for the rest
+- [x] Lean prompts — skill guidance in cached tool definitions (uncached input ~2,500 → ~100 tokens per request), 1-hour prompt cache
 - [x] AI HAT+ 2 accelerated full transcription (Hailo-backed post-wake STT)
 - [x] Run on boot via systemd (user-level unit with linger)
 - [x] TTS interruption — stop speaking when user says the wake word over the assistant

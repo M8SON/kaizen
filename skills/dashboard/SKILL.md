@@ -1,7 +1,6 @@
 ---
 name: dashboard
-description: Show a visual dashboard on the connected monitor, or close it. Displays
-  news, weather, stocks, and music.
+description: Show or close the news, weather, stocks and music dashboard on the connected monitor.
 ---
 # Dashboard Skill
 
@@ -38,7 +37,7 @@ Check memory for location and news preferences. Use them silently if found. Ask 
 
 ## Tool notes
 
-Check remembered location and news preferences first; ask only if missing, then save them with save-memory (topics "location", "dashboard news preferences"). Panels: news, weather, stocks, music; all four when unspecified. Set news_sources only for named feeds (osint, world, local_vt); for a specific topic use a precise gdelt_queries entry and omit news_sources. Calling open again updates an open dashboard. Keep replies short; the user is looking at the screen.
+Panels default to all four. Use news_sources only for named feeds; for a specific topic use a precise gdelt_queries entry instead. If location or news preferences aren't remembered, ask, then save them with save-memory. Calling open again updates an open dashboard.
 
 ## Inputs
 
@@ -54,7 +53,7 @@ properties:
       enum: [news, weather, stocks, music]
   location:
     type: string
-    description: city name for weather and local GDELT query
+    description: City for weather and local news
   news_sources:
     type: array
     items:
@@ -65,7 +64,6 @@ properties:
       type: string
   timeout_minutes:
     type: integer
-    default: 10
 required:
   - action
 ```

@@ -1,6 +1,6 @@
 ---
 name: save-memory
-description: Save something to long-term memory so it can be recalled in future conversations.
+description: Save a durable fact about Mason to long-term memory.
 ---
 # Save Memory
 
@@ -24,7 +24,7 @@ Extract the core fact or preference worth remembering. Keep it concise. For exam
 
 ## Tool notes
 
-Save durable facts only: preferences, ongoing projects, facts about Mason, or anything he asks you to remember. Not passing remarks. Content is one concise factual statement. Acknowledge briefly; don't read it back.
+Only preferences, projects, facts about him, or things he asks you to remember. Acknowledge briefly.
 
 ## Inputs
 
@@ -33,10 +33,10 @@ type: object
 properties:
   topic:
     type: string
-    description: A short label for this memory, 3-5 words (e.g. "wife name", "temperature preference"). Used as the filename.
+    description: 3-5 word label
   content:
     type: string
-    description: The information to remember, written as a clear factual statement.
+    description: One factual statement
 required:
   - topic
   - content

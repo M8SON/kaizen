@@ -1,6 +1,6 @@
 ---
 name: web-search
-description: Search the web for current information, news, facts, or answers to questions
+description: Search the web for current information, news and facts.
 metadata:
   kaizen:
     requires:
@@ -21,7 +21,6 @@ type: object
 properties:
   query:
     type: string
-    description: The search query (e.g., 'latest SpaceX launch', 'Bitcoin price today')
 required:
   - query
 ```

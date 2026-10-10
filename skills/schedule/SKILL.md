@@ -1,7 +1,6 @@
 ---
 name: schedule
-description: Create, list, cancel, or modify recurring scheduled tasks the assistant
-  fires on a cron schedule.
+description: Create, list, cancel or change recurring tasks that run on a cron schedule.
 ---
 # Schedule
 
@@ -54,7 +53,7 @@ For create, cancel, and modify: always read the resolved action back to the user
 
 ## Tool notes
 
-For recurring tasks only (no one-shot reminders yet). Convert the timing to a 5-field cron. Delivery: immediate for "remind me" or "right away", silent for "silently" or "in the background", otherwise next_wake. For create, cancel and modify, read the resolved action back in plain English and call only after the user says confirm; if several schedules match, ask which one.
+Recurring only. delivery: immediate for "remind me", silent for "in the background", otherwise next_wake. Before create, cancel or modify, read it back in plain English and wait for "confirm".
 
 ## Inputs
 
@@ -66,19 +65,19 @@ properties:
     enum: [create, list, cancel, modify]
   cron:
     type: string
-    description: 5-field cron expression, e.g. "0 8 * * *" (create; modify when changing the time)
+    description: 5-field cron
   prompt:
     type: string
-    description: The natural-language request to run when it fires (create)
+    description: Request to run when it fires
   delivery:
     type: string
     enum: [immediate, next_wake, silent]
   label:
     type: string
-    description: Short, voice-friendly name (optional)
+    description: Short name
   id_or_label:
     type: string
-    description: Which schedule to cancel or modify
+    description: Schedule to cancel or modify
 required:
   - action
 ```

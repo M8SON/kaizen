@@ -1,6 +1,6 @@
 ---
 name: music-control
-description: Transport controls (stop, pause, resume, skip, volume) for whatever music is currently playing — Spotify or SoundCloud. Routes to the active source automatically.
+description: Stop, pause, resume, skip or change the volume of whatever music is playing (Spotify or SoundCloud).
 ---
 
 # Music Control Skill
@@ -20,7 +20,7 @@ This skill does NOT start music. Use `spotify` or `soundcloud` for that.
 
 ## Tool notes
 
-Call it directly for any stop, pause, resume, skip or volume request; it finds the active player itself and reports if nothing is playing. It does not start music; use spotify or soundcloud for that.
+Call it directly; it finds the player and reports if nothing is playing.
 
 ## Inputs
 
@@ -30,7 +30,6 @@ properties:
   action:
     type: string
     enum: [stop, pause, resume, skip, volume_up, volume_down]
-    description: Transport command to issue against whichever source is playing.
 required:
   - action
 ```

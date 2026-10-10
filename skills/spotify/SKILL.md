@@ -1,12 +1,12 @@
 ---
 name: spotify
-description: Play music, genres, or saved playlists from Spotify. Default music backend — use this for "play X" / "play [artist]" / "put on some [genre]" / "play my [playlist]" requests unless explicitly asked for SoundCloud or for remixes/bootlegs/mashups.
+description: Play songs, artists, genres, moods or the user's playlists on Spotify. The default for music.
 metadata:
   kaizen:
     requires:
       env:
-        - SPOTIFY_CLIENT_ID
-        - SPOTIFY_CLIENT_SECRET
+      - SPOTIFY_CLIENT_ID
+      - SPOTIFY_CLIENT_SECRET
 ---
 
 # Spotify Skill
@@ -24,7 +24,7 @@ For DJ remixes, bootlegs, mashups, or specific SoundCloud tracks, use the `sound
 
 ## Tool notes
 
-Default music source. Use play_genre for a genre, mood or vibe (play stops after one song) and play_playlist for the user's saved playlists. For remixes, bootlegs, mashups, DJ or live sets, or "on SoundCloud", use soundcloud instead. If it returns an error, relay it as-is: it says what to fix.
+play_genre for a genre or mood (play stops after one song); for a vague request like "play some music", pick one rather than asking. restart resets the Pi's Spotify Connect when playback fails. Relay errors as-is.
 
 ## Inputs
 
@@ -34,13 +34,12 @@ properties:
   action:
     type: string
     enum: [play, play_genre, play_playlist, restart]
-    description: play plays one specific song/artist match; play_genre plays a genre or mood continuously from a shuffled playlist; play_playlist plays a saved user playlist by name; restart restarts the Pi's Spotify Connect service (raspotify).
   query:
     type: string
-    description: For play — song / artist query. For play_genre — the genre or mood (e.g. "edm", "country", "chill").
+    description: Song, artist, genre or mood
   name:
     type: string
-    description: For play_playlist action — playlist name (fuzzy matched against the user's saved playlists).
+    description: Playlist name
 required:
   - action
 ```

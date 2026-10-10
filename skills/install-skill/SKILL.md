@@ -1,9 +1,6 @@
 ---
 name: install-skill
-description: Install a new skill — either author from scratch via Claude Code, or
-  install an existing agentskills.io-compliant skill from a URL or filesystem path.
-  New skills are written in a sandbox and every install goes through voice
-  confirmation gates before the skill is built and loaded.
+description: 'Add a new skill: write one from a description, or install one from a URL or path.'
 ---
 # Install Skill
 
@@ -26,7 +23,7 @@ Do NOT use this for general questions or tasks the assistant can already do.
 
 ## Tool notes
 
-Use description to write a new skill, source for a URL or path. Tell the user you will walk them through spoken confirmations before anything is built.
+Tell the user you'll walk them through spoken confirmations before anything is built.
 
 ## Inputs
 
@@ -35,17 +32,10 @@ type: object
 properties:
   description:
     type: string
-    description: >
-      Plain English description of what the new skill should do, including
-      any external services or API keys it might need. Used only when
-      authoring a new skill from scratch.
+    description: What the new skill should do
   source:
     type: string
-    description: >
-      URL (https://...) or filesystem path pointing at an existing
-      agentskills.io-format skill directory. If provided, the skill is
-      fetched, validated, and installed through the same three-gate
-      confirmation flow — no authoring via Claude Code.
+    description: URL or path of an existing skill to install
 ```
 
 Exactly one of `description` or `source` should be provided. `source` takes precedence

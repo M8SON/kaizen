@@ -1,7 +1,6 @@
 ---
 name: recall-session
-description: Search past conversation transcripts. Use when the user references something
-  said in a prior session.
+description: Search transcripts of earlier sessions when the user refers to a previous conversation.
 ---
 Search the local archive of past conversations for content matching a query.
 
@@ -24,7 +23,7 @@ Tell the user when matches were from and quote the relevant lines. If nothing ma
 
 ## Tool notes
 
-For what was said in past conversations. Saved preferences are already in your prompt, and the current conversation is in your context.
+Not for this conversation (already in context) or saved memories (already in your prompt).
 
 ## Inputs
 
@@ -33,13 +32,12 @@ type: object
 properties:
   query:
     type: string
-    description: Keywords or a short phrase to search past conversations for
+    description: Keywords
   since:
     type: string
-    description: Optional lower bound, ISO date ("2026-04-15") or relative ("yesterday", "last week", "3 days ago")
+    description: ISO date or "yesterday", "last week", "3 days ago"
   limit:
     type: integer
-    description: Maximum results (default 5)
 required:
   - query
 ```

@@ -1,7 +1,6 @@
 ---
 name: set-env-var
-description: Set an environment variable in .env and reload skills. Use this when
-  the user provides an API key or other credential needed by an unavailable skill.
+description: Save an API key or credential that an unavailable skill needs to .env.
 ---
 # Set Environment Variable
 
@@ -25,7 +24,7 @@ If the user says no at either step, ask them to repeat the key.
 
 ## Tool notes
 
-Never call this immediately. First read the value back in short groups ("I heard A-B-C-1-2-3, is that right?"); after the user confirms, ask "Shall I save that now?"; call only after both confirmations. After saving, do not read the value aloud.
+Before calling, read the value back in short groups, then ask "Shall I save that now?"; call only after both confirmations. Never read the value aloud after saving.
 
 ## Inputs
 
@@ -34,10 +33,9 @@ type: object
 properties:
   key:
     type: string
-    description: The environment variable name (e.g. OPENWEATHER_API_KEY)
+    description: Variable name
   value:
     type: string
-    description: The value to set
 required:
   - key
   - value

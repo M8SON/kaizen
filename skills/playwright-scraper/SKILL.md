@@ -1,7 +1,6 @@
 ---
 name: playwright-scraper
-description: Scrape and extract text content from a webpage, including sites with
-  anti-bot protection that block simple HTTP requests
+description: Read the text of a specific web page, including JavaScript-heavy or bot-protected sites.
 ---
 # Playwright Scraper Skill
 
@@ -12,10 +11,6 @@ anti-bot protection that would block a plain HTTP request.
 
 Do NOT use this for general web searches. Use search_web for that.
 
-## Tool notes
-
-For reading a specific URL. Use web-search for general searches.
-
 ## Inputs
 
 ```yaml
@@ -23,7 +18,7 @@ type: object
 properties:
   url:
     type: string
-    description: The full URL to scrape (must start with http:// or https://)
+    description: Full http(s) URL
 required:
   - url
 ```

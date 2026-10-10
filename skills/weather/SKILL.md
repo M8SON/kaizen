@@ -1,6 +1,6 @@
 ---
 name: weather
-description: Get current weather and the 7-day forecast (today through the next 6 days) for a location
+description: Current weather and the 7-day forecast for a location.
 ---
 # Weather Skill
 
@@ -12,7 +12,7 @@ conditions and a daily `forecast` list; don't web-search for forecasts.
 
 ## Tool notes
 
-One call returns current conditions and a 7-day forecast; don't web-search forecasts. Answer only what was asked.
+Covers forecasts; don't web-search them.
 
 ## Inputs
 
@@ -21,7 +21,7 @@ type: object
 properties:
   query:
     type: string
-    description: City name or location (e.g., 'London', 'New York', 'Burlington VT')
+    description: City
 required:
   - query
 ```

@@ -1,8 +1,6 @@
 ---
 name: soundcloud
-description: Play, stop, pause, resume, skip, or adjust volume on SoundCloud music. A play
-  request queues 20 tracks matching the query; subsequent skip commands advance through
-  the queue.
+description: Play remixes, bootlegs, mashups, DJ or live sets, or anything the user asks for on SoundCloud.
 ---
 # SoundCloud Skill
 
@@ -21,24 +19,16 @@ Transport (stop/pause/skip/volume) is handled by `music-control`, not this skill
 Triggers covered by this skill:
 - **Play music** — "play remix of [song]", "play [DJ name] live set", "play that [thing] on SoundCloud"
 
-## Tool notes
-
-Only for remixes, bootlegs, mashups, DJ or live sets, obscure artists, or when the user says "on SoundCloud"; otherwise use spotify. Use music-control, not this tool, for stop, pause, resume, skip and volume.
-
 ## Inputs
 
 ```yaml
 type: object
 properties:
-  action:
-    type: string
-    enum: [play, stop, pause, resume, skip, volume_up, volume_down]
-    description: The transport command to issue. Defaults to play.
   query:
     type: string
-    description: Song name, artist, or genre. Required when action is play.
+    description: Song, artist or genre
 required:
-  - action
+  - query
 ```
 
 ## How to respond

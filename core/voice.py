@@ -781,7 +781,11 @@ class VoiceInterface:
                 )
                 return
 
-            audio = np.load(random.choice(candidates))
+            # Never the same phrase twice in a row for a category.
+            last = getattr(self, "_last_filler", {})
+            pick = random.choice([c for c in candidates if c != last.get(category)] or candidates)
+            self._last_filler = {**last, category: pick}
+            audio = np.load(pick)
             sd.play(
                 resample(audio, KOKORO_SAMPLE_RATE, self._output_samplerate),
                 samplerate=self._output_samplerate,

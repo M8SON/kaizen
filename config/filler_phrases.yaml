@@ -43,6 +43,9 @@ categories:
     phrases:
       - "Let me check the weather for you."
       - "One moment, pulling up the forecast."
+      - "Checking the weather now."
+      - "Let me take a look outside."
+      - "One sec, grabbing the forecast."
 
   music:
     fast: true
@@ -50,6 +53,9 @@ categories:
     phrases:
       - "On it."
       - "Sure thing, one second."
+      - "Coming right up."
+      - "You got it."
+      - "Let me queue that up."
 
   web_search:
     fast: true
@@ -57,6 +63,9 @@ categories:
     phrases:
       - "Let me look that up."
       - "Give me a second to search for that."
+      - "Searching now."
+      - "Let me find out."
+      - "One moment, checking online."
 
   memory:
     fast: true
@@ -64,23 +73,34 @@ categories:
     phrases:
       - "Got it, one moment."
       - "Sure, let me pull that up."
+      - "Let me check my notes."
+      - "One sec."
+      - "Alright, one moment."
 
   skill_install:
     criteria: "Requests to add, build or install a new skill or capability, or giving an API key for one (for example \"add a skill that tells me the tides\", \"can you learn to track packages\", \"install the skill from this link\", \"here is my API key\")."
     phrases:
       - "Let's set that up — one moment."
       - "Okay, give me a second to build that."
+      - "Sure, let me work on that."
+      - "Alright, let's get that started."
 
   schedule:
     criteria: "Requests to set up, list, change or cancel recurring tasks or reminders (for example \"every morning at 8 tell me the weather\", \"what do I have scheduled\", \"cancel my morning briefing\", \"move my briefing to 9\")."
     phrases:
       - "Let me check your schedule."
       - "One moment, checking your calendar."
+      - "Let me look at your schedule."
+      - "Sure, pulling up your reminders."
+      - "One second, checking that."
 
   smalltalk:
     criteria: "Greetings, thanks, chit-chat, jokes, opinions or comments with no task to look up or perform (for example \"hello\", \"thanks Jarvis\", \"how are you\", \"tell me a joke\", \"what do you think about pizza\", \"that's cool\")."
     phrases:
       - "Mm-hm, one sec."
+      - "Mm, okay."
+      - "Hmm, one sec."
+      - "Give me a moment."
 
   identity:
     answer: true
@@ -110,3 +130,6 @@ categories:
     phrases:
       - "One moment."
       - "Let me think about that."
+      - "One second."
+      - "Hmm, let me see."
+      - "Give me a moment."

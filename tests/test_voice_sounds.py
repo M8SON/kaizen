@@ -95,6 +95,24 @@ class PlayFillerSound(unittest.TestCase):
             v.play_filler("weather")
         mock_play.assert_called_once()
 
+    def test_never_repeats_the_previous_phrase(self):
+        import numpy as np
+        from core.voice import VoiceInterface
+        v = VoiceInterface.__new__(VoiceInterface)
+        v.enable_tts = True
+        v._output_samplerate = 48000
+        v._output_device_index = 0
+        paths = [Path(f"/fake/music/p{i}.npy") for i in range(3)]
+        loaded = []
+        with patch("pathlib.Path.is_dir", return_value=True), \
+             patch("pathlib.Path.glob", return_value=paths), \
+             patch("core.voice.np.load", side_effect=lambda p: loaded.append(p) or np.zeros(10, dtype=np.float32)), \
+             patch("core.voice.sd.play"):
+            for _ in range(40):
+                v.play_filler("music")
+        self.assertTrue(all(a != b for a, b in zip(loaded, loaded[1:])))
+        self.assertEqual(set(loaded), set(paths))
+
     def test_swallows_playback_errors(self):
         from core.voice import VoiceInterface
         v = VoiceInterface.__new__(VoiceInterface)

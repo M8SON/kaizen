@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Before relying on stale handoff notes, read `WORKING_MEMORY.md` in the repo root. It is the canonical shared project-memory file for durable context, architecture decisions, and current direction.
 
+## Experiment Results
+
+After any measurement or test run against real hardware or APIs (the Pi, Jev, Claude, STT/TTS, wake word, timings), write a dated results file to `docs/experiments/` before finishing: question, method (commit, exact inputs), raw numbers, conclusion, what wasn't tested. Add it to the index in `docs/experiments/README.md`. Before re-running a test, check `docs/experiments/` for an earlier run.
+
 ## Project Overview
 
 Kaizen is a modular, skill-based voice assistant designed for Raspberry Pi. Skills are defined as markdown files and executed in sandboxed Docker containers. Claude API handles reasoning and tool selection.

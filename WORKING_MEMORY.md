@@ -108,6 +108,7 @@ Update this file when durable project context changes. Do not create overlapping
     (`identity`, `capabilities`) play a cached full reply instead of calling Claude when
     confidence >= `FILLER_ANSWER_CONFIDENCE_THRESHOLD` (0.85). The identity criteria
     needed example phrasings ("what do you do" scored 0.55 without them, 0.98 with).
+    Full probe: `docs/experiments/2026-09-26-jev-category-confidence-probe.md`.
     Audio lives in `~/.kaizen/filler_audio` per machine; rebuild with
     `scripts/build_filler_audio.py` after editing `config/filler_phrases.yaml`.
   - Looping R2-D2 pre-buffer cue disabled on the Pi (`PREBUFFER_CUE_ENABLED=false`): with
@@ -333,3 +334,5 @@ Four enhancements inspired by the Hermes project. `schedule` skill (#1) shipped 
 - Keep only durable facts, active constraints, and likely next direction.
 - Remove stale or overlapping notes when this file is updated.
 - Do not turn this into a changelog or debugging diary.
+- Test and measurement results go in `docs/experiments/` (one file per run, raw numbers);
+  link them from here instead of copying the tables.

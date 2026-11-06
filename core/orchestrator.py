@@ -19,7 +19,7 @@ from pathlib import Path
 
 import anthropic
 
-from core import profiling
+from core import profiling, usage_log
 from core.skill_loader import SkillLoader
 from core.container_manager import ContainerManager
 from core.conversation_state import ConversationState
@@ -533,6 +533,7 @@ class Orchestrator:
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
             )
+        usage_log.record_claude(self.model, getattr(response, "usage", None), "greeting")
         text = " ".join(
             block.text for block in response.content if block.type == "text"
         ).strip()

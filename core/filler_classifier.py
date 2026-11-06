@@ -27,10 +27,21 @@ from pathlib import Path
 
 import yaml
 
+from core import usage_log
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PATTERNS_PATH = Path(__file__).parent.parent / "config" / "filler_phrases.yaml"
 FILLER_AUDIO_ROOT = Path.home() / ".kaizen" / "filler_audio"
+
+
+def _record_jev(response, purpose: str) -> None:
+    """Log the tokens Jev reports for a call (billed even if we time out)."""
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        usage_log.record("jev", getattr(response, "model", None), purpose,
+                         input_tokens=getattr(usage, "input_tokens", 0),
+                         output_tokens=getattr(usage, "output_tokens", 0))
 
 
 def phrase_slug(text: str) -> str:
@@ -293,6 +304,7 @@ class FillerClassifier:
                         criteria=criteria,
                     )},
                 )
+                _record_jev(result["r"], "addressed")
             except Exception as exc:  # noqa: BLE001
                 result["e"] = exc
 
@@ -343,6 +355,7 @@ class FillerClassifier:
                     questions={"category": category_question},
                 )
                 result["response"] = response
+                _record_jev(response, "classify")
             except Exception as exc:  # noqa: BLE001 - never raise to caller
                 result["error"] = exc
 

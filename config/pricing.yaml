@@ -1,0 +1,31 @@
+# config/pricing.yaml
+#
+# USD prices that scripts/cost_report.py applies to the usage Kaizen logs in
+# ~/.kaizen/usage.db (core/usage_log.py). Usage is what each service reported
+# per call; prices are only applied at report time, so editing this file
+# re-prices all history. Checked 2026-11-06.
+
+claude:
+  # Per million tokens. Kaizen caches its prompt with the 1-hour TTL
+  # (core/tool_loop.py), so cache_write is 2x the input price.
+  claude-sonnet-4-6: {input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 6.00}
+  claude-haiku-5-5:  {input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.20}
+  claude-haiku-4-5:  {input: 1.00, output: 5.00, cache_read: 0.10, cache_write: 2.00}
+  claude-sonnet-5-5: {input: 2.00, output: 10.00, cache_read: 0.20, cache_write: 4.00}
+  claude-opus-5-5:   {input: 4.00, output: 20.00, cache_read: 0.20, cache_write: 8.00}
+
+jev:
+  # TypeSafe list price per million input tokens; output tokens are free.
+  input_per_million: 0.042
+
+elevenlabs:
+  # Starter plan: a flat fee for a monthly credit allowance. Credits used are
+  # exact (the `character-cost` header); the report shows the fee once per
+  # month plus how much of the allowance is used. $6 billed monthly, $5/month
+  # billed yearly. Over the allowance, playback falls back to local Kokoro.
+  plan_monthly: 6.00
+  plan_credits: 30000
+
+meta_stt:
+  # Muse Voice Transcribe, per minute of audio processed.
+  per_minute: 0.003

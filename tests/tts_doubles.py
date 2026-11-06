@@ -15,3 +15,37 @@ class PipelineTTSBackend(StreamingTTSBackend):
     def _synth_audio(self, text: str):
         for _, _, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
             yield audio
+
+
+def elevenlabs_client(chunks=None, error=None, credits="3"):
+    """MagicMock ElevenLabs client whose
+    `text_to_speech.with_raw_response.stream(...)` is a context manager
+    yielding a response with `headers` and a `data` chunk iterator.
+
+    `chunks` may be a list or a zero-arg callable returning an iterator (for
+    streams that fail part-way); `error` raises on the call itself. Returns
+    (client, stream_mock); stream_mock records calls like the real method."""
+    import contextlib
+    from types import SimpleNamespace
+
+    state = {"chunks": chunks, "error": error}
+
+    @contextlib.contextmanager
+    def _stream(**kwargs):
+        if state["error"] is not None:
+            raise state["error"]
+        src = state["chunks"]
+        data = src() if callable(src) else (src if src is not None else [])
+        try:
+            yield SimpleNamespace(headers={"character-cost": credits}, data=data)
+        finally:
+            # Like the SDK, leaving the context closes the HTTP stream.
+            close = getattr(data, "close", None)
+            if callable(close):
+                close()
+
+    client = MagicMock()
+    stream = client.text_to_speech.with_raw_response.stream
+    stream.side_effect = _stream
+    stream.state = state
+    return client, stream

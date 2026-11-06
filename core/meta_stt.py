@@ -22,6 +22,8 @@ import json
 import logging
 import threading
 
+from core import usage_log
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_URL = "wss://api.meta.ai/v1/asr/realtime"
@@ -154,7 +156,10 @@ class MetaSttSession:
                         await ws.send(json.dumps({"type": "endStream"}))
                         return
                     await ws.send(item)
+                    sent_bytes[0] += len(item)
 
+            sent_bytes = [0]
+            processed_ms = None
             sender = asyncio.create_task(send_audio())
             try:
                 async for message in ws:
@@ -164,7 +169,13 @@ class MetaSttSession:
                     if event.get("type") == "error":
                         raise RuntimeError(event.get("message", "transcription error"))
                     if event.get("type") == "transcript" and event.get("final"):
+                        processed_ms = event.get("audioProcessedMs")
                         return (event.get("transcript") or "").strip()
             finally:
                 sender.cancel()
+                # Meta bills audio; use its own count when it sent one,
+                # else what we streamed (16kHz int16 = 32 bytes per ms).
+                usage_log.record("meta_stt", cfg.model, "transcribe",
+                                 audio_ms=processed_ms if processed_ms is not None
+                                 else sent_bytes[0] // 32)
         return None

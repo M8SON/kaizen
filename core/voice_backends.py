@@ -15,6 +15,7 @@ import numpy as np
 
 import sounddevice as sd
 import whisper
+from core import usage_log
 from core.audio_devices import resample
 from core.hailo_whisper_runtime import HailoTranscriptionRuntime
 
@@ -892,16 +893,19 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
         yield from self._fallback._synth_audio(text)
 
     def _synth_elevenlabs(self, text: str):
-        audio_stream = self._client.text_to_speech.stream(
+        # The raw response carries the `character-cost` header: the credits
+        # ElevenLabs actually billed for this text (logged for cost reports).
+        with self._client.text_to_speech.with_raw_response.stream(
             voice_id=self._voice_id,
             text=text,
             model_id=self._model_id,
             output_format="pcm_24000",
             voice_settings=_VoiceSettings(speed=self.speed),
-        )
-        carry = b""
-        try:
-            for chunk in audio_stream:
+        ) as response:
+            usage_log.record("elevenlabs", self._model_id, "speak",
+                             credits=(response.headers or {}).get("character-cost", 0))
+            carry = b""
+            for chunk in response.data:
                 if not (isinstance(chunk, bytes) and chunk):
                     continue
                 buf = carry + chunk
@@ -909,10 +913,6 @@ class ElevenLabsTTSBackend(StreamingTTSBackend):
                 if n:
                     yield np.frombuffer(buf[:n], dtype="<i2").astype(np.float32) / 32768.0
                 carry = buf[n:]
-        finally:
-            close = getattr(audio_stream, "close", None)
-            if callable(close):
-                close()
 
 
 def elevenlabs_self_check(backend: "ElevenLabsTTSBackend") -> None:

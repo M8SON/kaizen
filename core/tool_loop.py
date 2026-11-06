@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import anthropic
 
-from core import profiling
+from core import profiling, usage_log
 
 CHECKPOINT_INTERVAL = 15
 
@@ -216,6 +216,8 @@ class ToolLoop:
                         response.content = [
                             self._sanitize_block(block) for block in response.content
                         ]
+
+            usage_log.record_claude(self.model, getattr(response, "usage", None), "turn")
 
             if response.stop_reason == "refusal":
                 raise ModelRefusal(f"{self.model} declined the request")

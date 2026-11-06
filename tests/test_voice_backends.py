@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from core import voice_backends
+from tests.tts_doubles import elevenlabs_client
 
 
 class BuildSttBackendTests(unittest.TestCase):
@@ -517,8 +518,7 @@ class BuildVadBackendTests(unittest.TestCase):
 
 class ElevenLabsTTSBackendTests(unittest.TestCase):
     def _backend(self, stream_return):
-        mock_client = MagicMock()
-        mock_client.text_to_speech.stream.return_value = stream_return
+        mock_client, self.stream = elevenlabs_client(stream_return)
         return voice_backends.ElevenLabsTTSBackend(
             voice_id="onwK4e9ZLuTAKqWW03F9",
             api_key="k",
@@ -539,13 +539,12 @@ class ElevenLabsTTSBackendTests(unittest.TestCase):
         self.assertAlmostEqual(slow.speed, 0.7)
 
     def test_synth_audio_passes_speed_as_voice_settings(self):
-        mock_client = MagicMock()
-        mock_client.text_to_speech.stream.return_value = [b""]
+        mock_client, stream = elevenlabs_client([b""])
         backend = voice_backends.ElevenLabsTTSBackend(
             voice_id="v", api_key="k", speed=1.4, client=mock_client
         )
         list(backend._synth_audio("hi"))
-        _, kwargs = mock_client.text_to_speech.stream.call_args
+        _, kwargs = stream.call_args
         self.assertAlmostEqual(kwargs["voice_settings"].speed, 1.2)
 
     def test_synth_audio_converts_pcm_bytes_to_float32(self):
@@ -569,7 +568,7 @@ class ElevenLabsTTSBackendTests(unittest.TestCase):
     def test_synth_audio_requests_flash_pcm_24000(self):
         backend, mock_client = self._backend([b""])
         list(backend._synth_audio("hello"))
-        _, kwargs = mock_client.text_to_speech.stream.call_args
+        _, kwargs = self.stream.call_args
         self.assertEqual(kwargs["voice_id"], "onwK4e9ZLuTAKqWW03F9")
         self.assertEqual(kwargs["model_id"], "eleven_flash_v2_5")
         self.assertEqual(kwargs["output_format"], "pcm_24000")
@@ -583,7 +582,7 @@ class ElevenLabsTTSBackendTests(unittest.TestCase):
 
     def test_synth_audio_closes_stream_on_break(self):
         # Simulate a barge-in: consumer stops early. The generator's finally
-        # must call the underlying stream's close().
+        # must leave the raw-response context, which closes the HTTP stream.
         closed = {"n": 0}
 
         class ClosableStream:
@@ -605,7 +604,7 @@ class ElevenLabsTTSBackendTests(unittest.TestCase):
         # `for audio in self._synth_audio(sent): if interrupted: break`.
         # The generator is an unnamed temporary, so breaking the loop drops
         # its last reference and CPython finalizes it → GeneratorExit → the
-        # finally in _synth_audio calls the underlying stream's close().
+        # raw-response context in _synth_audio exits and closes the stream.
         closed = {"n": 0}
 
         class ClosableStream:
@@ -636,19 +635,17 @@ class ElevenLabsTTSBackendTests(unittest.TestCase):
 
 class ElevenLabsSelfCheckTests(unittest.TestCase):
     def test_self_check_consumes_one_chunk(self):
-        mock_client = MagicMock()
-        mock_client.text_to_speech.stream.return_value = [
+        mock_client, stream = elevenlabs_client([
             np.array([1], dtype=np.int16).tobytes()
-        ]
+        ])
         backend = voice_backends.ElevenLabsTTSBackend(
             voice_id="v", api_key="k", client=mock_client
         )
         voice_backends.elevenlabs_self_check(backend)  # should not raise
-        mock_client.text_to_speech.stream.assert_called_once()
+        stream.assert_called_once()
 
     def test_self_check_raises_when_stream_errors(self):
-        mock_client = MagicMock()
-        mock_client.text_to_speech.stream.side_effect = RuntimeError("401 bad key")
+        mock_client, _ = elevenlabs_client(error=RuntimeError("401 bad key"))
         backend = voice_backends.ElevenLabsTTSBackend(
             voice_id="v", api_key="k", client=mock_client
         )

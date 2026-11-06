@@ -256,6 +256,8 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `MEMORY_VAULT_PATH` | `~/.kaizen/memory` | Directory for Obsidian memory notes |
 | `SESSION_ARCHIVE_PATH` | `~/.kaizen/sessions.db` | sqlite+FTS5 archive of every conversation turn |
 | `SESSION_ARCHIVE_ENABLED` | `true` | Set false to disable the archive entirely (kill switch) |
+| `USAGE_LOG_PATH` | `~/.kaizen/usage.db` | One row per billed call as each service reported it (Claude/Jev tokens, ElevenLabs `character-cost` credits, Meta `audioProcessedMs`). `scripts/cost_report.py [YYYY-MM \| --days N]` prices it with `config/pricing.yaml` |
+| `USAGE_LOG_ENABLED` | `true` | Set false to stop usage logging |
 | `SESSION_RECALL_DEFAULT_LIMIT` | `5` | Default max hits returned by the `recall_session` skill |
 | `TYPESAFE_API_KEY` | — | Required for the Jev filler-phrase classifier; unset disables it (no filler, existing thinking-sound cue still plays) |
 | `FILLER_CLASSIFIER_ENABLED` | `true` | Set false to disable Jev filler classification entirely |

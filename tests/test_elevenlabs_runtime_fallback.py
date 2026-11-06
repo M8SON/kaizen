@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from core import voice_backends
+from tests.tts_doubles import elevenlabs_client
 from core.voice_backends import ElevenLabsTTSBackend, elevenlabs_self_check
 
 
@@ -24,8 +25,11 @@ class _Local:
 
 
 def _backend(stream_side_effect, local=None):
-    client = MagicMock()
-    client.text_to_speech.stream.side_effect = stream_side_effect
+    if isinstance(stream_side_effect, BaseException):
+        client, stream = elevenlabs_client(error=stream_side_effect)
+    else:
+        client, stream = elevenlabs_client(lambda: stream_side_effect())
+    client.stream = stream
     factory = MagicMock(return_value=local) if local is not None else None
     return ElevenLabsTTSBackend(voice_id="v", api_key="k", client=client, fallback_factory=factory), client, factory
 
@@ -43,13 +47,13 @@ class RuntimeFallbackTests(unittest.TestCase):
         b, client, factory = _backend(RuntimeError("quota_exceeded"), local)
         list(b._synth_audio("one"))
         list(b._synth_audio("two"))
-        self.assertEqual(client.text_to_speech.stream.call_count, 1)
+        self.assertEqual(client.stream.call_count, 1)
         self.assertEqual(factory.call_count, 1)  # built once, reused
         b._fallback_until = 0.0  # window elapsed
-        client.text_to_speech.stream.side_effect = None
-        client.text_to_speech.stream.return_value = iter([_pcm()])
+        client.stream.state["error"] = None
+        client.stream.state["chunks"] = [_pcm()]
         audio = list(b._synth_audio("three"))
-        self.assertEqual(client.text_to_speech.stream.call_count, 2)
+        self.assertEqual(client.stream.call_count, 2)
         self.assertEqual(local.calls, ["one", "two"])
         self.assertEqual(len(audio), 1)
 
@@ -58,7 +62,7 @@ class RuntimeFallbackTests(unittest.TestCase):
             yield _pcm()
             raise RuntimeError("connection reset")
         local = _Local()
-        b, client, _ = _backend(lambda **kw: broken_stream(), local)
+        b, client, _ = _backend(broken_stream, local)
         with self.assertRaises(RuntimeError):
             list(b._synth_audio("Hello."))
         self.assertEqual(local.calls, [])

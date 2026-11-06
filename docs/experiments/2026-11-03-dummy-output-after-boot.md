@@ -44,10 +44,18 @@ The `aplay` fault did not log the boot's `Failed to create` line and healed when
 away, whereas the boot fault stayed on the dummy for 14 minutes with the PCM free. It is close to
 the boot fault, not identical.
 
+## Real reboot with the fix (2026-11-06, `cf157f5`)
+
+`sudo reboot` at ~13:19, on ethernet. PipeWire and WirePlumber started 13:20:21; no
+`playback open failed` or `Failed to create` this boot. `ensure_audio.sh` found the reSpeaker
+sink on its first check (`kaizen.service` Starting 13:20:21 → Started 13:20:24, no WirePlumber
+restart logged). Startup speech 13:21:45, playback PCM `RUNNING`. The boot fault did not recur,
+so the recovery path is still only tested against the injected fault.
+
 ## Not tested
 
 - What held the playback PCM at 07:48:09. Unknown; the journal is not persistent and the holder
   was not captured, so this can recur on any boot.
 - Audible output: PCM state was observed, not sound from the speaker.
-- A real reboot with the fix installed: `systemctl reboot` from SSH needs a password, so a power
-  cycle is still needed to confirm the boot path.
+- The recovery path on a real boot where the fault occurs (one clean reboot so far, 1 of 2 boots
+  observed had the fault).

@@ -1,11 +1,13 @@
 [Unit]
 Description=Kaizen voice assistant
-After=network-online.target sound.target
-Wants=network-online.target
+After=network-online.target sound.target pipewire.service wireplumber.service
+Wants=network-online.target wireplumber.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/kaizen
+# Make sure PipeWire has a real speaker before Kaizen takes the mic.
+ExecStartPre=-%h/kaizen/scripts/ensure_audio.sh
 # Fresh Spotify Connect session on every start: a long-running librespot can
 # hold a dead connection (e.g. after a DHCP change) and silently fail to play.
 # Leading "-" = best effort; needs the sudoers rule from install_systemd_service.sh.

@@ -11,6 +11,7 @@ File name: `YYYY-MM-DD-<short-topic>.md`. Sections: **Question**, **Method**
 
 ## Index
 
+- [2026-11-03 Dummy Output after boot](2026-11-03-dummy-output-after-boot.md) — silent Jarvis with healthy logs: sink fell back to the dummy; stop Kaizen, restart WirePlumber, start Kaizen; startup self-heal passed an injected fault, real reboot still untested
 - [2026-10-09 Docker overhead, isolation, TTS fallback](2026-10-09-docker-overhead-and-tts-fallback.md) — Docker +~0.4s/call; hardened containers isolated; fallback first sentence ~7s
 - [2026-10-10 Haiku as the fast model](2026-10-10-haiku-fast-model.md) — same tool as Sonnet 30/32 on Jev-confident skill turns; median 1,055 vs 1,511ms
 - [2026-10-10 Jev tool narrowing and the cache](2026-10-10-jev-tool-narrowing.md) — routing safe (31/32), but narrowed prompts lose caching: ≈ no cost saving; 1-hour TTL is the bigger lever

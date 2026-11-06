@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned: on ubuntu-latest (26.04) PortAudio 19.7 fails to initialize
+    # without a PulseAudio server, breaking every test that imports sounddevice.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:

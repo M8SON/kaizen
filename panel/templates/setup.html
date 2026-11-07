@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Set up{% endblock %}
+{% block body %}
+<section class="card narrow">
+  <h1>Set up the control panel</h1>
+  <p>Jarvis said a six-digit code when he started. Enter it here, then choose
+  the password you'll use to log in. Only one person needs one: whoever looks
+  after Jarvis for the household.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Setup code <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+    <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+    <label>Password again <input name="confirm" type="password" autocomplete="new-password" minlength="10" required></label>
+    <button>Set password</button>
+  </form>
+  <form method="post" action="{{ url_for('say_code_again') }}" class="later">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="link">Didn't catch the code? Have Jarvis say it again</button>
+  </form>
+  {% include "_cert_note.html" %}
+</section>
+{% endblock %}

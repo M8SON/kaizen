@@ -1,0 +1,10 @@
+<details class="note">
+  <summary>Why did my browser say this page isn't private?</summary>
+  <p>The panel encrypts everything between your browser and Jarvis with a
+  certificate Jarvis made himself. Browsers warn the first time because no
+  outside authority vouches for it. That's expected on a home network; each
+  browser asks once.</p>
+  {% if fingerprint %}<p>To check it's really Jarvis, compare the certificate's
+  SHA-256 fingerprint in your browser with this one:</p>
+  <p class="mono">{{ fingerprint }}</p>{% endif %}
+</details>

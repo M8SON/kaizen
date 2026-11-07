@@ -1,0 +1,12 @@
+{# key field: name, label, mask, optional test service #}
+<label>{{ label }}
+  <span class="mask">{{ keys[name] }}</span>
+  <input name="{{ name }}" type="password" autocomplete="off" spellcheck="false"
+         placeholder="{{ 'Paste a new key to replace it' if keys[name] != 'not set' else 'Paste the key' }}">
+</label>
+{% if test %}
+<div class="test-row">
+  <button type="button" class="secondary" data-test="{{ test }}">Test</button>
+  <span class="result" role="status"></span>
+</div>
+{% endif %}

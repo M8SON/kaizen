@@ -48,3 +48,8 @@ typesafe-sdk>=0.7.1
 
 # Meta Muse Voice Transcribe streaming STT (STT_BACKEND=meta)
 websockets>=13
+
+# Control panel (panel/, kaizen-panel.service): Flask app on cheroot, which
+# serves HTTPS itself (waitress can't)
+flask>=3.0
+cheroot>=10.0

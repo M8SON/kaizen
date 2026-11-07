@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>{% block title %}Jarvis{% endblock %} · Control panel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<script src="{{ url_for('static', filename='panel.js') }}" defer></script>
+</head>
+<body>
+<header class="top">
+  <span class="brand">Jarvis</span>
+  {% if logged_in %}
+  <nav>
+    <a href="{{ url_for('services') }}" {% if request.endpoint == 'services' %}aria-current="page"{% endif %}>Services</a>
+    <a href="{{ url_for('status_page') }}" {% if request.endpoint == 'status_page' %}aria-current="page"{% endif %}>Status</a>
+    <a href="{{ url_for('costs') }}" {% if request.endpoint == 'costs' %}aria-current="page"{% endif %}>Costs</a>
+  </nav>
+  <form method="post" action="{{ url_for('logout') }}" class="logout">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="link">Log out</button>
+  </form>
+  {% endif %}
+</header>
+<main>
+  {% if restart_pending %}
+  <div class="banner wait">Jarvis will restart when he finishes the current conversation.
+    <form method="post" action="{{ url_for('restart') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="now" value="1">
+      <button class="small">Restart now</button>
+    </form>
+  </div>
+  {% endif %}
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="banner {{ 'bad' if category == 'error' else 'good' }}">{{ message }}</div>
+  {% endfor %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

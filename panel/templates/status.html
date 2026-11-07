@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Status{% endblock %}
+{% block body %}
+<div class="grid" data-status-poll>
+  <section class="card">
+    <h2>Jarvis</h2>
+    <p class="state {{ 'good' if s.jarvis.active == 'active' else 'bad' }}" data-k="jarvis">
+      {% if s.jarvis.active == 'active' %}Running{% if s.jarvis.state == 'idle' %}, waiting for "Hey Jarvis"{% elif s.jarvis.state == 'busy' %}, busy{% endif %}{% else %}{{ s.jarvis.active|capitalize }}{% endif %}
+    </p>
+    <p class="hint" data-k="since">Since {{ s.jarvis.since or "unknown" }}{% if s.jarvis.restarts %} · restarted {{ s.jarvis.restarts }} times by systemd{% endif %}</p>
+    <form method="post" action="{{ url_for('restart') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button>Restart Jarvis</button>
+      <p class="hint">Waits until he's not in a conversation.</p>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Speaker</h2>
+    <p class="state {{ 'good' if s.speaker.ok else 'bad' }}" data-k="speaker">
+      {% if s.speaker.dummy %}Dummy Output: Jarvis can't be heard. Restart to fix.{% else %}{{ s.speaker.name }}{% endif %}
+    </p>
+  </section>
+  <section class="card">
+    <h2>Microphone</h2>
+    <p class="state {{ 'good' if s.microphone.ok else 'bad' }}" data-k="microphone">{{ s.microphone.name }}</p>
+  </section>
+  <section class="card">
+    <h2>Network</h2>
+    <p class="state good" data-k="network">{{ s.network.iface }}{% if s.network.ssid %} · {{ s.network.ssid }}{% endif %}{% if s.network.ip %} · {{ s.network.ip }}{% endif %}</p>
+  </section>
+</div>
+<p class="hint">Refreshes every 10 seconds while this page is open.</p>
+{% endblock %}

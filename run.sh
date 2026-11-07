@@ -166,7 +166,7 @@ ok "venv active"
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
-if ! python3 -c "import anthropic, chromadb, dotenv, pyaudio, whisper, yaml" &>/dev/null 2>&1; then
+if ! python3 -c "import anthropic, chromadb, cheroot, dotenv, flask, pyaudio, whisper, yaml" &>/dev/null 2>&1; then
     echo "  Installing dependencies..."
     # CPU-only PyTorch first: the default Linux wheels pull ~2.8GB of CUDA
     # libraries that Kaizen never uses (and the Pi has no NVIDIA GPU).

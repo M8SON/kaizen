@@ -17,15 +17,22 @@ ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 
 UNIT_DEST="$HOME/.config/systemd/user/kaizen.service"
+PANEL_DEST="$HOME/.config/systemd/user/kaizen-panel.service"
 
 # 1. Disable + stop (tolerate missing — `|| true` swallows the "not loaded" error)
 systemctl --user disable --now kaizen.service 2>/dev/null || true
 ok "kaizen.service disabled and stopped (or already absent)"
+systemctl --user disable --now kaizen-panel.service 2>/dev/null || true
+ok "kaizen-panel.service disabled and stopped (or already absent)"
 
 # 2. Remove unit file
 if [ -f "$UNIT_DEST" ]; then
     rm -f "$UNIT_DEST"
     ok "removed $UNIT_DEST"
+fi
+if [ -f "$PANEL_DEST" ]; then
+    rm -f "$PANEL_DEST"
+    ok "removed $PANEL_DEST"
 fi
 
 # 3. Reload

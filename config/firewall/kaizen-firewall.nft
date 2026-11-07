@@ -38,6 +38,13 @@ table inet kaizen_firewall {
 		# pinned to 4070), mDNS.
 		ip saddr @lan4 tcp dport { 22, 4070 } accept
 		ip6 saddr @lan6 tcp dport { 22, 4070 } accept
+
+		# Control panel (8080 redirects to 8443): devices on the home
+		# network only, arriving on the Pi's own Ethernet or Wi-Fi. Never
+		# a VPN or tunnel interface: no remote access. The panel also
+		# checks the address is on the Pi's own subnet.
+		iifname { "eth*", "en*", "wlan*", "wl*" } ip saddr @lan4 tcp dport { 8080, 8443 } accept
+		iifname { "eth*", "en*", "wlan*", "wl*" } ip6 saddr @lan6 tcp dport { 8080, 8443 } accept
 		ip saddr @lan4 udp dport 5353 accept
 		ip6 saddr @lan6 udp dport 5353 accept
 	}

@@ -31,7 +31,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "skill":
     from core.skill_cli import main as skill_main
     sys.exit(skill_main(sys.argv[2:]))
 
-from core import profiling
+from core import profiling, run_state
 from core.scheduler import SchedulesStore, SchedulerThread
 from core.location_preference import resolve_location
 from core.session_archive import SessionArchive
@@ -302,6 +302,23 @@ def _is_session_end(transcript: str) -> bool:
     return bool(_SESSION_END_RE.search(transcript))
 
 
+def _announce_panel_setup(voice) -> None:
+    """While the control panel has no password, say its address and the
+    setup code, so only someone who can hear Jarvis can claim it."""
+    try:
+        from panel import state as panel_state
+        code = panel_state.pending_setup_code()
+    except Exception:  # noqa: BLE001 - never block startup on the panel
+        logger.exception("panel setup code check failed")
+        return
+    if code:
+        voice.speak(
+            "To set me up, open a browser and go to "
+            f"{panel_state.spoken_address()}, and enter the code "
+            f"{panel_state.spoken_code(code)}. Again, that's {panel_state.spoken_code(code)}."
+        )
+
+
 def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     """Run the assistant in voice mode with microphone input.
 
@@ -340,9 +357,11 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
     _print_loaded_skills(orchestrator)
     print()
 
+    run_state.write("busy")
     greeting = orchestrator.greet()
     print(f"Assistant: {greeting}\n")
     voice.speak(greeting)
+    _announce_panel_setup(voice)
 
     # How long to wait for follow-up speech before returning to wake word detection
     conversation_idle_timeout = float(os.getenv("CONVERSATION_IDLE_TIMEOUT", "8"))
@@ -388,7 +407,9 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
             # Wait for wake word
             print(f"\nWaiting for wake word: '{wake_word}'...")
+            run_state.write("idle")
             detected = voice.wait_for_wake_word()
+            run_state.write("busy")
             if not detected:
                 break  # Ctrl+C
 

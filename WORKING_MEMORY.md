@@ -94,6 +94,13 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-11-07: control panel phase 1 (`panel/`, `kaizen-panel.service`):
+  HTTPS on :8443 with an automatic self-signed cert (8080 redirects), one
+  admin password claimed with a setup code Jarvis speaks, write-only keys
+  with Test buttons, Save restarts Jarvis once idle (`core/run_state.py`),
+  wake-word sensitivity slider, status, costs (`core/cost_summary.py`,
+  shared with `scripts/cost_report.py`). Spec:
+  `docs/superpowers/specs/2026-11-06-control-panel-design.md`.
 - 2026-10-09: security + footprint pass. Installed skills now actually load
   (main.py was overriding the tier search paths); voice authoring sandboxed;
   reserved secrets; container hardening; `type: process`; dashboard isolated;

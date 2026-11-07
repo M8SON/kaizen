@@ -24,6 +24,13 @@ class InstallSystemdServiceTests(unittest.TestCase):
     def test_enables_and_starts_unit(self):
         self.assertIn("systemctl --user enable --now kaizen.service", self.text)
 
+    def test_installs_panel_before_kaizen(self):
+        # Kaizen speaks the panel's setup code at startup, which the panel
+        # creates when it starts.
+        self.assertIn("config/systemd/kaizen-panel.service", self.text)
+        self.assertLess(self.text.index("systemctl --user enable --now kaizen-panel.service"),
+                        self.text.index("systemctl --user enable --now kaizen.service"))
+
     def test_checks_and_enables_linger(self):
         self.assertIn("loginctl show-user", self.text)
         self.assertIn("loginctl enable-linger", self.text)

@@ -14,7 +14,7 @@ class RunShTests(unittest.TestCase):
         self.assertIn("portaudio19-dev", self.text)
 
     def test_dependency_probe_checks_voice_and_memory_modules(self):
-        self.assertIn('import anthropic, chromadb, dotenv, pyaudio, whisper, yaml', self.text)
+        self.assertIn('import anthropic, chromadb, cheroot, dotenv, flask, pyaudio, whisper, yaml', self.text)
 
 
 if __name__ == "__main__":

@@ -19,8 +19,10 @@ def stereo_voice(monkeypatch):
     monkeypatch.setattr(voice_module, "WhisperBackend", MagicMock)
     monkeypatch.setattr(voice_module.pyaudio, "PyAudio", MagicMock)
     monkeypatch.delenv("MIC_CHANNEL", raising=False)
+    # Real wake backends expose last_score (logged on detection).
     return voice_module.VoiceInterface(
-        enable_tts=True, wake_backend=MagicMock(), wake_backend_alt=MagicMock()
+        enable_tts=True, wake_backend=MagicMock(last_score=0.0),
+        wake_backend_alt=MagicMock(last_score=0.0),
     )
 
 

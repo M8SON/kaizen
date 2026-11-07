@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Services{% endblock %}
+{% block body %}
+<p class="lede">Keys are never shown again after you save them. Saving restarts Jarvis
+once he's not talking to anyone.</p>
+
+<div class="grid">
+
+<form method="post" action="{{ url_for('save', card='brain') }}" class="card" id="brain">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Brain <small>Claude</small></h2>
+  {% with name="ANTHROPIC_API_KEY", label="Anthropic API key", test="claude" %}{% include "_key.html" %}{% endwith %}
+  <label>Main model
+    <select name="CLAUDE_MODEL">
+      {% for m in models %}<option {% if m == v.CLAUDE_MODEL %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Fast model <span class="hint">for simple weather, music, search and memory requests</span>
+    <select name="FAST_MODEL">
+      <option value="" {% if not v.FAST_MODEL %}selected{% endif %}>Off (always the main model)</option>
+      {% for m in models %}<option {% if m == v.FAST_MODEL %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+  </label>
+  {% include "_save.html" %}
+</form>
+
+<form method="post" action="{{ url_for('save', card='voice') }}" class="card" id="voice">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Voice <small>text to speech</small></h2>
+  <fieldset class="choice"><legend>Speaks with</legend>
+    <label><input type="radio" name="TTS_BACKEND" value="elevenlabs" {% if v.TTS_BACKEND == 'elevenlabs' %}checked{% endif %}> ElevenLabs <span class="hint">cloud, natural</span></label>
+    <label><input type="radio" name="TTS_BACKEND" value="kokoro-onnx" {% if v.TTS_BACKEND != 'elevenlabs' %}checked{% endif %}> Kokoro <span class="hint">on the Pi, free</span></label>
+  </fieldset>
+  {% with name="ELEVENLABS_API_KEY", label="ElevenLabs API key", test="elevenlabs" %}{% include "_key.html" %}{% endwith %}
+  <label>ElevenLabs voice ID <input name="ELEVENLABS_VOICE_ID" value="{{ v.ELEVENLABS_VOICE_ID }}" spellcheck="false"></label>
+  <label>Speech speed <output>{{ v.TTS_SPEED }}</output>
+    <input type="range" name="TTS_SPEED" min="0.8" max="1.6" step="0.05" value="{{ v.TTS_SPEED }}" data-show>
+  </label>
+  {% include "_save.html" %}
+</form>
+
+<form method="post" action="{{ url_for('save', card='decision') }}" class="card" id="decision">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Decision maker <small>Jev</small></h2>
+  <p class="hint">Sorts each request in a fraction of a second, so Jarvis can say "let me check" right away and answer simple questions without Claude.</p>
+  <fieldset class="choice"><legend>Jev</legend>
+    <label><input type="radio" name="FILLER_CLASSIFIER_ENABLED" value="true" {% if v.FILLER_CLASSIFIER_ENABLED != 'false' %}checked{% endif %}> On</label>
+    <label><input type="radio" name="FILLER_CLASSIFIER_ENABLED" value="false" {% if v.FILLER_CLASSIFIER_ENABLED == 'false' %}checked{% endif %}> Off</label>
+  </fieldset>
+  {% with name="TYPESAFE_API_KEY", label="TypeSafe API key", test="jev" %}{% include "_key.html" %}{% endwith %}
+  <label>Confidence needed <output>{{ v.FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD }}</output>
+    <input type="range" name="FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD" min="0.3" max="0.95" step="0.05" value="{{ v.FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD }}" data-show>
+  </label>
+  {% include "_save.html" %}
+</form>
+
+<form method="post" action="{{ url_for('save', card='listener') }}" class="card" id="listener">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Listener <small>speech to text</small></h2>
+  <fieldset class="choice"><legend>Transcribes with</legend>
+    <label><input type="radio" name="STT_BACKEND" value="meta" {% if v.STT_BACKEND == 'meta' %}checked{% endif %}> Meta <span class="hint">cloud, fastest</span></label>
+    <label><input type="radio" name="STT_BACKEND" value="whisper" {% if v.STT_BACKEND != 'meta' %}checked{% endif %}> Whisper <span class="hint">on the Pi, free</span></label>
+  </fieldset>
+  {% with name="META_MODEL_API_KEY", label="Meta Model API key", test="meta" %}{% include "_key.html" %}{% endwith %}
+  <label>Wake-word sensitivity
+    <input type="range" name="sensitivity" min="0" max="100" step="5" value="{{ sensitivity }}">
+    <span class="scale"><span>Fewer false wakes</span><span>Hears me more easily</span></span>
+  </label>
+  <details class="wake" data-wake-scores>
+    <summary>Recent wake-word scores</summary>
+    <p class="hint">How strongly each recent "Hey Jarvis" registered (0 to 1). Jarvis wakes at
+      {{ v.WAKE_WORD_THRESHOLD }}{% if soft_on %}, or at {{ v.WAKE_WORD_SOFT_THRESHOLD }} if he then hears his name{% endif %}.</p>
+    <table><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table>
+  </details>
+  {% include "_save.html" %}
+</form>
+
+<form method="post" action="{{ url_for('save', card='household') }}" class="card" id="household">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Household</h2>
+  <label>Who Jarvis belongs to <span class="hint">a name or "the Smith family"; blank keeps it neutral</span>
+    <input name="OWNER_NAME" value="{{ v.OWNER_NAME }}" maxlength="60"></label>
+  <label>Home city <span class="hint">for weather and local news, e.g. "Portland, OR"</span>
+    <input name="HOME_LOCATION" value="{{ v.HOME_LOCATION }}" maxlength="100"></label>
+  {% if remembered_location %}
+  <p class="hint">Jarvis also remembers that you live in <strong>{{ remembered_location }}</strong>, from
+    something you told him. That memory wins over this setting; tell him if you move.</p>
+  {% endif %}
+  {% include "_save.html" %}
+</form>
+
+<form method="post" action="{{ url_for('save', card='skills') }}" class="card" id="skills">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Skills</h2>
+  {% with name="BRAVE_API_KEY", label="Brave Search API key (web search)", test=None %}{% include "_key.html" %}{% endwith %}
+  {% with name="OPENWEATHER_API_KEY", label="OpenWeather API key (weather)", test=None %}{% include "_key.html" %}{% endwith %}
+  {% include "_save.html" %}
+</form>
+
+</div>
+{% endblock %}

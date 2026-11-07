@@ -10,7 +10,8 @@
 #   4. If raspotify is installed, allows passwordless `systemctl restart
 #      raspotify.service` (and nothing else) so kaizen.service's ExecStartPre
 #      can refresh the Spotify Connect session on every start
-#   5. systemctl --user daemon-reload && enable --now kaizen.service
+#   5. systemctl --user daemon-reload && enable --now kaizen.service, and the
+#      control panel's kaizen-panel.service (https://<hostname>.local:8443)
 #   6. Verifies a wait-online service is enabled (NetworkManager or systemd-networkd)
 
 set -euo pipefail
@@ -28,6 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 UNIT_SRC="$REPO_ROOT/config/systemd/kaizen.service"
 UNIT_DEST="$HOME/.config/systemd/user/kaizen.service"
+PANEL_SRC="$REPO_ROOT/config/systemd/kaizen-panel.service"
+PANEL_DEST="$HOME/.config/systemd/user/kaizen-panel.service"
 
 [ -f "$REPO_ROOT/run.sh" ] || fail "run.sh not found at $REPO_ROOT/run.sh — wrong repo layout"
 [ -f "$UNIT_SRC" ] || fail "unit file not found at $UNIT_SRC"
@@ -36,6 +39,8 @@ UNIT_DEST="$HOME/.config/systemd/user/kaizen.service"
 mkdir -p "$HOME/.config/systemd/user"
 cp "$UNIT_SRC" "$UNIT_DEST"
 ok "installed unit at $UNIT_DEST"
+cp "$PANEL_SRC" "$PANEL_DEST"
+ok "installed unit at $PANEL_DEST"
 
 # 2. Persistent journal
 if [ ! -d /var/log/journal ]; then
@@ -77,6 +82,8 @@ fi
 
 # 5. Reload + enable
 systemctl --user daemon-reload
+systemctl --user enable --now kaizen-panel.service
+ok "kaizen-panel.service enabled and started (https://$(hostname -s).local:8443)"
 systemctl --user enable --now kaizen.service
 ok "kaizen.service enabled and started"
 

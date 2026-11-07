@@ -1,5 +1,8 @@
 # Control panel: manage Jarvis from a browser
 
+**Status:** phase 1 built 2026-11-07 (`panel/`, `kaizen-panel.service`); see
+`docs/experiments/2026-11-07-control-panel-pi.md`. Phases 2 and 3 not started.
+
 **Date:** 2026-11-06
 **Status:** Draft. Users decided 2026-11-06 (§3); §11 Q2–Q4 still open.
 **Owner:** Mason
@@ -23,7 +26,7 @@ outages needed a laptop and a terminal:
   pasting a redirect URL back into the terminal.
 - **Monthly spend.** The only way to see it is to run a script on the Pi.
 
-The goal is one page, opened from a phone, that covers all of these without
+The goal is one page, opened from any device with a browser, that covers all of these without
 SSH, and does it without making the keys easier to steal.
 
 The repo is public, and anyone should be able to clone it and build their own
@@ -32,14 +35,18 @@ of the code also assumes the original owner (§3.1).
 
 ## 2. Decision: a web panel served by the Pi, not a native app
 
-The panel is a small web app on the Pi at `http://<hostname>.local:8080`,
-for example `http://daedalus.local:8080` on the original Pi, where it
+The panel is a small web app on the Pi at `https://<hostname>.local:8443`,
+for example `https://daedalus.local:8443` on the original Pi, where it
 already resolves over mDNS. Each install has its own hostname, so Jarvis
 says the panel's address when you ask "what's your setup page?", and once
 at the end of the first-boot setup.
 
-- **Reaches every device with nothing to install.** Any phone or laptop
-  browser works. It can be added to the home screen as a PWA.
+- **Reaches every device with nothing to install.** Any browser on the home
+  network works: phone, tablet, laptop, desktop. It can be added to a phone's
+  home screen as a PWA.
+- **Address fallback.** `.local` names resolve on macOS, iOS, Windows 10+ and
+  Linux with Avahi, but not on every Android version. Jarvis says the IP
+  address too (`https://192.168.x.y:8443`), and the page works on either.
 - **No app store and no per-platform builds.** One codebase, written in
   Python like the rest of Kaizen.
 - **Needs the Pi itself anyway.** A native app would still need an API on
@@ -104,7 +111,7 @@ free text.
 ## 4. Architecture
 
 ```
-phone/laptop ──HTTP (LAN)──▶ kaizen-panel.service (Flask + waitress, :8080)
+any browser ──HTTPS (LAN)─▶ kaizen-panel.service (Flask on cheroot, :8443)
                                 │ reads/writes
                                 ├── ~/kaizen/.env            (keys, backend choices)
                                 ├── ~/.kaizen/usage.db       (read-only: costs)
@@ -127,10 +134,11 @@ phone/laptop ──HTTP (LAN)──▶ kaizen-panel.service (Flask + waitress, :
 
 ### Server
 
-- **Flask behind waitress.** Both are pure Python, and waitress is a
-  production WSGI server. Flask is already used by the dashboard skill, but
-  only inside its container. Both packages are new to the host venv
-  (`requirements.txt`).
+- **Flask on cheroot** (changed from waitress while building, 2026-11-07:
+  waitress can't serve HTTPS). cheroot is CherryPy's pure-Python WSGI
+  server and does TLS with the standard library. A second, tiny cheroot
+  server on 8080 only redirects to 8443. Both packages are new to the host
+  venv (`requirements.txt`).
 - **Plain HTML templates with a little JavaScript** for the Test buttons and
   status polling. No frontend build step.
 
@@ -138,8 +146,19 @@ phone/laptop ──HTTP (LAN)──▶ kaizen-panel.service (Flask + waitress, :
 
 - **Jarvis reads keys and backends once, at startup** (`main.py`). A
   changed value applies when Kaizen restarts.
-- **Save shows a "Restart Jarvis to apply" banner** with a button, rather
-  than restarting mid-conversation.
+- **Save restarts Jarvis automatically once he's idle** (decided
+  2026-11-07). Never mid-conversation:
+  - **Idle signal:** Kaizen writes `idle <pid>` to `~/.kaizen/run/state`
+    right before it waits for the wake word, and `busy <pid>` from startup,
+    after a wake, and while speaking scheduled announcements
+    (`core/run_state.py`). A state whose pid is dead counts as idle.
+  - **Idle at Save:** restart now.
+  - **Busy at Save:** the page shows "Will restart when Jarvis finishes"
+    and restarts when the state turns `idle`. A "Restart now" button
+    overrides the wait.
+  - **Music counts as idle.** Restarting Kaizen doesn't stop raspotify, but
+    the raspotify refresh in the unit may cut the track for a second.
+  - **Several Saves in a row** make one restart, not several.
 - **Restart goes through the existing unit**
   (`systemctl --user restart kaizen`). So `ensure_audio.sh` and the
   raspotify refresh also run on every restart from the panel.
@@ -155,7 +174,17 @@ There are four slots, each a card.
 | Brain | (Claude only) | `ANTHROPIC_API_KEY` | `CLAUDE_MODEL`, `FAST_MODEL` (choice list from `config/pricing.yaml` model names) |
 | Voice | `TTS_BACKEND`: `elevenlabs` / `kokoro-onnx` | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID`, `TTS_SPEED` |
 | Decision maker | `FILLER_CLASSIFIER_ENABLED` on/off | `TYPESAFE_API_KEY` | `FILLER_CLASSIFIER_CONFIDENCE_THRESHOLD` |
-| Listener | `STT_BACKEND`: `meta` / `whisper` | `META_MODEL_API_KEY` | (none) |
+| Listener | `STT_BACKEND`: `meta` / `whisper` | `META_MODEL_API_KEY` | Wake-word sensitivity (below) |
+
+**Wake-word sensitivity** (decided 2026-11-07) is a slider from "Fewer
+false wakes" to "Hears me more easily", not a raw number. It sets
+`WAKE_WORD_THRESHOLD` from 0.8 down to 0.3 (default 0.5), and moves
+`WAKE_WORD_SOFT_THRESHOLD` with it at the same ratio it has now (the Pi's
+hand-tuned 0.15 at 0.7 stays at that proportion); an off soft stage stays
+off. Hard wakes now log their score (`Wake detected (score 0.91)`) so the
+list can show them. Next to it, the page shows the last ten wake scores from the journal
+and whether each one fired, so you can see where your voice lands before
+moving it.
 
 Brave and OpenWeather keys go in a fifth "Skills" card using the same
 pattern. Only the variables listed here can be changed. The allowlist is
@@ -223,8 +252,12 @@ in code, like `set-env-var`'s check.
     user to paste back the URL their browser ends up on, as
     `spotify_login.py` does today, but into a text box.
   - **Option B:** HTTPS on the panel. That brings a self-signed certificate
-    warning on every phone.
-- **Choice:** A. It's clunky but works with no setup.
+    warning on every device.
+- **Choice:** B, since the panel is HTTPS anyway (§7, Transport). Each
+  household registers `https://<hostname>.local:8443/spotify/callback` in
+  its own Spotify developer app; the panel shows the exact string to copy.
+  A stays as the fallback if Spotify rejects the `.local` redirect (to be
+  checked against Spotify's current redirect rules before building).
 
 ### 6.2 Wi‑Fi
 
@@ -235,7 +268,7 @@ in code, like `set-env-var`'s check.
   polkit rule rather than sudo.
 - **Safety:** after a change the panel keeps the old connection profile for
   60 s. If the new network doesn't come up, it switches back.
-- **Caveat:** changing networks drops the page. If the phone is on the same
+- **Caveat:** changing networks drops the page. If your device is on the same
   network, it reconnects on its own.
 
 ### 6.3 Logs
@@ -252,8 +285,15 @@ The panel holds every key, so it has to be no easier to attack than SSH.
 
 ### Who can reach it
 
-- **Home network only.** It refuses requests whose client address isn't
-  loopback or a private range (10/8, 172.16/12, 192.168/16, fc00::/7).
+- **No remote access (decided 2026-11-07).** Only the Pi itself and
+  devices on its own network segment: the panel reads the subnets of the
+  Pi's Ethernet and Wi‑Fi interfaces (`ip -o addr`, every 30 s) and refuses
+  any other address, including other private ranges, so a VPN (WireGuard,
+  Tailscale), another subnet, or a skill container is refused even with
+  the password.
+- **The firewall agrees.** Ports 8080 and 8443 open only for home-network
+  addresses arriving on `eth*`, `en*`, `wlan*` or `wl*`, never a VPN or
+  tunnel interface.
 - **Never internet-exposed.** Port-forwarding to it is documented as
   unsupported.
 
@@ -291,16 +331,47 @@ The panel holds every key, so it has to be no easier to attack than SSH.
   now covers `.env.*` (except `.env.example`), since the backups weren't
   ignored and a `git add -A` would have published the keys.
 - **Backups:** the panel writes its own backups as `.env.bak.<timestamp>`,
-  also `0600`, and keeps only the last five.
+  also `0600`, and keeps only the last five of its own (older hand-made
+  backups are left alone).
 - **Same rules as `set-env-var`:** the value is rejected if it contains a
   newline, and only allowlisted keys can be written.
 
 ### Transport
 
-- **Plain HTTP on the home network.** Anyone who can watch home Wi‑Fi traffic
-  could see a pasted key. That's acceptable for phases 1 and 2 on a WPA2/3
-  home network.
-- **Phase 3, or any shared network, needs HTTPS** (§11).
+**Decided 2026-11-07: HTTPS with a self-signed certificate, set up
+automatically.** No one runs `openssl` by hand.
+
+- **Generated on first start.** If `~/.kaizen/panel-tls/` has no
+  certificate, the panel makes one (`openssl req -x509`, EC P-256, 10-year
+  validity) before it starts listening. Key file mode 0600.
+- **Names it covers:** `<hostname>.local`, `<hostname>`, `localhost`, and
+  every current IPv4 address of the Pi's real interfaces (not `docker0`'s
+  172.17.0.1), as subjectAltNames, so both the name and the IP address work.
+- **Kept up to date.** On each start the panel compares the Pi's hostname
+  and addresses with the certificate. If they changed (new router, new
+  DHCP lease, renamed Pi) it makes a new one. Otherwise it keeps the old
+  one, so browsers that already accepted it don't warn again.
+- **HTTP redirects.** `:8080` only answers with a redirect to
+  `https://…:8443`, so typing the plain address still works.
+- **Cookies:** `Secure`, `HttpOnly`, `SameSite=Strict`. No HSTS: it
+  applies to every port on the host, so a browser that trusted the
+  certificate would refuse the plain-HTTP redirect on 8080.
+- **Firewall:** `config/firewall/kaizen-firewall.nft` opens 8080 and 8443
+  to the home network only; skill containers (`docker0`, `br-*`) still
+  can't reach any Pi service, the panel included.
+- **What can't be automated:** each browser shows the "not private"
+  warning once, and the user clicks through it. That is the browser
+  protecting itself and nothing on the Pi can skip it. The login page
+  explains it in one sentence and shows the certificate's fingerprint,
+  which Jarvis can also read out, so a cautious user can check it's really
+  the Pi.
+- **Optional, no warning at all:** the panel can make its own small
+  certificate authority instead and offer a "Download certificate" link.
+  Installing it on a device removes the warning for good on that device,
+  but the install is fiddly on iOS and Android. Phase 2 at the earliest.
+- **Setup hotspot (phase 3):** the hotspot is WPA2 with a password Jarvis
+  speaks, and the OS captive-portal check is answered over HTTP with a
+  redirect to the HTTPS wizard.
 
 ### Commands
 
@@ -345,7 +416,8 @@ from a cloned repo to a working assistant.
 - Save, then Restart, then Jarvis speaking on the new backend;
 - an injected Dummy Output (the `aplay` method from 2026-11-03) shows red on
   Status, and Restart clears it;
-- the page loads from a phone on the home Wi‑Fi.
+- the page loads on the home Wi‑Fi from a phone (iOS and Android) and from a
+  laptop (Windows, macOS or Linux), by `.local` name and by IP.
 
 Each run is recorded under `docs/experiments/`.
 
@@ -361,13 +433,13 @@ Each run is recorded under `docs/experiments/`.
 
 1. ~~Who are the users?~~ **Decided 2026-11-06:** anyone who clones the
    repo; one private install per household; one admin configures it (§3).
-   Still to decide under this: is plain HTTP on the home network acceptable
-   for a public release (§7, Transport)? The alternative is a self-signed
-   certificate with a one-time warning per phone.
-2. **Spotify: is the paste-the-URL flow (§6.1) acceptable?** If not, it's
-   HTTPS with a certificate warning.
-3. **Should Save restart Jarvis automatically** when he's idle (no session
-   in progress)? The alternative is always asking first.
-4. **Other settings:** should wake-word sensitivity
-   (`WAKE_WORD_THRESHOLD`) or speech speed be on the page? They are not
-   keys, but they are what people tend to want to adjust.
+   **Transport decided 2026-11-07:** HTTPS with an automatically generated
+   self-signed certificate (§7, Transport).
+2. ~~Spotify: is the paste-the-URL flow acceptable?~~ **Moot 2026-11-07:**
+   with HTTPS the callback goes straight to the panel (§6.1, option B);
+   pasting stays as the fallback.
+3. ~~Should Save restart Jarvis automatically?~~ **Decided 2026-11-07:**
+   yes, once he's idle (§4, Applying changes).
+4. ~~Other settings?~~ **Decided 2026-11-07:** wake-word sensitivity is on
+   the Listener card (§5.1). Speech speed (`TTS_SPEED`) was already on the
+   Voice card.

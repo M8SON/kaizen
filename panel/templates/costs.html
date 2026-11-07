@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Costs{% endblock %}
+{% block body %}
+<form method="get" class="months">
+  {% for m in months %}
+  <button name="month" value="{{ m }}" class="{{ 'current' if m == month else 'secondary' }}">{{ m }}</button>
+  {% endfor %}
+</form>
+{% if s is none %}
+<p class="card">Nothing logged yet. Costs appear after Jarvis's first conversation.</p>
+{% elif not s.rows %}
+<p class="card">Nothing logged for {{ month }}.</p>
+{% else %}
+<section class="card">
+  <div class="totals">
+    <div><span class="big">${{ '%.2f'|format(s.total) }}</span><span class="hint">{{ month }} total, including the ElevenLabs plan</span></div>
+    {% if s.projection %}<div><span class="big">${{ '%.2f'|format(s.projection.total) }}</span><span class="hint">30 days at this rate ({{ '%.1f'|format(s.projection.days_logged) }} days logged)</span></div>{% endif %}
+    {% if s.per_request is not none %}<div><span class="big">${{ '%.4f'|format(s.per_request) }}</span><span class="hint">per spoken request ({{ s.turns }} this month)</span></div>{% endif %}
+  </div>
+  <h2>ElevenLabs allowance</h2>
+  {% set pct = (s.credits / s.plan_credits * 100) if s.plan_credits else 0 %}
+  <meter class="bar" min="0" max="{{ s.plan_credits }}" high="{{ s.plan_credits * 0.8 }}" value="{{ s.credits }}">{{ '%.0f'|format(pct) }}%</meter>
+  <p class="hint">{{ '{:,.0f}'.format(s.credits) }} of {{ '{:,}'.format(s.plan_credits) }} credits used ({{ '%.0f'|format(pct) }}%) · plan ${{ '%.2f'|format(s.plan_monthly) }}/month</p>
+  <div class="scroll">
+  <table class="costs">
+    <thead><tr><th>Service</th><th class="num">Cost</th><th class="num">Calls</th><th>Usage</th></tr></thead>
+    <tbody>
+    {% for r in s.rows %}
+      <tr><td>{{ r.name }}</td>
+        <td class="num">{% if r.cost is none %}no price{% else %}${{ '%.4f'|format(r.cost) }}{% endif %}</td>
+        <td class="num">{{ r.calls }}</td><td>{{ r.usage }}</td></tr>
+    {% endfor %}
+      <tr><td>elevenlabs plan (flat)</td><td class="num">${{ '%.4f'|format(s.plan_monthly) }}</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+  {% if s.unpriced %}<p class="hint">Not priced yet (add to config/pricing.yaml): {{ s.unpriced|join(', ') }}</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

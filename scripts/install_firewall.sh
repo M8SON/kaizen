@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install Kaizen's host firewall (nftables) on the Pi.
 #
-#   - Default-deny inbound; SSH (22), Spotify Connect discovery (4070) and
-#     mDNS allowed from the home network only.
+#   - Default-deny inbound; SSH (22), Spotify Connect discovery (4070), the
+#     control panel (8080, 8443) and mDNS allowed from the home network only.
 #   - Skill containers can reach the internet but not the Pi's own services
 #     or other devices on the home network.
 #   - Pins librespot's discovery port to 4070 (raspotify drop-in).

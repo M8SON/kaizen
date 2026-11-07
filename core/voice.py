@@ -431,7 +431,7 @@ class VoiceInterface:
                         logger.info("Wake detected (soft, score %.2f) — confirming via transcript",
                                     self._max_wake_score())
                     else:
-                        logger.info("Wake detected")
+                        logger.info("Wake detected (score %.2f)", self._max_wake_score())
                     self._wake_preroll = b"".join(preroll)
                     self._shared_audio = audio
                     self._shared_stream = stream

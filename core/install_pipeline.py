@@ -1,9 +1,10 @@
 """
 Shared install pipeline for Kaizen skills.
 
-Entry points (voice via install-skill, CLI via core.skill_cli, future mobile
-HTTP) all funnel through InstallPipeline.install_from_path or
-InstallPipeline.install_from_url.
+Entry points (CLI via core.skill_cli) funnel through InstallPipeline.install_from_path or
+InstallPipeline.install_from_url. Voice requests don't: they go through
+core.skill_builder, which reuses inspect_staged, place_skill and fetch_skill
+and is approved on the control panel.
 
 Pipeline steps:
   1. Fetch   — external code (git clone / tarball) for install_from_url.
@@ -126,6 +127,71 @@ def summarize_permissions(
     )
 
 
+
+def inspect_staged(staging: Path, *, tier: str, validator: SkillValidator | None = None):
+    """Validate a staged skill at `tier`: SKILL.md (name must match the
+    directory), config.yaml, and the Dockerfile allowlist.
+    Returns (name, config, PermissionSummary); raises ValueError."""
+    validator = validator or SkillValidator()
+    skill_md = staging / "SKILL.md"
+    try:
+        frontmatter, _ = validator.validate_markdown(skill_md.read_text(encoding="utf-8"), staging)
+    except (OSError, ValueError) as e:
+        raise ValueError(f"invalid SKILL.md: {e}") from e
+    name = frontmatter["name"]
+
+    raw_config = {}
+    config_path = staging / "config.yaml"
+    if config_path.exists():
+        try:
+            raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"invalid config.yaml: {e}") from e
+    try:
+        config = validator.validate_execution_config(raw_config, tier=tier, skill_name=name)
+    except ValueError as e:
+        raise ValueError(f"config.yaml rejected at tier {tier}: {e}") from e
+
+    dockerfile = staging / "scripts" / "Dockerfile"
+    if config.get("type", "docker") == "docker":
+        if not dockerfile.exists():
+            raise ValueError("docker skill has no scripts/Dockerfile to build its image from")
+        try:
+            validate_dockerfile(dockerfile, tier=tier)
+        except DockerfileValidationError as e:
+            raise ValueError(f"Dockerfile rejected at tier {tier}: {e}") from e
+
+    summary = summarize_permissions(
+        name=name, description=frontmatter["description"], config=config, tier=tier,
+    )
+    return name, config, summary
+
+
+def place_skill(staging: Path, install_root: Path, name: str, *, source: str) -> Path:
+    """Copy a validated skill into <install_root>/<name> (replacing it),
+    drop any shipped .install.json, and write fresh provenance."""
+    final_dir = install_root / name
+    if final_dir.exists():
+        shutil.rmtree(final_dir)
+    shutil.copytree(staging, final_dir, symlinks=False)
+
+    shipped_install = final_dir / INSTALL_FILENAME
+    if shipped_install.exists():
+        logger.warning(
+            "skill shipped its own %s; discarding (provenance is pipeline-written)",
+            INSTALL_FILENAME,
+        )
+        shipped_install.unlink()
+
+    write_metadata(final_dir, InstallMetadata(
+        source=source,
+        sha256=compute_skill_sha256(final_dir),
+        installed_at=datetime.datetime.now().isoformat(timespec="seconds"),
+        user_confirmed_env_passthrough=[],
+    ))
+    return final_dir
+
+
 class DockerBuilder:
     """Production builder — invokes the host-side build script."""
     def __init__(self, build_script: Path | None = None):
@@ -204,51 +270,12 @@ class InstallPipeline:
                 return InstallDecision.FAILED
             staging.rename(renamed)
             staging = renamed
-            skill_md = staging / "SKILL.md"
 
-        # Now full validation including parent-dir match.
         try:
-            frontmatter, _ = self.validator.validate_markdown(
-                skill_md.read_text(encoding="utf-8"),
-                staging,
-            )
+            name, config, summary = inspect_staged(staging, tier=tier, validator=self.validator)
         except ValueError as e:
-            logger.error("invalid SKILL.md: %s", e)
+            logger.error("%s", e)
             return InstallDecision.FAILED
-
-        name = frontmatter["name"]
-        description = frontmatter["description"]
-
-        config_path = staging / "config.yaml"
-        raw_config = {}
-        if config_path.exists():
-            try:
-                raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-            except yaml.YAMLError as e:
-                logger.error("invalid config.yaml: %s", e)
-                return InstallDecision.FAILED
-        try:
-            config = self.validator.validate_execution_config(
-                raw_config, tier=tier, skill_name=name,
-            )
-        except ValueError as e:
-            logger.error("config.yaml rejected at tier %s: %s", tier, e)
-            return InstallDecision.FAILED
-
-        dockerfile = staging / "scripts" / "Dockerfile"
-        if config.get("type", "docker") == "docker" and not dockerfile.exists():
-            logger.error("docker skill has no scripts/Dockerfile to build its image from")
-            return InstallDecision.FAILED
-        if config.get("type", "docker") == "docker" and dockerfile.exists():
-            try:
-                validate_dockerfile(dockerfile, tier=tier)
-            except DockerfileValidationError as e:
-                logger.error("Dockerfile rejected at tier %s: %s", tier, e)
-                return InstallDecision.FAILED
-
-        summary = summarize_permissions(
-            name=name, description=description, config=config, tier=tier,
-        )
         summary_text = summary.to_text()
 
         if not self.confirmer.confirm_gate("install", summary_text):
@@ -256,28 +283,7 @@ class InstallPipeline:
         if not self.confirmer.confirm_gate("build", summary_text):
             return InstallDecision.CANCELLED
 
-        # Commit install: strip shipped metadata, copy into place.
-        final_dir = self.install_root / name
-        if final_dir.exists():
-            shutil.rmtree(final_dir)
-        shutil.copytree(staging, final_dir, symlinks=False)
-
-        shipped_install = final_dir / INSTALL_FILENAME
-        if shipped_install.exists():
-            logger.warning(
-                "skill shipped its own %s; discarding (provenance is pipeline-written)",
-                INSTALL_FILENAME,
-            )
-            shipped_install.unlink()
-
-        sha256 = compute_skill_sha256(final_dir)
-        meta = InstallMetadata(
-            source=str(staging),
-            sha256=sha256,
-            installed_at=datetime.datetime.now().isoformat(timespec="seconds"),
-            user_confirmed_env_passthrough=[],
-        )
-        write_metadata(final_dir, meta)
+        final_dir = place_skill(staging, self.install_root, name, source=str(staging))
 
         # Build
         image = config.get("image")
@@ -305,42 +311,47 @@ class InstallPipeline:
         Fetch a skill from a git repository or tarball URL, then delegate to
         install_from_path. Supports https URLs only.
         """
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in ("https",):
-            logger.error("install_from_url: unsupported scheme %r", parsed.scheme)
-            return InstallDecision.FAILED
-
         with tempfile.TemporaryDirectory(prefix="kaizen-install-") as tmp:
-            staging = Path(tmp) / "staging"
-            if url.endswith(".git") or parsed.netloc.endswith("github.com"):
-                result = subprocess.run(
-                    ["git", "clone", "--depth", "1", url, str(staging)],
-                    capture_output=True, text=True, timeout=180,
-                )
-                if result.returncode != 0:
-                    logger.error("git clone failed: %s", result.stderr.strip()[:300])
-                    return InstallDecision.FAILED
-            elif url.endswith((".tar.gz", ".tgz")):
-                import tarfile
-                from urllib.request import urlretrieve
-
-                tarball = Path(tmp) / "archive.tgz"
-                urlretrieve(url, tarball)
-                staging.mkdir()
-                with tarfile.open(tarball) as tar:
-                    for member in tar.getmembers():
-                        if member.name.startswith("/") or ".." in Path(member.name).parts:
-                            logger.error("unsafe tar member path: %r", member.name)
-                            return InstallDecision.FAILED
-                        if member.issym() or member.islnk():
-                            logger.error("unsafe tar member type: %r", member.name)
-                            return InstallDecision.FAILED
-                    tar.extractall(staging)
-                entries = list(staging.iterdir())
-                if len(entries) == 1 and entries[0].is_dir():
-                    staging = entries[0]
-            else:
-                logger.error("install_from_url: unknown URL format %r", url)
+            try:
+                staging = fetch_skill(url, Path(tmp))
+            except ValueError as e:
+                logger.error("install_from_url: %s", e)
                 return InstallDecision.FAILED
-
             return self.install_from_path(staging, tier=tier)
+
+
+def fetch_skill(url: str, workdir: Path) -> Path:
+    """Fetch a skill from an https git repository or tarball into workdir.
+    Returns the directory holding it; raises ValueError."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("https",):
+        raise ValueError(f"unsupported scheme {parsed.scheme!r} (https only)")
+    staging = workdir / "staging"
+    if url.endswith(".git") or parsed.netloc.endswith("github.com"):
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", url, str(staging)],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            raise ValueError(f"git clone failed: {result.stderr.strip()[:300]}")
+        shutil.rmtree(staging / ".git", ignore_errors=True)
+        return staging
+    if url.endswith((".tar.gz", ".tgz")):
+        import tarfile
+        from urllib.request import urlretrieve
+
+        tarball = workdir / "archive.tgz"
+        urlretrieve(url, tarball)
+        staging.mkdir()
+        with tarfile.open(tarball) as tar:
+            for member in tar.getmembers():
+                if member.name.startswith("/") or ".." in Path(member.name).parts:
+                    raise ValueError(f"unsafe tar member path: {member.name!r}")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"unsafe tar member type: {member.name!r}")
+            tar.extractall(staging)
+        entries = list(staging.iterdir())
+        if len(entries) == 1 and entries[0].is_dir():
+            staging = entries[0]
+        return staging
+    raise ValueError(f"unknown URL format {url!r} (a git repository or a .tar.gz)")

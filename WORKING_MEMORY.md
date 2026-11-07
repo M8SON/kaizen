@@ -94,6 +94,14 @@ Update this file when durable project context changes. Do not create overlapping
 
 ## Recent Durable Milestones
 
+- 2026-11-07: skill builder step 1 (`core/skill_builder.py`). "Add a skill
+  that..." builds in the background with no spoken gates: a coding agent from
+  `config/coding_agents.yaml` (Claude Code first; the user wants any agent:
+  Codex, Grok, Muse...) writes and tests it in a Docker sandbox, Kaizen
+  validates, builds a candidate image and reruns the tests, up to 3 repair
+  rounds; the user approves on the panel's Skills page. URL/path installs
+  too. The user wants no voice approval at all, only the website. Spec:
+  `docs/superpowers/specs/2026-11-07-skill-builder-design.md`.
 - 2026-11-07: control panel phase 1 (`panel/`, `kaizen-panel.service`):
   HTTPS on :8443 with an automatic self-signed cert (8080 redirects), one
   admin password claimed with a setup code Jarvis speaks, write-only keys

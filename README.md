@@ -254,7 +254,7 @@ Optional layers:
 ./scripts/test.sh --all
 ```
 
-There is also an optional real integration harness for the `install_skill` flow. It uses the real Claude CLI and real Docker build path, but replaces microphone confirmation with scripted responses so it can run unattended:
+There is also an optional real integration harness for the skill builder. It runs the real coding agent in its sandbox, builds and tests the skill, approves it into a throwaway folder and checks it loads (one billed agent run):
 
 ```bash
 .venv/bin/python scripts/test_install_skill_integration.py
@@ -277,7 +277,7 @@ Just ask:
 
 > *"hey jarvis, add a skill that tells me a random joke"*
 
-After you say "confirm create", Claude Code writes the skill in a sandboxed scratch folder (it can't read or change anything else, including `.env`). Kaizen then checks it at the restricted *authored* tier, reads you a summary of what it's allowed to access, and walks you through "confirm install", "confirm build", and "confirm restart" before saving it to `~/.kaizen/authored/` and loading it. No coding required. See `skills/skill-tells-random/` for an example skill.
+A coding agent (Claude Code by default; `SKILL_BUILDER`, `config/coding_agents.yaml`) writes the skill and its tests inside a Docker sandbox that sees only the new skill's folder and its own key, and runs the tests. Kaizen then checks it at the restricted *authored* tier, builds it and reruns the tests in a real skill container, sending failures back to the agent (up to 3 rounds). Jarvis tells you when it's ready, and you approve it on the control panel's **Skills** page, which shows its permissions, test results and every file. Nothing is approved by voice. "Install the skill at <link>" works the same way, without the agent. See `skills/skill-tells-random/` for an example skill.
 
 To port a community [OpenClaw](https://github.com/openclaw/openclaw) skill:
 

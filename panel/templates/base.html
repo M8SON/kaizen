@@ -16,6 +16,7 @@
   <nav>
     <a href="{{ url_for('services') }}" {% if request.endpoint == 'services' %}aria-current="page"{% endif %}>Services</a>
     <a href="{{ url_for('status_page') }}" {% if request.endpoint == 'status_page' %}aria-current="page"{% endif %}>Status</a>
+    <a href="{{ url_for('skills') }}" {% if request.endpoint == 'skills' %}aria-current="page"{% endif %}>Skills</a>
     <a href="{{ url_for('costs') }}" {% if request.endpoint == 'costs' %}aria-current="page"{% endif %}>Costs</a>
   </nav>
   <form method="post" action="{{ url_for('logout') }}" class="logout">

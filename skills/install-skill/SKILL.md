@@ -23,7 +23,7 @@ Do NOT use this for general questions or tasks the assistant can already do.
 
 ## Tool notes
 
-Tell the user you'll walk them through spoken confirmations before anything is built.
+Both kinds run in the background and wait on the control panel's Skills page for the user to approve them there; there are no spoken confirmations, so call it as soon as the request is clear.
 
 ## Inputs
 
@@ -43,6 +43,6 @@ when both are present.
 
 ## How to respond
 
-For both flows: tell the user what will happen and that you will walk them through
-confirmation steps before anything is built or installed. Use short spoken sentences.
-Do not use markdown.
+Say in one or two short sentences that the skill is being built (or fetched
+and checked) and will be ready to approve on the control panel in a few
+minutes. Do not use markdown.

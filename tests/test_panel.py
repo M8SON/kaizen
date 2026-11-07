@@ -377,3 +377,62 @@ def test_friendly_errors():
     assert _friendly(ApiError("headers: {...}"), "k" * 20) == "Invalid key: Invalid API key"
     msg = _friendly(RuntimeError("401 Cannot authenticate with key " + "k" * 20), "k" * 20)
     assert msg.startswith("Invalid key") and "k" * 20 not in msg
+
+
+def _ready_build(monkeypatch, tmp_path):
+    """A finished build in the test KAIZEN_PANEL_DIR, Docker faked."""
+    from types import SimpleNamespace
+    from core import skill_builder as sb
+    from tests.test_skill_builder import FakeDocker, agent_script, write_skill
+    monkeypatch.setenv("KAIZEN_PANEL_DIR", str(tmp_path / "kz"))
+    monkeypatch.setattr(sb, "AUTHORED_ROOT", tmp_path / "authored")
+    docker = FakeDocker()
+    monkeypatch.setattr(sb, "_docker", docker)
+    monkeypatch.setattr(sb.shutil, "which", lambda b: "/usr/bin/docker" if b == "docker" else None)
+    monkeypatch.setattr("core.container_manager.ContainerManager._run_container",
+                        lambda *a, **k: "I rolled a 4.")
+    monkeypatch.setattr(sb, "_run_agent", agent_script(lambda d, n: write_skill(
+        d, n, app="print('<script>alert(1)</script>')\n")))
+    job = sb.run(sb.start("roll dice", "dice-roller", launch=lambda i: None)["id"])
+    return SimpleNamespace(sb=sb, job=job, docker=docker)
+
+
+def test_skills_page_shows_a_ready_build_for_review(panel, monkeypatch, tmp_path):
+    b = _ready_build(monkeypatch, tmp_path)
+    _setup(panel)
+    html = panel["client"].get("/skills").get_data(as_text=True)
+    assert "dice-roller" in html and "Approve and install" in html
+    assert "scripts/app.py" in html and "I rolled a 4." in html
+    assert "<script>alert(1)" not in html and "&lt;script&gt;alert(1)" in html  # escaped
+    assert panel["client"].get("/api/skills").get_json()["jobs"][0]["status"] == "ready"
+    assert b.job["status"] == "ready"
+
+
+def test_approve_needs_csrf_then_installs_and_restarts(panel, monkeypatch, tmp_path):
+    b = _ready_build(monkeypatch, tmp_path)
+    _setup(panel)
+    c = panel["client"]
+    url = f"/skills/{b.job['id']}/approve"
+    assert c.post(url, data={}).status_code == 400
+    assert b.sb.load(b.job["id"])["status"] == "ready"
+    r = c.post(url, data={"csrf": _csrf(c, "/skills")})
+    assert r.status_code == 302 and panel["restarter"].requests == [False]
+    assert (tmp_path / "authored" / "dice-roller" / "SKILL.md").exists()
+    assert "Installed dice roller" in c.get("/skills").get_data(as_text=True)
+
+
+def test_reject_and_bad_actions(panel, monkeypatch, tmp_path):
+    b = _ready_build(monkeypatch, tmp_path)
+    _setup(panel)
+    c = panel["client"]
+    token = _csrf(c, "/skills")
+    assert c.post(f"/skills/{b.job['id']}/delete", data={"csrf": token}).status_code == 404
+    c.post("/skills/../../x/approve", data={"csrf": token})
+    c.post(f"/skills/{b.job['id']}/reject", data={"csrf": token})
+    assert b.sb.load(b.job["id"])["status"] == "rejected"
+    assert panel["restarter"].requests == []
+    assert not (tmp_path / "authored" / "dice-roller").exists()
+
+
+def test_skills_page_needs_login(panel):
+    assert panel["client"].get("/skills").headers["Location"].endswith("/setup")

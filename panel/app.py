@@ -1,4 +1,4 @@
-"""The control panel's Flask app (phase 1: login, services, status, costs).
+"""The control panel's Flask app: login, services, status, costs, skill builds.
 
 Security (spec §7): only devices on the Pi's own network segment; one admin password (scrypt)
 claimed with the setup code Jarvis speaks; signed session cookies
@@ -24,7 +24,7 @@ import yaml
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
 
-from core import cost_summary
+from core import cost_summary, skill_builder
 from panel import checks as default_checks
 from panel import env_store, state, status
 
@@ -425,6 +425,39 @@ def create_app(*, env_path: Path | None = None, data_dir: Path | None = None,
               else "Jarvis will restart when he finishes the current conversation.")
         back = "services" if request.form.get("back") == "services" else "status_page"
         return redirect(url_for(back))
+
+    # --- skills (builds waiting for approval) -----------------------------
+
+    @app.get("/skills")
+    def skills():
+        jobs = skill_builder.list_jobs()
+        files = {j["id"]: skill_builder.files(j) for j in jobs if j["status"] == skill_builder.READY}
+        return render_template("skills.html", jobs=jobs, files=files,
+                               when=lambda ts: datetime.fromtimestamp(ts).strftime("%b %d %H:%M"))
+
+    @app.get("/api/skills")
+    def skills_api():
+        return jsonify(jobs=[{"id": j["id"], "status": j["status"], "steps": len(j["log"])}
+                             for j in skill_builder.list_jobs()])
+
+    @app.post("/skills/<job_id>/<action>")
+    def skill_action(job_id, action):
+        if action not in ("approve", "reject"):
+            abort(404)
+        try:
+            job = getattr(skill_builder, action)(job_id)
+        except (skill_builder.BuildError, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("skills"))
+        spoken = job["name"].replace("-", " ")
+        if action == "reject":
+            flash(f"Rejected the {spoken} skill.")
+            return redirect(url_for("skills"))
+        logger.info("Panel: approved skill %s", job["name"])
+        result = restarter.request()
+        flash(f"Installed {spoken}. " + ("Jarvis is restarting to load it." if result == "restarted"
+              else "Jarvis will load it when he finishes the current conversation."))
+        return redirect(url_for("skills"))
 
     # --- costs -----------------------------------------------------------
 

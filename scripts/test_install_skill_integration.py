@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Optional integration test for the real install_skill flow.
+Optional integration test for the real skill builder (core/skill_builder.py).
 
-This script uses:
-- the real Claude CLI to generate a disposable skill
-- the real Docker build path
-- a fake voice object that auto-confirms the three prompts
+Asks install-skill for a disposable skill, then runs the build in-process:
+the real coding agent in its Docker sandbox, the real validation, image build
+and tests. Approves it the way the control panel does, into a throwaway
+authored dir, and checks the skill loads.
 
-By default it cleans up the generated skill directories and image on success
-or failure so the repository is left unchanged.
+Builds jobs under a temporary KAIZEN_PANEL_DIR, and by default removes the
+skill and its images afterwards, so ~/.kaizen is left unchanged. Billed: one
+agent run (about $0.10-0.15 with Claude Code).
 """
 
 from __future__ import annotations
@@ -18,8 +19,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,143 +29,85 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import tempfile
+os.environ["KAIZEN_PANEL_DIR"] = tempfile.mkdtemp(prefix="kaizen-build-it-")
 
-from core import meta_skill
-from core.meta_skill import MetaSkillExecutor, _derive_skill_name
-from core.skill_loader import SkillLoader
-
-
-@dataclass
-class IntegrationOrchestrator:
-    skill_loader: SkillLoader
-    reload_count: int = 0
-
-    def reload_skills(self):
-        self.reload_count += 1
-        self.skill_loader.load_all()
-
-
-class FakeVoice:
-    def __init__(self, transcripts: list[str]):
-        self._transcripts = list(transcripts)
-        self.spoken: list[str] = []
-
-    def speak(self, text: str):
-        self.spoken.append(text)
-        print(f"[voice] {text}")
-
-    def listen(self, max_wait_seconds: int):
-        if not self._transcripts:
-            return ""
-        response = self._transcripts.pop(0)
-        print(f"[heard] {response}")
-        return response
+from core import meta_skill, skill_builder  # noqa: E402
+from core.meta_skill import MetaSkillExecutor  # noqa: E402
+from core.skill_loader import SkillLoader  # noqa: E402
 
 
 def _check_prerequisites() -> list[str]:
     errors = []
-
-    if not shutil.which("claude"):
-        errors.append("claude CLI not found in PATH")
-
     if not shutil.which("docker"):
         errors.append("docker not found in PATH")
-    else:
-        docker_info = subprocess.run(
-            ["docker", "info"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if docker_info.returncode != 0:
-            errors.append(f"docker info failed: {(docker_info.stderr or docker_info.stdout).strip()}")
-
-    if not (os.environ.get("ANTHROPIC_API_KEY") or (REPO_ROOT / ".env").exists()):
-        errors.append("ANTHROPIC_API_KEY not set and .env not found")
-
+    elif subprocess.run(["docker", "info"], capture_output=True, timeout=15).returncode != 0:
+        errors.append("docker info failed (are you in the docker group?)")
+    agent = skill_builder.load_agents().get(skill_builder.agent_name())
+    if agent is None:
+        errors.append(f"unknown SKILL_BUILDER {skill_builder.agent_name()!r}")
+    elif agent.get("credential_env") and not os.environ.get(agent["credential_env"]):
+        errors.append(f"{agent['credential_env']} not set (in the environment or .env)")
     return errors
 
 
-def _cleanup(skill_name: str):
-    path = meta_skill.AUTHORED_ROOT / skill_name
-    if path.exists():
-        shutil.rmtree(path)
-        print(f"[cleanup] removed {path}")
-
-    image_name = f"kaizen/{skill_name}:latest"
-    subprocess.run(
-        ["docker", "image", "rm", "-f", image_name],
-        capture_output=True,
-        text=True,
-    )
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run a real install_skill integration test")
-    parser.add_argument(
-        "--keep-artifacts",
-        action="store_true",
-        help="Keep generated skill files and Docker image after the test",
-    )
-    parser.add_argument(
-        "--description",
-        default=None,
-        help="Optional custom skill description. If omitted, a disposable test description is generated.",
-    )
+    parser = argparse.ArgumentParser(description="Run a real skill builder integration test")
+    parser.add_argument("--keep-artifacts", action="store_true",
+                        help="Keep the built skill and its Docker image")
+    parser.add_argument("--description", default=None,
+                        help="Skill description (default: a disposable hello skill)")
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
-
     errors = _check_prerequisites()
     if errors:
         for error in errors:
             print(f"error: {error}", file=sys.stderr)
         return 2
 
-    # Install into a throwaway authored dir, not the real ~/.kaizen/authored.
-    meta_skill.AUTHORED_ROOT = Path(tempfile.mkdtemp(prefix="kaizen-authored-"))
-
+    authored = Path(tempfile.mkdtemp(prefix="kaizen-authored-"))
+    meta_skill.AUTHORED_ROOT = skill_builder.AUTHORED_ROOT = authored
     token = uuid.uuid4().hex[:8]
     description = args.description or (
-        f"integration {token[:4]} {token[4:]} create a test skill that returns a short hello message"
-    )
-    skill_name = _derive_skill_name(description)
-
-    print(f"[info] repo root: {REPO_ROOT}")
+        f"integration {token[:4]} {token[4:]} create a test skill that returns a short hello message")
     print(f"[info] description: {description}")
-    print(f"[info] expected skill name: {skill_name}")
 
-    orchestrator = IntegrationOrchestrator(
-        skill_loader=SkillLoader(search_paths=[REPO_ROOT / "skills", meta_skill.AUTHORED_ROOT])
-    )
-    orchestrator.skill_loader.load_all()
-
-    voice = FakeVoice(
-        ["confirm create", "confirm install", "confirm build", "confirm restart"]
-    )
-    executor = MetaSkillExecutor(voice=voice, orchestrator=orchestrator)
-
-    result = ""
+    started = []
+    executor = MetaSkillExecutor(
+        voice=None, orchestrator=None,
+        start_build=lambda d, n: started.append(skill_builder.start(d, n, launch=lambda i: None)))
+    print(f"[result] {executor.run({'description': description})}")
+    if not started:
+        print("error: no build started", file=sys.stderr)
+        return 1
+    job = started[0]
+    name = job["name"]
     try:
-        result = executor.run({"description": description})
-        print(f"[result] {result}")
-
-        if "is now active" not in result:
-            print("error: install flow did not complete successfully", file=sys.stderr)
+        job = skill_builder.run(job["id"])
+        for _ts, text in job["log"]:
+            print(f"[build] {text}")
+        if job["status"] != skill_builder.READY:
+            print(f"error: build {job['status']}: {job['error']}", file=sys.stderr)
             return 1
-
-        if skill_name not in orchestrator.skill_loader.skills:
-            print(f"error: generated skill '{skill_name}' was not loaded after reload", file=sys.stderr)
+        for t in job["tests"]:
+            print(f"[test] {'ok ' if t['ok'] else 'FAIL'} {t['input']} -> {t['output'][:100]}")
+        skill_builder.approve(job["id"])
+        loader = SkillLoader(search_paths=[REPO_ROOT / "skills", authored])
+        loader.load_all()
+        if name not in loader.skills:
+            print(f"error: approved skill '{name}' did not load", file=sys.stderr)
             return 1
-
-        print(f"[ok] generated skill '{skill_name}' loaded successfully")
+        print(f"[ok] skill '{name}' built, tested, approved and loaded")
         return 0
     finally:
-        if not args.keep_artifacts:
-            _cleanup(skill_name)
+        if args.keep_artifacts:
+            print(f"[info] kept {authored / name} and kaizen/{name}")
         else:
-            print(f"[info] artifacts retained for {skill_name}")
+            shutil.rmtree(authored, ignore_errors=True)
+            shutil.rmtree(os.environ["KAIZEN_PANEL_DIR"], ignore_errors=True)
+            for tag in ("latest", "candidate"):
+                subprocess.run(["docker", "image", "rm", "-f", f"kaizen/{name}:{tag}"],
+                               capture_output=True)
 
 
 if __name__ == "__main__":

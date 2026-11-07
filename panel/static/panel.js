@@ -1,4 +1,4 @@
-// Kaizen control panel: Test buttons, slider readouts, wake scores, status polling.
+// Kaizen control panel: Test buttons, slider readouts, wake scores, status and build polling.
 (function () {
   "use strict";
   var csrf = document.querySelector('meta[name="csrf"]').content;
@@ -86,5 +86,20 @@
           set("network", true, n.iface + (n.ssid ? " · " + n.ssid : "") + (n.ip ? " · " + n.ip : ""));
         }).catch(function () {});
     }, 10000);
+  }
+
+  // Skills: reload when any build changes, while one is running.
+  var builds = document.querySelector("[data-skills-poll]");
+  if (builds) {
+    var seen = null;
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch("/api/skills", { credentials: "same-origin" }).then(function (r) { return r.json(); })
+        .then(function (s) {
+          var now = JSON.stringify(s.jobs);
+          if (seen !== null && now !== seen) location.reload();
+          seen = now;
+        }).catch(function () {});
+    }, 3000);
   }
 })();

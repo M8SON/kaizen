@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Skills{% endblock %}
+{% block body %}
+<p class="hint">Ask Jarvis to "add a skill that…" (a coding agent writes and tests it in a sandbox) or to "install the skill at…" a link. Either way it waits here until you approve it.</p>
+<div data-skills-poll>
+{% if not jobs %}
+<p class="card">No skill builds yet.</p>
+{% endif %}
+{% for j in jobs %}
+<section class="card build">
+  <h2>{{ j.name or "New skill" }} <span class="badge {{ j.status }}">{{ j.status }}</span></h2>
+  <p>{{ j.description }}</p>
+  <p class="hint">{{ when(j.created) }} · {% if j.kind == 'import' %}from <code>{{ j.source }}</code>{% else %}built by {{ j.agent }}{% if j.round %} · round {{ j.round }}{% endif %}{% endif %}</p>
+
+  {% if j.status == 'building' %}
+  <p class="state">{{ j.log[-1][1] if j.log else "Starting…" }}</p>
+  {% endif %}
+
+  {% if j.status == 'failed' %}
+  <p class="state bad">{{ j.error }}</p>
+  {% endif %}
+
+  {% if j.status == 'ready' %}
+  <h3>Permissions</h3>
+  <pre class="summary">{{ j.summary }}</pre>
+  <h3>Tests</h3>
+  {% if j.tests_note %}<p class="hint">{{ j.tests_note }}</p>{% endif %}
+  {% if j.tests %}
+  <div class="scroll">
+  <table class="tests">
+    <thead><tr><th></th><th>Input</th><th>Output</th></tr></thead>
+    <tbody>
+    {% for t in j.tests %}
+      <tr><td class="{{ 'good' if t.ok else 'bad' }}">{{ '✓' if t.ok else '✗' }}</td>
+        <td><code>{{ t.input|tojson }}</code></td><td>{{ t.output }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <h3>Files</h3>
+  {% for path, text in files[j.id] %}
+  <details><summary><code>{{ path }}</code></summary><pre class="file">{{ text }}</pre></details>
+  {% endfor %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('skill_action', job_id=j.id, action='approve') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button>Approve and install</button>
+    </form>
+    <form method="post" action="{{ url_for('skill_action', job_id=j.id, action='reject') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="secondary">Reject</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if j.status == 'failed' %}
+  <form method="post" action="{{ url_for('skill_action', job_id=j.id, action='reject') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="secondary">Dismiss</button>
+  </form>
+  {% endif %}
+
+  {% if j.log %}
+  <details><summary>Build log</summary>
+    <ul class="log">{% for ts, text in j.log %}<li><span class="hint">{{ when(ts) }}</span> {{ text }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

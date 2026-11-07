@@ -302,6 +302,16 @@ def _is_session_end(transcript: str) -> bool:
     return bool(_SESSION_END_RE.search(transcript))
 
 
+def _skill_build_notices() -> list[str]:
+    """Skill builds that finished since the last check (never raises)."""
+    try:
+        from core import skill_builder
+        return skill_builder.take_announcements()
+    except Exception:  # noqa: BLE001
+        logger.debug("skill build notices unavailable", exc_info=True)
+        return []
+
+
 def _announce_panel_setup(voice) -> None:
     """While the control panel has no password, say its address and the
     setup code, so only someone who can hear Jarvis can claim it."""
@@ -401,7 +411,7 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
                     print(f"[scheduled] {delivered}\n")
 
             # Speak any pending next_wake announcements before the wake cycle.
-            pending = orchestrator.drain_pending_announcements()
+            pending = orchestrator.drain_pending_announcements() + _skill_build_notices()
             if pending:
                 voice.speak("Before we chat — " + " ".join(pending))
 
@@ -592,7 +602,7 @@ def run_text_mode(orchestrator):
                 if delivered:
                     print(f"[scheduled] {delivered}\n")
 
-            pending = orchestrator.drain_pending_announcements()
+            pending = orchestrator.drain_pending_announcements() + _skill_build_notices()
             for note in pending:
                 print(f"[scheduled] {note}\n")
 

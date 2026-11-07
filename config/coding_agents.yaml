@@ -1,0 +1,19 @@
+# config/coding_agents.yaml
+#
+# Coding agents the skill builder (core/skill_builder.py) can use. Each runs
+# inside its own Docker sandbox image, so adding an agent is an entry here and
+# a Dockerfile in config/builders/, not new code. Pick one with SKILL_BUILDER
+# (default claude-code).
+#
+#   dockerfile:     builds the sandbox image (tagged by the file's hash, built
+#                   on first use)
+#   command:        argument list run in /work; "{prompt}" is replaced by the
+#                   task. No shell.
+#   credential_env: the one secret passed to the sandbox, read from .env
+#   output:         "claude-json" (cost and tokens logged) or "text"
+
+claude-code:
+  dockerfile: config/builders/claude-code.Dockerfile
+  command: [claude, -p, "{prompt}", --output-format, json, --dangerously-skip-permissions]
+  credential_env: ANTHROPIC_API_KEY
+  output: claude-json

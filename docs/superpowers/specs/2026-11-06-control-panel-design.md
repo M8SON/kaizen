@@ -279,6 +279,35 @@ in code, like `set-env-var`'s check.
   aren't available. Making it persistent is a separate one-line change,
   noted in §10.
 
+### 6.4 Skills
+
+- **Shows:** every skill with its tier (bundled, authored, imported) and
+  whether it's on. Skipped skills show why, from
+  `skill_loader.skipped_skills` ("missing OPENWEATHER_API_KEY"), with a link
+  to that key on the Services page when the panel can set it.
+- **How:** the panel runs the skill loader itself (read-only, no
+  orchestrator), so the list matches what Kaizen loads at startup.
+- **Builds:** this page is where skills are built and reviewed from the
+  browser; see `2026-11-07-skill-builder-design.md`.
+
+### 6.5 Memories
+
+- **Shows:** the notes in the memory vault (`MEMORY_VAULT_PATH`, default
+  `~/.kaizen/memory`), newest first, with topic and date from the
+  frontmatter, and which ones fit in `MEMORY_MAX_TOKENS` (the rest aren't
+  sent to Claude).
+- **Actions:** edit a note's text, delete a note. Writes are atomic, keep
+  the frontmatter, and refuse paths outside the vault.
+- **Applies:** Kaizen loads the vault at startup, so a change restarts Jarvis
+  once idle, like Save on the Services page.
+
+### 6.6 Spend at a glance
+
+- **Shows:** this month's total and the ElevenLabs allowance bar in the
+  header of every page, linking to Costs.
+- **How:** `core/cost_summary.summarize` for the current month, cached for
+  60 s so pages stay fast.
+
 ## 7. Security
 
 The panel holds every key, so it has to be no easier to attack than SSH.

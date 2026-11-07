@@ -69,6 +69,20 @@ End to end (random-cat-fact):
 - The page showed the permissions, both tests, every file (HTML escaped) and
   Approve / Reject at both widths.
 
+After deploying `febb18f` (no voice approval at all; imports as jobs too):
+
+- Launching from inside a systemd user service:
+  `systemd-run --user --wait -- sh -c "systemd-run --user --collect … true"`
+  → ok, so Kaizen's service can start build units.
+- `scripts/test_install_skill_integration.py` (real Claude Code in the
+  sandbox, approve into a temp authored dir, load): "hello message" skill,
+  one round, 3 of 3 tests passed in the real container, approved and loaded
+  by `SkillLoader`. Temp dirs and images removed; `~/.kaizen/authored`
+  untouched.
+- Import of a local folder (a renamed copy of `skill-tells-random`, scratch
+  dirs): ready at the imported tier, "doesn't ship tests" noted, approved
+  into the temp imported dir with `.install.json`.
+
 ## Conclusion
 
 Writing skills was never the weak part: simple and web-API skills worked
@@ -79,8 +93,10 @@ its own code. The repair loop hasn't had a real failure to repair yet.
 ## Not tested
 
 - A real repair round (only unit-tested with a scripted agent).
-- Approve on the Pi (installs into the live authored dir; next, after deploy),
-  and Kaizen loading the approved skill after its restart.
+- Approve from the real panel page on the Pi, and Kaizen loading the skill
+  after its restart (approve + load tested via the integration script).
 - Asking by voice, and Jarvis announcing the finished build.
 - Skills that need an API key (tests are skipped when the key is missing).
+- Imports from an https git URL or tarball on the Pi (unit-tested; the
+  fetch code is the old `install_from_url`'s).
 - Other agents (step 2).

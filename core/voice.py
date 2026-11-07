@@ -1055,7 +1055,7 @@ class VoiceInterface:
             # Re-raise so main's outer 'except KeyboardInterrupt' runs the
             # shutdown path. Swallowing it here previously made Ctrl+C silently
             # end the current session and bounce back into the wake loop —
-            # the program kept running and Mason had to kill the terminal.
+            # the program kept running and the user had to kill the terminal.
             raise
         finally:
             # Hand the session to listen() only when speech was captured;

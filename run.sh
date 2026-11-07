@@ -218,6 +218,8 @@ if [ ! -f ".env" ]; then
     fail ".env not found — copy .env.example and fill in your API keys"
 fi
 ok ".env present"
+# .env and its backups hold API keys: owner-only.
+for f in .env .env.bak*; do if [ -f "$f" ]; then chmod 600 "$f"; fi; done
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 

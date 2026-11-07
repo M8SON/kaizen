@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -75,6 +76,32 @@ class TestPromptBuilderPersona(unittest.TestCase):
             pb = PromptBuilder()
         prompt = pb.build(skills={}, skipped_skills={})
         self.assertIn("Your name is Alexa.", prompt)
+
+
+class TestOwnerName(unittest.TestCase):
+    """No owner is built in: OWNER_NAME sets it, unset is neutral."""
+
+    def test_owner_from_env_in_full_and_micro_prompts(self):
+        with _WakeEnv(), mock.patch.dict(os.environ, {"OWNER_NAME": "the Lee family"}):
+            pb = PromptBuilder()
+        self.assertIn("You are the Lee family's personal voice assistant", pb.BASE_PROMPT)
+        self.assertIn("the Lee family's personal voice assistant", pb.build_for_micro_tier())
+
+    def test_unset_owner_is_neutral(self):
+        with _WakeEnv(), mock.patch.dict(os.environ, {"OWNER_NAME": ""}):
+            pb = PromptBuilder()
+        self.assertIn("You are a personal voice assistant", pb.BASE_PROMPT)
+        self.assertNotIn("Mason", pb.BASE_PROMPT + pb.build_for_micro_tier())
+
+    def test_identity_answers_render_owner(self):
+        from core.filler_classifier import DEFAULT_PATTERNS_PATH, load_answer_phrases
+        with mock.patch.dict(os.environ, {"OWNER_NAME": "Sam"}):
+            named = load_answer_phrases(DEFAULT_PATTERNS_PATH, "Jarvis")["identity"]
+        with mock.patch.dict(os.environ, {"OWNER_NAME": ""}):
+            neutral = load_answer_phrases(DEFAULT_PATTERNS_PATH, "Jarvis")["identity"]
+        self.assertIn("I'm Jarvis, Sam's voice assistant. I run right here on a Raspberry Pi.", named)
+        self.assertIn("I'm Jarvis, your voice assistant. I run right here on a Raspberry Pi.", neutral)
+        self.assertFalse(any("{owners}" in p or "Mason" in p for p in named + neutral))
 
 
 class TestBuildForGreeting(unittest.TestCase):

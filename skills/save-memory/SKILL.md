@@ -1,15 +1,15 @@
 ---
 name: save-memory
-description: Save a durable fact about Mason to long-term memory.
+description: Save a durable fact about the user or household to long-term memory.
 ---
 # Save Memory
 
 ## What is worth saving
 Save things that would be useful to recall in a future session:
 - Stated preferences ("I prefer temperatures in Celsius")
-- Ongoing projects or goals Mason has described
-- Facts about Mason's life or work he has mentioned
-- Anything Mason explicitly asks you to remember
+- Ongoing projects or goals the user has described
+- Facts about the user's life or work they have mentioned
+- Anything the user explicitly asks you to remember
 
 You do not need to wait for an explicit "remember this" command if the information is clearly durable and useful across future conversations.
 

@@ -427,13 +427,13 @@ def run_voice_mode(orchestrator, voice=None, filler_classifier=None):
 
                     if category is not None and filler_classifier.action_for(category) == "stop":
                         # "Stop" = stop the music and/or stop responding, never
-                        # "done for the day" (Mason, 2026-09-26): no Claude, no
+                        # "done for the day" (owner decision, 2026-09-26): no Claude, no
                         # goodbye speech — chime and back to idle wake listening.
                         stopped = orchestrator.container_manager.stop_music()
                         logger.info("Stop intent: %s", stopped)
                         voice.play_ack_sound()
                         # Claude never saw this turn; record it so its history
-                        # doesn't still say music is playing (it told Mason
+                        # doesn't still say music is playing (it told the user
                         # "music is going" after a Jev stop on the Pi).
                         orchestrator.record_local_turn(
                             transcription,

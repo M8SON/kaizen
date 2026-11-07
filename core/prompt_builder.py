@@ -26,6 +26,19 @@ def persona_name_from_env() -> str:
     return tokens[-1].capitalize()
 
 
+def owner_name_from_env() -> str:
+    """Who the assistant belongs to: OWNER_NAME, a person or a household
+    ("Sam", "the Lee family"). Empty when unset: prompts then say "a
+    personal voice assistant" and cached answers say "your"."""
+    return os.getenv("OWNER_NAME", "").strip()
+
+
+def owners(owner: str | None = None) -> str:
+    """Possessive for spoken text: "Sam's", or "your" with no owner set."""
+    owner = owner_name_from_env() if owner is None else owner.strip()
+    return f"{owner}'s" if owner else "your"
+
+
 SELF_UPDATE_GUIDANCE = """
 Self-improving skills are enabled. Use update_skill_hints when:
 
@@ -58,9 +71,9 @@ class PromptBuilder:
     """Build the full system prompt used for Claude requests."""
 
     BASE_PROMPT_TEMPLATE = (
-        "Your name is {persona}. You are Mason's personal voice assistant, running on a Raspberry Pi. "
+        "Your name is {persona}. You are {assistant_of}, running on a Raspberry Pi. "
         "You have a warm and direct personality. You value truth above everything else — never flatter, "
-        "never soften a hard answer just to be agreeable, and never tell Mason what he wants to hear "
+        "never soften a hard answer just to be agreeable, and never tell anyone what they want to hear "
         "at the expense of what is actually true. If something is wrong, say so plainly. "
         "If you don't know something, say so rather than guessing. Warmth means you care; "
         "it does not mean you sugarcoat.\n\n"
@@ -68,8 +81,8 @@ class PromptBuilder:
         "- Never use asterisks, emojis, or markdown formatting\n"
         "- Speak naturally and conversationally — responses will be read aloud\n"
         "- Default to short, one or two sentence answers — short and sweet. "
-        "Only give a longer, detailed answer when Mason explicitly asks you to "
-        "explain, elaborate, go deeper, or tell him more\n"
+        "Only give a longer, detailed answer when explicitly asked to "
+        "explain, elaborate, go deeper, or say more\n"
         "- When using tools, say what you are doing in plain language\n"
         "- Summarize tool results conversationally — no raw data dumps\n"
         "- Your input comes from a speech-to-text system and may contain "
@@ -78,15 +91,15 @@ class PromptBuilder:
         "ask for clarification before acting. For example: 'I heard confirm "
         "point, did you mean confirm restart?' or 'I caught something about "
         "X but I am not sure, could you repeat that?'\n"
-        "- If you learn something genuinely worth remembering about Mason — a preference, "
-        "an ongoing project, something he asked you to keep in mind, or a useful fact about "
-        "his life or work — save it using the save-memory skill without waiting to be asked. "
+        "- If you learn something genuinely worth remembering about the people you help — a preference, "
+        "an ongoing project, something they asked you to keep in mind, or a useful fact about "
+        "their life or work — save it using the save-memory skill without waiting to be asked. "
         "Do not save passing remarks or one-off requests. Only save what would be useful "
         "to recall in a future session.\n"
     )
 
     MICRO_TIER_TEMPLATE = (
-        "You are {persona}, Mason's voice assistant. "
+        "You are {persona}, {assistant_of}. "
         "Reply briefly in plain spoken sentences. Use tools when the request matches one. "
         "If a request seems garbled, ask for clarification before acting. "
         "No markdown or asterisks."
@@ -96,10 +109,15 @@ class PromptBuilder:
         self,
         memory_provider: MemoryProvider | None = None,
         persona_name: str | None = None,
+        owner_name: str | None = None,
     ):
         self.memory_provider = memory_provider or MemoryProvider()
         self.persona_name = persona_name or persona_name_from_env()
-        self.BASE_PROMPT = self.BASE_PROMPT_TEMPLATE.format(persona=self.persona_name)
+        owner = owner_name_from_env() if owner_name is None else owner_name.strip()
+        self.assistant_of = (f"{owner}'s personal voice assistant" if owner
+                             else "a personal voice assistant")
+        self.BASE_PROMPT = self.BASE_PROMPT_TEMPLATE.format(
+            persona=self.persona_name, assistant_of=self.assistant_of)
 
     def build_for_greeting(self, startup_context: str = "") -> str:
         """Slim system prompt for the cold-start greeting.
@@ -124,7 +142,8 @@ class PromptBuilder:
         (already top-K filtered by the caller); duplicating skill bodies
         in the prompt is pure overhead. Includes the persona name so the
         voice still says "I'm Jarvis" when needed."""
-        return self.MICRO_TIER_TEMPLATE.format(persona=self.persona_name)
+        return self.MICRO_TIER_TEMPLATE.format(
+            persona=self.persona_name, assistant_of=self.assistant_of)
 
     def build_cacheable_parts(
         self,

@@ -32,5 +32,5 @@ For now, give temperature and conditions (humidity/wind only if relevant).
 For another day, use that day's `forecast` entry: conditions, high/low, and
 chance of rain.
 
-Examples: "It's currently 72 degrees and sunny in Burlington with light winds."
+Examples: "It's currently 72 degrees and sunny in Portland with light winds."
 "Tomorrow looks rainy, a high of 58 and a low of 45, with an 80 percent chance of rain."

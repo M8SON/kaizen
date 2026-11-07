@@ -26,11 +26,11 @@ Check memory for location and news preferences. Use them silently if found. Ask 
 **`news_sources`** — RSS feed groups:
 - `"osint"` — Bellingcat, The War Zone
 - `"world"` — Al Jazeera
-- `"local_vt"` — VTDigger, Seven Days (Burlington/Vermont only)
+- `"local_vt"` — VTDigger, Seven Days (Vermont only; for other places use a `gdelt_queries` city query)
 
 **`gdelt_queries`** — free dynamic news queries. Always include a location query when city is known. Add topic queries from preferences or request.
 
-- Burlington, VT → `"Burlington Vermont"`
+- Portland, OR → `"Portland Oregon"`
 - Conflict/geopolitics → `"conflict military geopolitics"`
 - Climate → `"climate environment"`
 - User specifies a topic → build a precise query string for it
@@ -82,7 +82,7 @@ required:
 If the dashboard is open, `action: "open"` with new parameters updates content in place.
 
 - "show me Middle East news" → `gdelt_queries: ["Middle East conflict news"]` (no `news_sources`)
-- "switch to local news" → `gdelt_queries: ["Burlington Vermont"]`, `news_sources: ["local_vt"]`
+- "switch to local news" → `gdelt_queries: ["<remembered city> <state or country>"]` (no `news_sources`)
 - "show me Toyota news" → `gdelt_queries: ["Toyota new model 2026"]` (no `news_sources`)
 
 **Rule:** Include `news_sources` only when the user wants a named feed category. For topic-specific updates, omit `news_sources` — this clears RSS so only on-topic results appear. If the user wants both named feeds AND a custom topic, include both. Be specific with queries: "Toyota Camry 2026 hybrid" beats "Toyota news".

@@ -55,9 +55,12 @@ def phrase_slug(text: str) -> str:
     return f"{base}-{digest}" if base else digest
 
 
-def render_phrase(phrase: str, persona: str) -> str:
-    """Fill the {persona} placeholder in an answer phrase."""
-    return phrase.replace("{persona}", persona)
+def render_phrase(phrase: str, persona: str, owner: str | None = None) -> str:
+    """Fill the {persona} and {owners} placeholders in an answer phrase.
+    {owners} is the possessive owner ("Sam's", or "your" if OWNER_NAME is
+    unset); `owner` overrides OWNER_NAME."""
+    from core.prompt_builder import owners
+    return phrase.replace("{persona}", persona).replace("{owners}", owners(owner))
 
 
 def load_answer_phrases(path: Path, persona: str) -> dict[str, list[str]]:

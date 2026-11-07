@@ -232,6 +232,8 @@ Per-skill overrides for `memory`, `read_only`, `extra_tmpfs`, and `volumes` are 
 | `ANTHROPIC_API_KEY` | — | Required |
 | `WHISPER_MODEL` | `base` | STT model size |
 | `WAKE_WORD_MODEL` | `hey_jarvis` | openWakeWord bundled model (`hey_jarvis`, `alexa`, `hey_mycroft`, `timer`, `weather`) |
+| `OWNER_NAME` | — | Who the assistant belongs to (person or household); used in the system prompt and the cached identity answers (`{owners}` in `config/filler_phrases.yaml`). Unset = neutral wording. Re-run `scripts/build_filler_audio.py` after changing |
+| `HOME_LOCATION` | — | Home city ("Portland,OR") for weather, the dashboard's local news and the greeting; used when no `topic: location` memory note exists (`core/location_preference.py`) |
 | `WAKE_WORD_THRESHOLD` | `0.5` | openWakeWord activation confidence (0.0–1.0); raise to reduce false fires |
 | `STT_BACKEND` | `whisper` | `whisper` (local) or `meta` (Meta Muse Voice Transcribe streaming; final transcript ~0.1s after speech ends on the Pi vs 1.5-3s local). Local Whisper stays as the fallback |
 | `META_MODEL_API_KEY` | — | Meta Model API key, required for `STT_BACKEND=meta` |

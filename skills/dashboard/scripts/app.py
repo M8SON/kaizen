@@ -66,16 +66,16 @@ _state = {
     "weather_location": os.environ.get("WEATHER_LOCATION", "New York,NY"),
 }
 
+# Fallbacks for a dashboard started without DASHBOARD_CONFIG (e.g. a
+# preview); the skill always passes feeds and a query for the resolved
+# location (core/container_manager.py).
 DEFAULT_RSS_FEEDS = [
-    "https://vtdigger.org/feed/",
-    "https://www.sevendaysvt.com/rss",
     "https://bellingcat.com/feed/",
     "https://www.twz.com/rss",
     "https://www.aljazeera.com/xml/rss/all.xml",
 ]
 
 DEFAULT_GDELT_QUERIES = [
-    "Burlington Vermont",
     "conflict military geopolitics",
 ]
 

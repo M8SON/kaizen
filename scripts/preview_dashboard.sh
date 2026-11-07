@@ -23,7 +23,7 @@ Options:
 
 Examples:
   ./scripts/preview_dashboard.sh
-  ./scripts/preview_dashboard.sh --panels news,weather --location "Burlington,VT"
+  ./scripts/preview_dashboard.sh --panels news,weather --location "Portland,OR"
   ./scripts/preview_dashboard.sh --port 9000
 EOF
 }

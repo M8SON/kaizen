@@ -19,6 +19,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
@@ -31,6 +32,8 @@ from panel import env_store, state, status
 logger = logging.getLogger(__name__)
 
 REPO = Path(__file__).resolve().parent.parent
+
+MAX_SKILL_REQUEST = 2000  # characters of a typed skill description
 
 DEFAULTS = {
     "CLAUDE_MODEL": "claude-sonnet-4-6",
@@ -128,6 +131,19 @@ def sensitivity_to_thresholds(sensitivity: int, old_threshold: float,
     t = round(WAKE_MAX - (WAKE_MAX - WAKE_MIN) * s / 100, 2)
     soft = round(t * old_soft / old_threshold, 2) if old_soft > 0 and old_threshold > 0 else 0
     return f"{t:g}", f"{soft:g}"
+
+
+def is_skill_link(source: str) -> bool:
+    """An https link with a host and no embedded login (it would be stored and
+    shown on the page). The panel never installs from a path on the Pi."""
+    if not source or any(c.isspace() or ord(c) < 32 for c in source):
+        return False
+    try:
+        parts = urlsplit(source)
+        return (parts.scheme == "https" and bool(parts.hostname)
+                and parts.username is None and parts.password is None)
+    except ValueError:
+        return False
 
 
 def _fingerprint_key(value: str) -> str:
@@ -439,6 +455,38 @@ def create_app(*, env_path: Path | None = None, data_dir: Path | None = None,
     def skills_api():
         return jsonify(jobs=[{"id": j["id"], "status": j["status"], "steps": len(j["log"])}
                              for j in skill_builder.list_jobs()])
+
+    @app.post("/skills/build")
+    def skill_build():
+        from core.meta_skill import _derive_skill_name
+        description = " ".join(request.form.get("description", "").split())[:MAX_SKILL_REQUEST]
+        if len(description) < 10:
+            flash("Describe what the skill should do in a sentence or two.", "error")
+            return redirect(url_for("skills"))
+        name = _derive_skill_name(description)
+        try:
+            skill_builder.start(description, name)
+        except (skill_builder.BuildError, OSError) as exc:
+            flash(f"Couldn't start the build: {exc}", "error")
+            return redirect(url_for("skills"))
+        logger.info("Panel: started skill build %s", name)
+        flash(f"Building {name.replace('-', ' ')}. It takes a minute or two; this page updates on its own.")
+        return redirect(url_for("skills"))
+
+    @app.post("/skills/import")
+    def skill_import():
+        source = request.form.get("source", "").strip()[:500]
+        if not is_skill_link(source):
+            flash("Paste an https:// link to a git repository or .tar.gz, without a password in it.", "error")
+            return redirect(url_for("skills"))
+        try:
+            skill_builder.start_import(source)
+        except (skill_builder.BuildError, OSError) as exc:
+            flash(f"Couldn't start the install: {exc}", "error")
+            return redirect(url_for("skills"))
+        logger.info("Panel: started skill import from %s", source)
+        flash("Fetching and checking that skill. This page updates on its own.")
+        return redirect(url_for("skills"))
 
     @app.post("/skills/<job_id>/<action>")
     def skill_action(job_id, action):

@@ -311,3 +311,51 @@ def test_import_failure_is_announced_without_a_name(env, tmp_path):
         "I couldn't install that skill. The control panel has the details."]
     sb.reject(job["id"])
     assert sb.load(job["id"])["status"] == sb.REJECTED
+
+
+def test_import_gets_no_keys_before_approval(env, imported, monkeypatch):
+    monkeypatch.setenv("BRAVE_API_KEY", "brave-secret")
+    (imported / "joke-teller" / "config.yaml").write_text(
+        "image: kaizen/joke-teller:latest\nenv_passthrough: [BRAVE_API_KEY]\ntimeout_seconds: 10\n")
+    ran = []
+    monkeypatch.setattr("core.container_manager.ContainerManager._run_container",
+                        lambda self, cmd, *a, **kw: ran.append(cmd) or "ok")
+    job = sb.run(sb.start_import(str(imported), launch=lambda i: None)["id"])
+    assert job["status"] == sb.READY and job["tests"] == [] and ran == []
+    assert "gets no keys" in job["tests_note"]
+
+
+def test_import_symlinked_skill_md_is_not_read(env, tmp_path):
+    src = tmp_path / "linked"
+    src.mkdir()
+    secret = tmp_path / "secret.env"
+    secret.write_text("---\nname: leaked-secret\ndescription: x\n---\n")
+    (src / "SKILL.md").symlink_to(secret)
+    job = sb.run(sb.start_import(str(src), launch=lambda i: None)["id"])
+    assert job["status"] == sb.FAILED and "symlink" in job["error"] and not job["name"]
+
+
+def test_import_does_not_copy_a_folder_without_a_skill(env, tmp_path, monkeypatch):
+    big = tmp_path / "home"
+    (big / "documents").mkdir(parents=True)
+    monkeypatch.setattr(sb.shutil, "copytree", lambda *a, **kw: pytest.fail("copied"))
+    job = sb.run(sb.start_import(str(big), launch=lambda i: None)["id"])
+    assert job["status"] == sb.FAILED and "no SKILL.md" in job["error"]
+
+
+def test_reserved_image_names_cant_be_imported(env, imported):
+    for name in ("base", "builder-claude-code"):
+        shutil.rmtree(imported)
+        (imported / name).mkdir(parents=True)
+        write_skill(imported / name, name)
+        job = sb.run(sb.start_import(str(imported), launch=lambda i: None)["id"])
+        assert job["status"] == sb.FAILED and "reserved" in job["error"]
+        assert not any(c[:2] == ["docker", "build"] for c in env.docker.calls)
+
+
+def test_review_says_when_a_file_is_cut_short(env, monkeypatch):
+    agent = agent_script(lambda d, n: write_skill(d, n, app="x = 1\n" * 20000))
+    monkeypatch.setattr(sb, "_run_agent", agent)
+    job = sb.run(new_job()["id"])
+    app = dict(sb.files(job))["scripts/app.py"]
+    assert "more bytes not shown" in app

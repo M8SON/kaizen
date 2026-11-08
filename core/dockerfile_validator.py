@@ -3,13 +3,15 @@ Dockerfile validator for Kaizen skills.
 
 Per-tier allowlist:
   bundled  — no validation (trusted; repo-reviewed)
-  authored — FROM must be kaizen/base:latest; RUN only pip/apt prefixes; no ADD; no USER
+  authored — only FROM (kaizen/base:latest), RUN (pip/apt commands, no other
+             shell syntax), COPY (local), WORKDIR, CMD, ENV; no parser directives
   imported — everything authored allows, PLUS apt-get packages must be in
              the allowlist (core.apt_allowlist), and pip install must not use
              --index-url / --extra-index-url
 """
 
 import re
+import shlex
 from pathlib import Path
 
 from core.apt_allowlist import load_apt_allowlist
@@ -42,7 +44,15 @@ ALLOWED_RUN_PREFIXES = (
     "rm -rf /var/lib/apt/lists",
 )
 
-BLOCKED_INSTRUCTIONS = {"ADD", "USER", "VOLUME"}
+ALLOWED_INSTRUCTIONS = {"FROM", "RUN", "COPY", "WORKDIR", "CMD", "ENV"}
+
+# "# syntax=<image>" makes BuildKit run that image as the Dockerfile parser.
+_PARSER_DIRECTIVE = re.compile(r"#\s*(syntax|escape|check)\s*=", re.IGNORECASE)
+_CONTINUATION = re.compile(r"\\[ \t]*$")
+_RUN_SEPARATORS = {"&&", "||", ";"}
+_SHELL_PUNCTUATION = set("();<>|&")
+# pip options that change where packages come from, alone or clustered (-qi).
+_PIP_SOURCE_OPTION = re.compile(r"--(extra-)?index-url|--find-links|--trusted-host|-[a-zA-Z]*[if]")
 
 
 def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
@@ -57,15 +67,10 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
 
     apt_allowlist = load_apt_allowlist() if tier == TIER_IMPORTED else None
     text = dockerfile_path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-
     from_count = 0
 
-    for lineno, raw_line in enumerate(lines, 1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-
+    for lineno, line in _logical_lines(text):
+        raw_line = line
         for pattern, label in BLOCKED_PATTERNS:
             if re.search(pattern, line, re.IGNORECASE):
                 raise DockerfileValidationError(
@@ -74,7 +79,7 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
 
         instruction = line.split()[0].upper() if line.split() else ""
 
-        if instruction in BLOCKED_INSTRUCTIONS:
+        if instruction not in ALLOWED_INSTRUCTIONS:
             raise DockerfileValidationError(
                 f"Line {lineno}: {instruction} is not allowed for tier {tier!r}"
             )
@@ -94,14 +99,17 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
 
         elif instruction == "RUN":
             run_body = re.sub(r"^RUN\s+", "", line, flags=re.IGNORECASE).strip()
-            run_body = re.sub(r"^/bin/(ba)?sh\s+-c\s+", "", run_body).strip("\"'")
-            if not _is_allowed_run(run_body):
+            try:
+                segments = _run_segments(run_body)
+            except ValueError:
+                segments = None
+            if segments is None or not _is_allowed_run(segments):
                 raise DockerfileValidationError(
                     f"Line {lineno}: RUN only permits pip install / apt-get commands. "
                     f"Got: {run_body!r}"
                 )
             if tier == TIER_IMPORTED:
-                _validate_run_imported(run_body, apt_allowlist, lineno)
+                _validate_run_imported(segments, apt_allowlist, lineno)
 
         elif instruction == "COPY":
             parts = line.split()
@@ -126,23 +134,60 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
         raise DockerfileValidationError("Dockerfile has no FROM instruction")
 
 
-def _is_allowed_run(run_body: str) -> bool:
-    segments = [s.strip() for s in re.split(r"\s*(?:&&|\|\||;)\s*", run_body)]
-    return all(
-        any(seg.startswith(prefix) for prefix in ALLOWED_RUN_PREFIXES)
-        for seg in segments
-        if seg
-    )
+def _logical_lines(text: str) -> list[tuple[int, str]]:
+    """(first line number, instruction), with backslash continuations joined
+    and comments dropped, the way Docker reads the file."""
+    logical = []
+    parts: list[str] = []
+    start = 0
+    for lineno, raw_line in enumerate(text.split("\n"), 1):
+        line = raw_line.strip()
+        if _PARSER_DIRECTIVE.match(line):
+            raise DockerfileValidationError(f"Line {lineno}: parser directives are not allowed")
+        if not line or line.startswith("#"):
+            continue
+        start = start or lineno
+        parts.append(_CONTINUATION.sub("", line))
+        if not _CONTINUATION.search(line):
+            logical.append((start, " ".join(parts)))
+            parts, start = [], 0
+    if parts:
+        logical.append((start, " ".join(parts)))
+    return logical
 
 
-def _validate_run_imported(run_body: str, apt_allowlist: frozenset[str], lineno: int) -> None:
-    segments = [s.strip() for s in re.split(r"\s*(?:&&|\|\||;)\s*", run_body) if s.strip()]
+def _run_segments(run_body: str) -> list[str]:
+    """The commands in a RUN body, split on && || ;. Raises ValueError for any
+    other shell syntax: pipes, background, redirects, subshells, expansions."""
+    if "$" in run_body or "`" in run_body:
+        raise ValueError("shell expansion")
+    lexer = shlex.shlex(run_body, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""  # shlex ends a comment at any #, the shell only at a word start
+    segments, current = [], []
+    for token in lexer:
+        if token in _RUN_SEPARATORS:
+            segments.append(" ".join(current))
+            current = []
+        elif set(token) <= _SHELL_PUNCTUATION:
+            raise ValueError(f"shell operator {token}")
+        else:
+            current.append(token)
+    segments.append(" ".join(current))
+    return [s for s in segments if s]
+
+
+def _is_allowed_run(segments: list[str]) -> bool:
+    return all(any(seg.startswith(prefix) for prefix in ALLOWED_RUN_PREFIXES) for seg in segments)
+
+
+def _validate_run_imported(segments: list[str], apt_allowlist: frozenset[str], lineno: int) -> None:
     for seg in segments:
         if seg.startswith("pip install") or seg.startswith("pip3 install"):
-            if "--index-url" in seg or "--extra-index-url" in seg:
+            if any(_PIP_SOURCE_OPTION.match(t) or "://" in t for t in seg.split()[2:]):
                 raise DockerfileValidationError(
-                    f"Line {lineno}: pip install --index-url / --extra-index-url "
-                    "is not allowed for imported skills"
+                    f"Line {lineno}: pip install --index-url, other sources and URLs "
+                    "are not allowed for imported skills"
                 )
         if seg.startswith("apt-get install") or seg.startswith("apt-get -y install"):
             tokens = [

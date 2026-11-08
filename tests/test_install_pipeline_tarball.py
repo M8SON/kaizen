@@ -61,7 +61,7 @@ class TarballFetchTests(unittest.TestCase):
                 install_root=install_root,
             )
 
-            with patch("urllib.request.urlretrieve", side_effect=lambda url, dest: Path(dest).write_bytes(tarball.read_bytes())):
+            with patch("core.install_pipeline._download", side_effect=lambda url, dest: Path(dest).write_bytes(tarball.read_bytes())):
                 decision = pipeline.install_from_url("https://example.com/skill.tgz", tier="imported")
 
             self.assertEqual(decision, InstallDecision.FAILED)

@@ -359,7 +359,8 @@ def _check_round(job: dict) -> str | None:
     except ValueError as e:
         return f"Validation failed: {e}"
 
-    missing = [k for k in config.get("env_passthrough", []) if not os.environ.get(k)]
+    wanted = config.get("env_passthrough", [])
+    missing = [k for k in wanted if not os.environ.get(k)]
     image = f"kaizen/{job['name']}:candidate"
     _log(job, "Building the image")
     built = _docker(["docker", "build", "-q", "-t", image, str(d / "scripts")],
@@ -367,6 +368,12 @@ def _check_round(job: dict) -> str | None:
     if built.returncode != 0:
         return f"docker build failed:\n{built.stderr.strip()[-1500:]}"
     job["summary"] = summary.to_text()
+    if tier == TIER_IMPORTED and wanted:  # no keys for downloaded code before approval
+        job["tests"] = []
+        job["tests_note"] = (f"Tests not run: this skill asks for {', '.join(wanted)}, "
+                             "and a downloaded skill gets no keys until you approve it.")
+        _log(job, job["tests_note"])
+        return None
     if missing:
         job["tests"] = []
         job["tests_note"] = f"Tests not run: {', '.join(missing)} isn't set yet."
@@ -492,6 +499,16 @@ def run(job_id: str) -> dict:
         return job
 
 
+def _skill_folder(d: Path) -> Path:
+    """d, or its one subfolder holding a SKILL.md."""
+    if (d / "SKILL.md").is_file():
+        return d
+    subdirs = [p for p in d.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()]
+    if len(subdirs) != 1:
+        raise BuildError("no SKILL.md at the top of that skill")
+    return subdirs[0]
+
+
 def _run_import(job: dict) -> dict:
     """Fetch, validate at the imported tier, build, run the shipped tests."""
     from core.install_pipeline import fetch_skill
@@ -503,15 +520,13 @@ def _run_import(job: dict) -> dict:
         work.mkdir()
         _log(job, f"Fetching {job['source']}")
         if job["source"].startswith("https://"):
-            fetched = fetch_skill(job["source"], work)
+            fetched = _skill_folder(fetch_skill(job["source"], work))
         else:
             fetched = work / "staging"
-            shutil.copytree(Path(job["source"]).expanduser(), fetched, symlinks=True)
-        if not (fetched / "SKILL.md").is_file():
-            subdirs = [p for p in fetched.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()]
-            if len(subdirs) != 1:
-                raise BuildError("no SKILL.md at the top of that skill")
-            fetched = subdirs[0]
+            shutil.copytree(_skill_folder(Path(job["source"]).expanduser()), fetched, symlinks=True)
+        problems = _clean_and_check_tree(fetched, strict=False)  # before reading anything in it
+        if problems:
+            raise BuildError("The skill folder has entries that aren't allowed: " + "; ".join(problems))
         fm, _ = SkillValidator().parse_frontmatter((fetched / "SKILL.md").read_text(encoding="utf-8"))
         name = fm.get("name") if isinstance(fm, dict) else None
         if not name or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", str(name)):
@@ -541,8 +556,11 @@ def files(job: dict, limit: int = 64 * 1024) -> list[tuple[str, str]]:
     out = []
     for p in sorted(d.rglob("*")) if d.is_dir() else []:
         if p.is_file() and not p.is_symlink():
-            data = p.read_bytes()[:limit]
-            out.append((str(p.relative_to(d)), data.decode("utf-8", errors="replace")))
+            data = p.read_bytes()
+            text = data[:limit].decode("utf-8", errors="replace")
+            if len(data) > limit:
+                text += f"\n\n[{len(data) - limit} more bytes not shown]"
+            out.append((str(p.relative_to(d)), text))
     return out
 
 

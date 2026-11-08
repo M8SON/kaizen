@@ -1,7 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Skills{% endblock %}
 {% block body %}
-<p class="hint">Ask Jarvis to "add a skill that…" (a coding agent writes and tests it in a sandbox) or to "install the skill at…" a link. Either way it waits here until you approve it.</p>
+<section class="card new-skill">
+  <h2>Build a skill</h2>
+  <form method="post" action="{{ url_for('skill_build') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="description" class="hint">What should Jarvis be able to do? A coding agent writes and tests it in a sandbox, then it waits here for you to approve it. You can also ask Jarvis: "add a skill that…"</label>
+    <textarea id="description" name="description" rows="3" maxlength="2000" required minlength="10"
+      placeholder="Tell me when the International Space Station is next overhead"></textarea>
+    <button>Build it</button>
+  </form>
+  <details>
+    <summary>Install an existing skill from a link</summary>
+    <form method="post" action="{{ url_for('skill_import') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="source" type="url" placeholder="https://github.com/…" required maxlength="500" pattern="https://.*">
+      <button class="secondary">Fetch and check</button>
+    </form>
+  </details>
+</section>
 <div data-skills-poll>
 {% if not jobs %}
 <p class="card">No skill builds yet.</p>

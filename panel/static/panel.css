@@ -35,7 +35,7 @@ label { display: block; margin: 12px 0; font-weight: 500; }
 fieldset { border: 0; padding: 0; margin: 12px 0; }
 legend { font-weight: 500; margin-bottom: 4px; }
 fieldset.choice label { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-weight: 400; }
-input[type=password], input:not([type]), input[inputmode], select {
+input[type=password], input[type=url], input:not([type]), input[inputmode], select {
   display: block; width: 100%; margin-top: 4px; padding: 9px 10px; font: inherit;
   color: var(--text); background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
 input[type=range] { display: block; width: 100%; margin-top: 6px; accent-color: var(--accent); }
@@ -95,3 +95,9 @@ ul.log { list-style: none; padding: 0; font-size: 14px; }
 table.tests td.good { color: var(--good); }
 table.tests td.bad { color: var(--bad); }
 .build > details { margin-top: 12px; }
+.new-skill textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; margin: 8px 0 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--text); resize: vertical; }
+.new-skill details { margin-top: 14px; }
+.new-skill form.inline { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.new-skill form.inline input { flex: 1 1 220px; }
+[data-skills-poll] > .card, .new-skill { margin-bottom: 16px; }

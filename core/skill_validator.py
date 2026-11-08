@@ -175,6 +175,10 @@ class SkillValidator:
             image = config.get("image")
             if not isinstance(image, str) or not image.strip():
                 raise ValueError("docker skills must define a non-empty image")
+            # These names would overwrite kaizen/base or an agent's sandbox
+            # image, which later builds trust and give the agent's key to.
+            if tier in UNTRUSTED_TIERS and (skill_name == "base" or skill_name.startswith("builder-")):
+                raise ValueError(f"the skill name {skill_name!r} is reserved")
             # Untrusted skills run only the image Kaizen builds locally from
             # their own validated Dockerfile — never a registry image.
             if tier in UNTRUSTED_TIERS and not re.fullmatch(

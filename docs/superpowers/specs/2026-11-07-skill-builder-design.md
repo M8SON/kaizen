@@ -1,6 +1,7 @@
 # Skill builder: any coding agent, sandboxed, tested before install
 
-Status: step 1 built (2026-11-07): Docker sandbox, Claude Code, test/repair loop,
+Status: step 1 built (2026-11-07), plus the panel's "Build a skill" and
+"install from a link" boxes from step 4: Docker sandbox, Claude Code, test/repair loop,
 and approval on the panel instead of spoken gates (§4, as changed below). Steps 2–4 not started. Extends voice skill installation (`core/meta_skill.py`,
 `core/install_pipeline.py`) and the control panel's Skills page
 (`2026-11-06-control-panel-design.md` §6.4).
@@ -112,7 +113,7 @@ describe ─► agent writes files ─► check tree + validate (authored tier)
    panel can't call `reload_skills()`). The candidate is built before
    review, but only after validation, and is deleted on Reject. Installs
    from a URL or path work the same way without the agent (imported tier,
-   the skill's own tests if it ships any). The user wants no voice approval
+   the skill's own tests if it ships any, and no keys until approved). The user wants no voice approval
    at all, only the panel.
 
 ## 5. Editing a skill

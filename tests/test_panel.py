@@ -436,3 +436,49 @@ def test_reject_and_bad_actions(panel, monkeypatch, tmp_path):
 
 def test_skills_page_needs_login(panel):
     assert panel["client"].get("/skills").headers["Location"].endswith("/setup")
+
+
+def test_build_a_skill_from_the_page(panel, monkeypatch):
+    from core import skill_builder as sb
+    started = []
+    monkeypatch.setattr(sb, "start", lambda d, n: started.append((d, n)))
+    monkeypatch.setattr(sb, "start_import", lambda src: started.append(src))
+    _setup(panel)
+    c = panel["client"]
+    token = _csrf(c, "/skills")
+    assert c.post("/skills/build", data={"description": "Roll some dice"}).status_code == 400  # no CSRF
+    r = c.post("/skills/build", data={"csrf": token, "description": "  Roll\nsome   dice  "})
+    assert r.status_code == 302 and started == [("Roll some dice", "roll-some-dice")]
+    assert "Building roll some dice" in c.get("/skills").get_data(as_text=True)
+    c.post("/skills/build", data={"csrf": token, "description": "hi"})
+    assert len(started) == 1 and "sentence or two" in c.get("/skills").get_data(as_text=True)
+    c.post("/skills/import", data={"csrf": token, "source": "https://github.com/foo/bar"})
+    assert started[-1] == "https://github.com/foo/bar"
+    assert "Build it" in c.get("/skills").get_data(as_text=True)
+
+
+def test_build_errors_are_shown(panel, monkeypatch):
+    from core import skill_builder as sb
+
+    def busy(d, n):
+        raise sb.BuildError("another skill is still being built")
+    monkeypatch.setattr(sb, "start", busy)
+    _setup(panel)
+    c = panel["client"]
+    c.post("/skills/build", data={"csrf": _csrf(c, "/skills"), "description": "Roll some dice"})
+    assert "another skill is still being built" in c.get("/skills").get_data(as_text=True)
+
+
+def test_import_form_only_takes_https_links(panel, monkeypatch):
+    from core import skill_builder as sb
+    started = []
+    monkeypatch.setattr(sb, "start_import", started.append)
+    _setup(panel)
+    c = panel["client"]
+    token = _csrf(c, "/skills")
+    for bad in ("/home", "~/.ssh", "http://example.com/x.git", "file:///etc",
+                "https://user:pw@example.com/x.git", "https://token@example.com/x.git",
+                "https://example.com/a\nb", "https://", ""):
+        c.post("/skills/import", data={"csrf": token, "source": bad})
+    assert started == []
+    assert "Paste an https" in c.get("/skills").get_data(as_text=True)

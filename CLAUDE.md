@@ -85,8 +85,8 @@ Microphone → Whisper STT → Claude (reasoning + tool selection)
 
 ### Voice Skill Installation (`install_skill`)
 
-Users add skills by asking, and approve them in the browser:
-1. User says *"add a skill that does X"*; the orchestrator routes to `install-skill` (native)
+Users add skills by asking Jarvis or from the control panel's Skills page ("Build a skill" box, or "Install from a link"), and approve them in the browser:
+1. User says *"add a skill that does X"* (the orchestrator routes to `install-skill`, native) or types it on the Skills page (`POST /skills/build`)
 2. `MetaSkillExecutor` starts a build (`core/skill_builder.py`) and returns at once; no spoken gates
 3. The build runs as its own transient systemd user unit (`python -m core.skill_builder <id>`), so a Kaizen restart doesn't kill it. State is `~/.kaizen/builds/<id>/job.json`
 4. A coding agent from `config/coding_agents.yaml` (`SKILL_BUILDER`, default `claude-code`) writes the skill and `references/tests.json` inside a Docker sandbox (`config/builders/<agent>.Dockerfile`, image tagged by the file's hash, built on first use) and runs the tests itself
@@ -98,7 +98,9 @@ Installing an existing skill from an https link or a folder (`source`, `skill_bu
 **Security model:**
 - The agent's sandbox sees only the skill's staging dir (`/work`) and its own credential (`credential_env`, passed by name, not in argv): no repo, `~/.kaizen`, `.env` or Docker socket. All caps dropped, non-root, read-only root, 1g memory, 10-minute limit. Network is open (the agent needs its API and pip), so a misled agent could send out its own key and the draft skill, nothing else
 - Authored tier: no native execution, memory/timeout/CPU clamps, device allowlist, volumes scoped to `~/.kaizen/<skill>/` (see `core/skill_policy.py`)
-- `dockerfile_validator.py` blocks unsafe Dockerfile instructions; the candidate is only built after validation
+- `dockerfile_validator.py` allows only the listed instructions and pip/apt `RUN` commands (continuations joined; no pipes, redirects, expansions or `# syntax=` directives); the candidate is only built after validation
+- A build and a skill's tests run before approval, in containers, on purpose. A pip package can still run code during that build. A downloaded skill gets no keys until it's approved (tests skipped if it asks for any); an agent-written skill's tests do get the non-reserved keys it lists
+- The panel's link box takes only https links with no embedded login, never a path on the Pi. Skill names `base` and `builder-*` are refused because they'd overwrite shared images
 - Approval happens on the panel (login + CSRF), and only installs the exact files that passed
 
 **Adding an agent:** an entry in `config/coding_agents.yaml` (sandbox Dockerfile, argv with `{prompt}`, `credential_env`, `output`) plus its Dockerfile. Spec: `docs/superpowers/specs/2026-11-07-skill-builder-design.md`.

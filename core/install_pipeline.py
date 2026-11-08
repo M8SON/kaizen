@@ -28,7 +28,9 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -50,6 +52,10 @@ from core.skill_validator import SkillValidator
 
 
 logger = logging.getLogger(__name__)
+
+FETCH_TIMEOUT_S = 180
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+MAX_UNPACKED_BYTES = 200 * 1024 * 1024
 
 
 class InstallDecision(enum.Enum):
@@ -320,6 +326,22 @@ class InstallPipeline:
             return self.install_from_path(staging, tier=tier)
 
 
+def _download(url: str, dest: Path) -> None:
+    """Fetch an https URL to dest, within MAX_DOWNLOAD_BYTES and FETCH_TIMEOUT_S."""
+    deadline = time.monotonic() + FETCH_TIMEOUT_S
+    total = 0
+    with urllib.request.urlopen(url, timeout=30) as resp, dest.open("wb") as out:
+        if not resp.geturl().startswith("https://"):
+            raise ValueError("the link redirected away from https")
+        while chunk := resp.read(64 * 1024):
+            total += len(chunk)
+            if total > MAX_DOWNLOAD_BYTES:
+                raise ValueError("the download is too large")
+            if time.monotonic() > deadline:
+                raise ValueError("the download took too long")
+            out.write(chunk)
+
+
 def fetch_skill(url: str, workdir: Path) -> Path:
     """Fetch a skill from an https git repository or tarball into workdir.
     Returns the directory holding it; raises ValueError."""
@@ -338,18 +360,21 @@ def fetch_skill(url: str, workdir: Path) -> Path:
         return staging
     if url.endswith((".tar.gz", ".tgz")):
         import tarfile
-        from urllib.request import urlretrieve
 
         tarball = workdir / "archive.tgz"
-        urlretrieve(url, tarball)
+        _download(url, tarball)
         staging.mkdir()
         with tarfile.open(tarball) as tar:
+            unpacked = 0
             for member in tar.getmembers():
                 if member.name.startswith("/") or ".." in Path(member.name).parts:
                     raise ValueError(f"unsafe tar member path: {member.name!r}")
-                if member.issym() or member.islnk():
+                if not (member.isfile() or member.isdir()):
                     raise ValueError(f"unsafe tar member type: {member.name!r}")
-            tar.extractall(staging)
+                unpacked += member.size
+                if unpacked > MAX_UNPACKED_BYTES:
+                    raise ValueError("the archive unpacks too large")
+            tar.extractall(staging, filter="data")
         entries = list(staging.iterdir())
         if len(entries) == 1 and entries[0].is_dir():
             staging = entries[0]

@@ -277,7 +277,7 @@ Just ask:
 
 > *"hey jarvis, add a skill that tells me a random joke"*
 
-A coding agent (Claude Code by default; `SKILL_BUILDER`, `config/coding_agents.yaml`) writes the skill and its tests inside a Docker sandbox that sees only the new skill's folder and its own key, and runs the tests. Kaizen then checks it at the restricted *authored* tier, builds it and reruns the tests in a real skill container, sending failures back to the agent (up to 3 rounds). Jarvis tells you when it's ready, and you approve it on the control panel's **Skills** page, which shows its permissions, test results and every file. Nothing is approved by voice. "Install the skill at <link>" works the same way, without the agent. See `skills/skill-tells-random/` for an example skill.
+A coding agent (Claude Code by default; `SKILL_BUILDER`, `config/coding_agents.yaml`) writes the skill and its tests inside a Docker sandbox that sees only the new skill's folder and its own key, and runs the tests. Kaizen then checks it at the restricted *authored* tier, builds it and reruns the tests in a real skill container, sending failures back to the agent (up to 3 rounds). Jarvis tells you when it's ready, and you approve it on the control panel's **Skills** page, which shows its permissions, test results and every file. Nothing is approved by voice. You can also type the request into the **Build a skill** box on that page. "Install the skill at <link>" (or the page's link box) works the same way, without the agent. See `skills/skill-tells-random/` for an example skill.
 
 To port a community [OpenClaw](https://github.com/openclaw/openclaw) skill:
 

@@ -4,7 +4,10 @@ Dockerfile validator for Kaizen skills.
 Per-tier allowlist:
   bundled  — no validation (trusted; repo-reviewed)
   authored — only FROM (kaizen/base:latest), RUN (pip/apt commands, no other
-             shell syntax), COPY (local), WORKDIR, CMD, ENV; no parser directives
+             shell syntax), COPY (local), WORKDIR, CMD, ENV; no parser directives.
+             RUN comes before COPY and ENV, and pip install is the last RUN
+             command, so the skill can't replace pip or what it runs. With
+             with_wheels_only() no skill-supplied code runs during the build.
   imported — everything authored allows, PLUS apt-get packages must be in
              the allowlist (core.apt_allowlist), and pip install must not use
              --index-url / --extra-index-url
@@ -51,8 +54,11 @@ _PARSER_DIRECTIVE = re.compile(r"#\s*(syntax|escape|check)\s*=", re.IGNORECASE)
 _CONTINUATION = re.compile(r"\\[ \t]*$")
 _RUN_SEPARATORS = {"&&", "||", ";"}
 _SHELL_PUNCTUATION = set("();<>|&")
-# pip options that change where packages come from, alone or clustered (-qi).
-_PIP_SOURCE_OPTION = re.compile(r"--(extra-)?index-url|--find-links|--trusted-host|-[a-zA-Z]*[if]")
+# pip options that change where packages come from (alone or clustered, -qi)
+# or that would allow building from source.
+_PIP_SOURCE_OPTION = re.compile(
+    r"--(extra-)?index-url|--find-links|--trusted-host|--(no|only)-binary|-[a-zA-Z]*[if]")
+_PIP_INSTALL = ("pip install", "pip3 install")
 
 
 def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
@@ -68,6 +74,7 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
     apt_allowlist = load_apt_allowlist() if tier == TIER_IMPORTED else None
     text = dockerfile_path.read_text(encoding="utf-8")
     from_count = 0
+    copied_or_set = pip_done = False
 
     for lineno, line in _logical_lines(text):
         raw_line = line
@@ -98,6 +105,10 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
                 )
 
         elif instruction == "RUN":
+            if copied_or_set:
+                raise DockerfileValidationError(
+                    f"Line {lineno}: RUN must come before COPY and ENV"
+                )
             run_body = re.sub(r"^RUN\s+", "", line, flags=re.IGNORECASE).strip()
             try:
                 segments = _run_segments(run_body)
@@ -108,10 +119,22 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
                     f"Line {lineno}: RUN only permits pip install / apt-get commands. "
                     f"Got: {run_body!r}"
                 )
+            for seg in segments:
+                if pip_done:
+                    raise DockerfileValidationError(
+                        f"Line {lineno}: pip install must be one command, the last RUN command"
+                    )
+                if seg.startswith(_PIP_INSTALL):
+                    _validate_pip(seg, lineno)
+                    pip_done = True
             if tier == TIER_IMPORTED:
                 _validate_run_imported(segments, apt_allowlist, lineno)
 
+        elif instruction == "ENV":
+            copied_or_set = True
+
         elif instruction == "COPY":
+            copied_or_set = True
             parts = line.split()
             if any(p.startswith("--from=") for p in parts[1:]):
                 raise DockerfileValidationError(
@@ -132,6 +155,28 @@ def validate(dockerfile_path: Path, *, tier: str = TIER_AUTHORED) -> None:
 
     if from_count == 0:
         raise DockerfileValidationError("Dockerfile has no FROM instruction")
+
+
+def with_wheels_only(text: str) -> str:
+    """The validated Dockerfile with pip limited to pre-built wheels, which
+    install without running any of the package's code."""
+    lines = text.split("\n")
+    for i, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if line.split()[:1] and line.split()[0].upper() == "FROM":
+            if _CONTINUATION.search(line):
+                raise DockerfileValidationError("FROM must be on one line")
+            lines.insert(i + 1, "ENV PIP_ONLY_BINARY=:all:")
+            return "\n".join(lines)
+    raise DockerfileValidationError("Dockerfile has no FROM instruction")
+
+
+def _validate_pip(seg: str, lineno: int) -> None:
+    if any(_PIP_SOURCE_OPTION.match(t) or "://" in t for t in seg.split()[2:]):
+        raise DockerfileValidationError(
+            f"Line {lineno}: pip install --index-url, other sources, URLs and "
+            "binary options are not allowed"
+        )
 
 
 def _logical_lines(text: str) -> list[tuple[int, str]]:
@@ -183,12 +228,6 @@ def _is_allowed_run(segments: list[str]) -> bool:
 
 def _validate_run_imported(segments: list[str], apt_allowlist: frozenset[str], lineno: int) -> None:
     for seg in segments:
-        if seg.startswith("pip install") or seg.startswith("pip3 install"):
-            if any(_PIP_SOURCE_OPTION.match(t) or "://" in t for t in seg.split()[2:]):
-                raise DockerfileValidationError(
-                    f"Line {lineno}: pip install --index-url, other sources and URLs "
-                    "are not allowed for imported skills"
-                )
         if seg.startswith("apt-get install") or seg.startswith("apt-get -y install"):
             tokens = [
                 t for t in seg.split()

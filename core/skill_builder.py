@@ -42,6 +42,7 @@ from pathlib import Path
 import yaml
 
 from core import usage_log
+from core.dockerfile_validator import with_wheels_only
 from core.install_metadata import compute_skill_sha256
 from core.skill_policy import TIER_AUTHORED, TIER_IMPORTED
 
@@ -268,6 +269,10 @@ def _prompt(job: dict) -> str:
         Rules:
           - Dockerfile instructions allowed: FROM, RUN (pip install or apt-get
             only), COPY (local files only), WORKDIR, CMD, ENV.
+          - Every RUN comes before any COPY or ENV. Use at most one pip install,
+            as the last RUN command, naming packages directly (no requirements
+            file). pip can only install pre-built wheels; choose packages that
+            have one for linux aarch64.
           - Do not set type, volumes or devices in config.yaml.
           - No other files.
           - You can run commands here and reach the internet. Run every test
@@ -363,7 +368,9 @@ def _check_round(job: dict) -> str | None:
     missing = [k for k in wanted if not os.environ.get(k)]
     image = f"kaizen/{job['name']}:candidate"
     _log(job, "Building the image")
-    built = _docker(["docker", "build", "-q", "-t", image, str(d / "scripts")],
+    build_file = _job_dir(job["id"]) / "Dockerfile.build"  # outside the reviewed files
+    build_file.write_text(with_wheels_only((d / "scripts" / "Dockerfile").read_text(encoding="utf-8")))
+    built = _docker(["docker", "build", "-q", "-t", image, "-f", str(build_file), str(d / "scripts")],
                     capture_output=True, text=True, timeout=900)
     if built.returncode != 0:
         return f"docker build failed:\n{built.stderr.strip()[-1500:]}"

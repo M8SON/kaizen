@@ -359,3 +359,15 @@ def test_review_says_when_a_file_is_cut_short(env, monkeypatch):
     job = sb.run(new_job()["id"])
     app = dict(sb.files(job))["scripts/app.py"]
     assert "more bytes not shown" in app
+
+
+def test_image_is_built_wheels_only_without_changing_the_reviewed_files(env, monkeypatch):
+    agent = agent_script(lambda d, n: write_skill(d, n))
+    monkeypatch.setattr(sb, "_run_agent", agent)
+    job = sb.run(new_job()["id"])
+    assert job["status"] == sb.READY, job["error"]
+    build = next(c for c in env.docker.calls if c[:2] == ["docker", "build"])
+    used = Path(build[build.index("-f") + 1])
+    assert used.read_text().splitlines()[1] == "ENV PIP_ONLY_BINARY=:all:"
+    assert used.parent == sb._job_dir(job["id"]) and build[-1] == str(sb.skill_dir(job) / "scripts")
+    assert "PIP_ONLY_BINARY" not in dict(sb.files(job))["scripts/Dockerfile"]

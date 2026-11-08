@@ -38,3 +38,39 @@ Laptop: 860 tests pass. A real `.tar.gz` from files.pythonhosted.org came throug
 - `git clone` has a 180 s limit but no size limit.
 
 **Not tested:** a real https git import on the Pi; approving from a real browser; `# syntax=` running a frontend under BuildKit (rejected before Docker is called, so not attempted); `_download` limits against a real oversized or slow server.
+
+## Follow-up: what a `docker build` step gets on the Pi
+
+**Question:** What limits does a skill's image build actually run under, and which `docker build` flags take effect?
+
+**Method:** On the Pi (Docker 26.1.5, buildx 0.13.1), a throwaway image whose `RUN` step printed its uid, cgroup limits, effective capabilities, and tried TCP to 1.1.1.1:443, the gateway 192.168.1.1:443 and the Pi's own LAN address on port 22 (3 s timeout).
+
+| Build | uid | memory.max | pids.max | CapEff | 1.1.1.1:443 | gateway:443 | Pi:22 |
+|---|---|---|---|---|---|---|---|
+| BuildKit, default | 0 | max | max | a80425fb | reachable | timeout | timeout |
+| BuildKit, `--network=none` | 0 | max | max | a80425fb | no network | no network | no network |
+| BuildKit, `--memory=1g` | 0 | max | max | a80425fb | reachable | timeout | timeout |
+| Legacy builder, `--memory=1g --network=none` | 0 | 1073741824 | 9575 | a80425fb | no network | no network | no network |
+
+**Conclusion:** BuildKit ignores `--memory` without an error; only the deprecated legacy builder applies it. `--network=none` works on both, but pip and apt need the network. Builds run as root with Docker's default capabilities. The LAN timeouts are one port on each of two hosts, so they don't show the LAN is blocked.
+
+**Not tested:** `PIP_ONLY_BINARY=:all:` during a real skill build; other LAN hosts or ports.
+
+## Follow-up: wheels-only builds (Pi, `2d90862`)
+
+**Question:** With `PIP_ONLY_BINARY=:all:` and the new Dockerfile rules, do normal skills still build, and is source code refused?
+
+**Method:** Real local-folder imports through `skill_builder` with real Docker, temporary `KAIZEN_PANEL_DIR`, all rejected and cleaned up. Then `pip` directly in `kaizen/base`, and one real `docker build` of `sgmllib3k` with the same `ENV` line.
+
+| Case | Result |
+|---|---|
+| `pip install pyyaml six` (C extension + pure Python, aarch64) | ready; 1 of 1 tests passed; image reports `PIP_ONLY_BINARY :all:` |
+| `pip install feedparser` | built: 6.0.14 and `feedparser-sgmllib` 2.1.0, both wheels |
+| `COPY pip /usr/local/bin/pip` before `RUN pip install` | failed validation, `RUN must come before COPY and ENV` |
+| `pip install --no-binary=:all: six` | failed validation |
+| `sgmllib3k` (PyPI lists only `sgmllib3k-1.0.0.tar.gz`) | `No matching distribution found` |
+| Candidate images left | 0 |
+
+**Conclusion:** Source packages are refused and common wheels install. I expected `feedparser` to fail on a source-only dependency; it no longer has one. Laptop: 863 tests pass.
+
+**Not tested:** a paid agent build with the new prompt rules; a real import of a community Dockerfile (ones that `COPY requirements.txt` before `RUN pip install` are now refused). `core/skill_cli` terminal installs get the Dockerfile rules but not the wheels-only build.
